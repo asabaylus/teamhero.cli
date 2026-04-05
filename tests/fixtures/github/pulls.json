@@ -1,0 +1,38 @@
+[
+	{
+		"number": 1,
+		"additions": 50,
+		"deletions": 10,
+		"state": "open",
+		"merged_at": null,
+		"updated_at": "2025-09-10T00:00:00Z",
+		"user": { "login": "alice" }
+	},
+	{
+		"number": 2,
+		"additions": 20,
+		"deletions": 5,
+		"state": "closed",
+		"merged_at": null,
+		"updated_at": "2025-09-05T00:00:00Z",
+		"user": { "login": "bob" }
+	},
+	{
+		"number": 3,
+		"additions": 30,
+		"deletions": 15,
+		"state": "closed",
+		"merged_at": "2025-09-15T00:00:00Z",
+		"updated_at": "2025-09-15T00:00:00Z",
+		"user": { "login": "alice" }
+	},
+	{
+		"number": 4,
+		"additions": 5,
+		"deletions": 2,
+		"state": "closed",
+		"merged_at": "2025-07-01T00:00:00Z",
+		"updated_at": "2025-07-01T00:00:00Z",
+		"user": { "login": "carol" }
+	}
+]

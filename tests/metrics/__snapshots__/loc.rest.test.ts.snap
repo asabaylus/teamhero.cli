@@ -1,0 +1,40 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`collectLocMetricsRest aggregates additions/deletions correctly 1`] = `
+[
+  {
+    "additions": 10,
+    "commit_count": 1,
+    "completed": {
+      "additions": 10,
+      "commit_count": 1,
+      "deletions": 3,
+    },
+    "deletions": 3,
+    "inProgress": {
+      "additions": 0,
+      "commit_count": 0,
+      "deletions": 0,
+    },
+    "login": "alice",
+    "net": 7,
+  },
+  {
+    "additions": 5,
+    "commit_count": 1,
+    "completed": {
+      "additions": 5,
+      "commit_count": 1,
+      "deletions": 2,
+    },
+    "deletions": 2,
+    "inProgress": {
+      "additions": 0,
+      "commit_count": 0,
+      "deletions": 0,
+    },
+    "login": "bob",
+    "net": 3,
+  },
+]
+`;

@@ -1,0 +1,53 @@
+{
+	"name": "teamhero",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"bin": {
+		"teamhero": "./dist/cli/index.js",
+		"teamhero-mcp": "./dist/mcp/index.js"
+	},
+	"scripts": {
+		"build": "tsup && cd tui && go build -o teamhero-tui .",
+		"build:service": "bun build --compile --outfile=teamhero-service scripts/run-report.ts",
+		"test": "bash scripts/run-tests.sh",
+		"test:fast": "bun test",
+		"test:watch": "bun test --watch",
+		"lint": "biome check .",
+		"prepare": "bun run build && husky",
+		"bootstrap": "sh scripts/bootstrap.sh",
+		"install:local": "sh scripts/install.sh",
+		"uninstall:local": "sh scripts/uninstall.sh",
+		"report": "node dist/cli/index.js report",
+		"report:service": "bun run scripts/run-report.ts",
+		"test:coverage": "bash scripts/run-tests.sh --coverage && bun run scripts/check-coverage.ts",
+		"test:all": "bash scripts/run-tests.sh && cd tui && go test ./...",
+		"tui:test": "cd tui && go test ./... -coverprofile=coverage.out",
+		"tui:coverage": "cd tui && make coverage-check"
+	},
+	"dependencies": {
+		"@modelcontextprotocol/sdk": "^1.29.0",
+		"@octokit/plugin-retry": "^8.1.0",
+		"@octokit/plugin-throttling": "^11.0.3",
+		"@octokit/rest": "^22.0.1",
+		"chalk": "^5.6.2",
+		"cli-spinners": "^3.4.0",
+		"commander": "^14.0.3",
+		"consola": "^3.4.2",
+		"dotenv": "^17.4.0",
+		"js-yaml": "^4.1.1",
+		"keytar": "^7.9.0",
+		"openai": "^6.33.0",
+		"remark": "^15.0.1"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.4.10",
+		"@types/bun": "^1.3.11",
+		"@types/js-yaml": "^4.0.9",
+		"@types/keytar": "^4.4.2",
+		"@types/node": "^25.5.2",
+		"husky": "^9.1.7",
+		"tsup": "^8.5.1",
+		"typescript": "6"
+	}
+}

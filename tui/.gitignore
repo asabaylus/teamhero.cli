@@ -1,0 +1,7 @@
+# Test output
+coverage.out
+coverage.html
+*.out
+
+# Compiled test binary
+*.test

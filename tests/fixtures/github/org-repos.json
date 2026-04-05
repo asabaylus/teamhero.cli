@@ -1,0 +1,16 @@
+[
+	{
+		"full_name": "test-org/repo-one",
+		"archived": false,
+		"owner": { "login": "test-org" },
+		"name": "repo-one",
+		"is_template": false
+	},
+	{
+		"full_name": "test-org/repo-two",
+		"archived": true,
+		"owner": { "login": "test-org" },
+		"name": "repo-two",
+		"is_template": false
+	}
+]

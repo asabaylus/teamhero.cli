@@ -1,0 +1,13 @@
+{"version":2,"width":76,"height":14,"timestamp":1743724800,"title":"teamhero doctor demo"}
+[0.1,"o","\u001b[32m❯\u001b[0m teamhero doctor\r\n"]
+[0.5,"o","\r\n"]
+[0.6,"o","  \u001b[1mChecking configuration...\u001b[0m\r\n"]
+[0.8,"o","\r\n"]
+[1.0,"o","  \u001b[32m✔\u001b[0m GitHub token        \u001b[90mvalid \u001b[0m\u001b[36m— github.com (acme-eng)\u001b[0m\r\n"]
+[1.3,"o","  \u001b[32m✔\u001b[0m OpenAI API key      \u001b[90mvalid \u001b[0m\u001b[36m— gpt-4o\u001b[0m\r\n"]
+[1.6,"o","  \u001b[32m✔\u001b[0m Asana token         \u001b[90mvalid \u001b[0m\u001b[36m— workspace: Acme Engineering\u001b[0m\r\n"]
+[1.9,"o","  \u001b[32m✔\u001b[0m Config file         \u001b[90m~/.config/teamhero/config.json\u001b[0m\r\n"]
+[2.2,"o","  \u001b[32m✔\u001b[0m Cache directory     \u001b[90m~/.cache/teamhero/\u001b[0m\r\n"]
+[2.5,"o","  \u001b[32m✔\u001b[0m Log directory       \u001b[90m~/.cache/teamhero/logs/\u001b[0m\r\n"]
+[2.8,"o","\r\n"]
+[3.0,"o","  \u001b[32m✔ All checks passed.\u001b[0m You're ready to generate reports.\r\n"]

@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(npx vitest run)",
+      "Read(//home/fragnot/.config/teamhero/**)",
+      "Read(//home/fragnot/.cache/teamhero/data-cache/**)",
+      "Bash(for f in ~/.cache/teamhero/data-cache/visible-wins/*.json)",
+      "Bash(do echo \"=== $f ===\")",
+      "Read(//home/fragnot/Project/teamhero.scripts/**)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); [print\\(f'' GID: {t[\"\"gid\"\"]} Name: {t[\"\"name\"\"]}''\\) for t in d.get\\(''data'',d\\) if isinstance\\(t,dict\\) and ''gid'' in t]\")",
+      "Bash(done)",
+      "Bash(python3 -m json.tool)",
+      "Bash(python3 -c \":*)"
+    ],
+    "additionalDirectories": [
+      "/home/fragnot/.config/teamhero"
+    ]
+  },
+  "enabledMcpjsonServers": [
+    "beads"
+  ],
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/session-start-tts.sh"
+          }
+        ]
+      }
+    ],
+    "Setup": [
+      {
+        "matcher": "init",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/setup_init.sh",
+            "timeout": 120
+          }
+        ]
+      },
+      {
+        "matcher": "maintenance",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/setup_maintenance.sh",
+            "timeout": 120
+          }
+        ]
+      }
+    ]
+  }
+}

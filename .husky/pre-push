@@ -1,0 +1,81 @@
+#!/usr/bin/env sh
+# TeamHero pre-push checks: linting, tests, and coverage
+# Runs on `git push`. Exit 1 to abort the push.
+
+set -eu
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$REPO_ROOT"
+
+# Augment PATH for non-interactive shells (hooks don't source ~/.bashrc / ~/.zshrc)
+for _dir in \
+  /usr/local/go/bin \
+  "$HOME/go/bin" \
+  "$HOME/.bun/bin" \
+  /opt/homebrew/bin \
+  /home/linuxbrew/.linuxbrew/bin \
+  "$HOME/.local/bin"; do
+  if [ -d "$_dir" ]; then
+    case ":$PATH:" in
+      *":$_dir:"*) ;;
+      *) export PATH="$_dir:$PATH" ;;
+    esac
+  fi
+done
+unset _dir
+
+echo ""
+echo "TeamHero pre-push checks"
+echo "--------------------------------------------------"
+
+FAILED=0
+
+# 1. Lint
+echo ""
+echo "Running lint..."
+if bun run lint; then
+  echo "Lint passed"
+else
+  echo "Lint failed -- run 'bun run lint' to see issues"
+  FAILED=1
+fi
+
+# 2. TypeScript tests + coverage
+echo ""
+echo "Running TypeScript tests with coverage..."
+if bash scripts/run-tests.sh --coverage && bun run scripts/check-coverage.ts; then
+  echo "TypeScript tests and coverage passed"
+else
+  echo "TypeScript tests or coverage failed"
+  FAILED=1
+fi
+
+# 3. Go tests (if Go is available)
+if command -v go >/dev/null 2>&1 && [ -f "$REPO_ROOT/tui/go.mod" ]; then
+  echo ""
+  echo "Running Go tests..."
+  if (cd "$REPO_ROOT/tui" && go test ./...); then
+    echo "Go tests passed"
+  else
+    echo "Go tests failed"
+    FAILED=1
+  fi
+fi
+
+echo ""
+echo "--------------------------------------------------"
+if [ "$FAILED" -eq 0 ]; then
+  echo "All pre-push checks passed"
+else
+  echo "Pre-push checks failed -- push aborted"
+fi
+echo ""
+
+if [ "$FAILED" -ne 0 ]; then
+  exit 1
+fi
+
+# Chain beads (bd) hook if available
+if command -v bd >/dev/null 2>&1; then
+  exec bd hooks run pre-push "$@"
+fi

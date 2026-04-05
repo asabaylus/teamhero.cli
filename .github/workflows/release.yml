@@ -1,0 +1,153 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  GO_VERSION: '1.26'
+  BUN_VERSION: 'latest'
+
+jobs:
+  build-service:
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            os: linux
+            arch: amd64
+            bun_target: bun-linux-x64
+          - runner: ubuntu-latest
+            os: linux
+            arch: arm64
+            bun_target: bun-linux-arm64
+          - runner: macos-latest
+            os: darwin
+            arch: amd64
+            bun_target: bun-darwin-x64
+          - runner: macos-latest
+            os: darwin
+            arch: arm64
+            bun_target: bun-darwin-arm64
+          - runner: ubuntu-latest
+            os: windows
+            arch: amd64
+            bun_target: bun-windows-x64
+
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install npm dependencies (skip prepare — no Go needed here)
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Determine output filename
+        id: filename
+        run: |
+          if [ "${{ matrix.os }}" = "windows" ]; then
+            echo "name=teamhero-service.exe" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=teamhero-service" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build TypeScript service binary
+        run: bun build --compile --target=${{ matrix.bun_target }} --outfile=${{ steps.filename.outputs.name }} scripts/run-report.ts
+        continue-on-error: ${{ matrix.os == 'windows' }}
+
+      - name: Upload service artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: service-${{ matrix.os }}-${{ matrix.arch }}
+          path: ${{ steps.filename.outputs.name }}
+          if-no-files-found: warn
+
+  plugin:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Build plugin zip
+        run: ./scripts/build-plugin.sh
+
+      - name: Upload plugin artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: teamhero-scripts-plugin
+          path: teamhero-scripts-plugin.zip
+
+  goreleaser:
+    needs: [build-service, plugin]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Download all service artifacts
+        uses: actions/download-artifact@v5
+        with:
+          pattern: service-*
+          path: artifacts/service
+
+      - name: Download plugin artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: teamhero-scripts-plugin
+          path: artifacts/plugin
+
+      - name: Stage service binaries for GoReleaser
+        run: |
+          for dir in artifacts/service/service-*/; do
+            # Extract os-arch from directory name (service-linux-amd64 → linux_amd64)
+            name="$(basename "$dir")"
+            os_arch="${name#service-}"
+            target_dir="staging/service/${os_arch/-/_}"
+            mkdir -p "$target_dir"
+            cp "$dir"/* "$target_dir/"
+            chmod +x "$target_dir"/teamhero-service* 2>/dev/null || true
+            echo "Staged: $target_dir/ → $(ls "$target_dir/")"
+          done
+
+      - name: Stage plugin zip for GoReleaser
+        run: |
+          mkdir -p staging/plugin
+          cp artifacts/plugin/teamhero-scripts-plugin.zip staging/plugin/
+
+      - name: Stage install script
+        run: |
+          mkdir -p staging/extra
+          cp scripts/install-release.sh staging/extra/install.sh
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: '~> v2'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
