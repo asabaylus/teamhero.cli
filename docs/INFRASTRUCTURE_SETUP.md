@@ -12,11 +12,11 @@ Here's what each one does and why it exists:
 
 | Repository | What it is | Why it exists |
 |---|---|---|
-| `asabaylus/teamhero.scripts` | **The main repo** — your existing codebase. Contains the Go TUI, the TypeScript service, the GoReleaser config, and the CI workflows. This is where you push code and tags. | This is the repo you already have. Nothing changes here. |
+| `asabaylus/teamhero.cli` | **The main repo** — your existing codebase. Contains the Go TUI, the TypeScript service, the GoReleaser config, and the CI workflows. This is where you push code and tags. | This is the repo you already have. Nothing changes here. |
 | `asabaylus/homebrew-teamhero` | **The Homebrew tap** — a tiny repo that holds a single Ruby formula file (`Formula/teamhero.rb`). Homebrew requires formulas to live in a repo named `homebrew-<name>`. | When someone runs `brew install asabaylus/teamhero/teamhero`, Homebrew looks for a repo called `asabaylus/homebrew-teamhero` and reads the formula from it. GoReleaser auto-creates and updates this formula file on every release — you never edit it by hand. |
 | `asabaylus/apt.teamhero.dev` | **The APT repository** — a GitHub Pages site that serves `.deb` packages and signed metadata. Acts as a standard Debian/Ubuntu package repository. | When someone runs `sudo apt-get install teamhero`, apt fetches packages from this repo. The `update-apt.yml` workflow in your main repo pushes new `.deb` files here after each release. |
 
-**Key point:** `teamhero.scripts` is your *source code*. The other two repos are
+**Key point:** `teamhero.cli` is your *source code*. The other two repos are
 *distribution channels* — they hold no source code, only release artifacts.
 
 ---
@@ -61,7 +61,7 @@ No explicit `brew tap` needed — Homebrew resolves `owner/repo/formula` automat
 
 GoReleaser needs permission to push the formula file to `homebrew-teamhero`.
 The default `GITHUB_TOKEN` in GitHub Actions only has access to the repo that
-triggered the workflow (`teamhero.scripts`), not to other repos. So you need a
+triggered the workflow (`teamhero.cli`), not to other repos. So you need a
 Personal Access Token (PAT) that can write to `homebrew-teamhero`.
 
 ### Instructions
@@ -87,7 +87,7 @@ Personal Access Token (PAT) that can write to `homebrew-teamhero`.
 5. **Copy the token immediately** — you won't see it again.
 
 6. Now store it as a secret in your main repo:
-   - Go to https://github.com/asabaylus/teamhero.scripts/settings/secrets/actions
+   - Go to https://github.com/asabaylus/teamhero.cli/settings/secrets/actions
    - Click **New repository secret**
    - **Name:** `HOMEBREW_TAP_TOKEN`
    - **Secret:** Paste the token you just copied
@@ -246,7 +246,7 @@ the APT repo. You're adding all three now.
 
 ### Instructions
 
-Go to https://github.com/asabaylus/teamhero.scripts/settings/secrets/actions
+Go to https://github.com/asabaylus/teamhero.cli/settings/secrets/actions
 
 Add these three secrets:
 
@@ -292,7 +292,7 @@ This is another PAT, similar to the Homebrew one, but for pushing to
 4. Click **Generate token**
 
 5. Copy the token, then go back to
-   https://github.com/asabaylus/teamhero.scripts/settings/secrets/actions
+   https://github.com/asabaylus/teamhero.cli/settings/secrets/actions
 
 6. Click **New repository secret**
    - **Name:** `APT_REPO_TOKEN`
@@ -351,7 +351,7 @@ and supports manual dispatch via `workflow_dispatch`.
 
 ### 7c. Enable GitHub Pages on the main repo
 
-1. Go to https://github.com/asabaylus/teamhero.scripts/settings/pages
+1. Go to https://github.com/asabaylus/teamhero.cli/settings/pages
 
 2. Under **Build and deployment → Source**, select **GitHub Actions**
    (not "Deploy from a branch" — the workflow handles it)
@@ -431,7 +431,7 @@ and supports manual dispatch via `workflow_dispatch`.
    # Should return asabaylus.github.io.
    ```
 
-3. Go back to https://github.com/asabaylus/teamhero.scripts/settings/pages
+3. Go back to https://github.com/asabaylus/teamhero.cli/settings/pages
 
 4. The custom domain should show a green checkmark. If it shows "DNS check
    in progress," wait a few more minutes and refresh.
@@ -472,7 +472,7 @@ git push origin v0.2.0-rc.1
 
 ### What to watch
 
-1. Go to https://github.com/asabaylus/teamhero.scripts/actions and watch the
+1. Go to https://github.com/asabaylus/teamhero.cli/actions and watch the
    **Release** workflow
 
 2. It should run three jobs:
@@ -481,7 +481,7 @@ git push origin v0.2.0-rc.1
    - `goreleaser` (downloads artifacts, runs GoReleaser)
 
 3. When `goreleaser` completes, check:
-   - **GitHub Releases:** https://github.com/asabaylus/teamhero.scripts/releases
+   - **GitHub Releases:** https://github.com/asabaylus/teamhero.cli/releases
      - Should have a new pre-release with archives, `.deb` files, `SHA256SUMS`,
        `install.sh`, and `teamhero-scripts-plugin.zip`
    - **Homebrew tap:** https://github.com/asabaylus/homebrew-teamhero
@@ -491,7 +491,7 @@ git push origin v0.2.0-rc.1
 
 4. Test the install script:
    ```bash
-   curl -fsSL https://github.com/asabaylus/teamhero.scripts/releases/download/v0.2.0-rc.1/install.sh | bash -s -- --version v0.2.0-rc.1
+   curl -fsSL https://github.com/asabaylus/teamhero.cli/releases/download/v0.2.0-rc.1/install.sh | bash -s -- --version v0.2.0-rc.1
    ```
 
 5. Test Homebrew (if the formula was pushed):
@@ -530,7 +530,7 @@ After this release completes, all three install paths should work:
 
 ```bash
 # curl
-curl -fsSL https://github.com/asabaylus/teamhero.scripts/releases/latest/download/install.sh | bash
+curl -fsSL https://github.com/asabaylus/teamhero.cli/releases/latest/download/install.sh | bash
 
 # Homebrew
 brew install asabaylus/teamhero/teamhero
@@ -544,7 +544,7 @@ sudo apt-get update && sudo apt-get install teamhero
 ## Secrets Reference
 
 All secrets are stored in:
-https://github.com/asabaylus/teamhero.scripts/settings/secrets/actions
+https://github.com/asabaylus/teamhero.cli/settings/secrets/actions
 
 | Secret | What it is | How to get it | Scope |
 |--------|-----------|---------------|-------|

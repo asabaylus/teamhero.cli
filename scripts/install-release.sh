@@ -2,7 +2,7 @@
 # scripts/install-release.sh — Download and install TeamHero from GitHub Releases.
 #
 # Usage:
-#   curl -fsSL https://github.com/asabaylus/teamhero.scripts/releases/latest/download/install.sh | bash
+#   curl -fsSL https://github.com/asabaylus/teamhero.cli/releases/latest/download/install.sh | bash
 #   curl -fsSL <url>/install.sh | bash -s -- --version v1.2.3
 #   curl -fsSL <url>/install.sh | bash -s -- --install-dir /usr/local/bin
 #
@@ -10,7 +10,7 @@
 
 set -euo pipefail
 
-REPO="asabaylus/teamhero.scripts"
+REPO="asabaylus/teamhero.cli"
 INSTALL_DIR="${INSTALL_DIR:-${HOME}/.local/bin}"
 VERSION=""
 

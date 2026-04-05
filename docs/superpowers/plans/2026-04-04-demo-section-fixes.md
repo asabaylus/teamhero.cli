@@ -386,7 +386,7 @@ if __name__ == "__main__":
 
 Run:
 ```bash
-cd /home/fragnot/Project/teamhero.scripts
+cd /home/fragnot/Project/teamhero.cli
 python3 site/casts/generate-demo.py > site/casts/demo-report.cast
 ```
 

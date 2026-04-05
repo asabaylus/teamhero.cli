@@ -42,7 +42,7 @@ sudo apt-get update && sudo apt-get install teamhero
 ### Any platform (curl)
 
 ```bash
-curl -fsSL https://github.com/asabaylus/teamhero.scripts/releases/latest/download/install.sh | bash
+curl -fsSL https://github.com/asabaylus/teamhero.cli/releases/latest/download/install.sh | bash
 ```
 
 Downloads the latest release to `~/.local/bin`. Pass `--version v1.2.3` for a specific version or `--install-dir /usr/local/bin` to change the install location.
@@ -170,7 +170,7 @@ teamhero doctor                                    # Verify
 TeamHero is also available as a [Claude Code plugin](https://code.claude.com/docs/en/plugins.md) for use in Claude Code and Cowork sessions without a separate CLI install:
 
 ```bash
-claude plugin marketplace add asabaylus/teamhero.scripts
+claude plugin marketplace add asabaylus/teamhero.cli
 claude plugin install teamhero-scripts@teamhero
 ```
 

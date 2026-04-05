@@ -44,7 +44,7 @@ func resolveScriptPath() string {
 	// Absolute fallback: look in common locations
 	home, _ := os.UserHomeDir()
 	locations := []string{
-		filepath.Join(home, "teamhero.scripts", "scripts", "run-report.ts"),
+		filepath.Join(home, "teamhero.cli", "scripts", "run-report.ts"),
 	}
 	for _, loc := range locations {
 		if _, err := os.Stat(loc); err == nil {

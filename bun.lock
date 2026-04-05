@@ -2,7 +2,7 @@
   "lockfileVersion": 1,
   "workspaces": {
     "": {
-      "name": "teamhero.scripts",
+      "name": "teamhero.cli",
       "dependencies": {
         "@modelcontextprotocol/sdk": "^1.29.0",
         "@octokit/plugin-retry": "^8.1.0",

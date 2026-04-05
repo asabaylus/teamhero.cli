@@ -111,7 +111,7 @@ fi
 The service binary is too large to bundle (~100MB). Download the platform archive from the latest release (it contains both binaries):
 
 ```bash
-curl -sL "https://github.com/asabaylus/teamhero.scripts/releases/latest/download/teamhero-$(curl -sI https://github.com/asabaylus/teamhero.scripts/releases/latest | grep -i location | sed 's|.*/v||;s/\r//')-linux-amd64.tar.gz" \
+curl -sL "https://github.com/asabaylus/teamhero.cli/releases/latest/download/teamhero-$(curl -sI https://github.com/asabaylus/teamhero.cli/releases/latest | grep -i location | sed 's|.*/v||;s/\r//')-linux-amd64.tar.gz" \
   | tar xz -C ~/.local/bin --strip-components=1
 chmod +x ~/.local/bin/teamhero-tui ~/.local/bin/teamhero-service
 ```
@@ -119,14 +119,14 @@ chmod +x ~/.local/bin/teamhero-tui ~/.local/bin/teamhero-service
 If no release is available yet, build from source (requires Bun):
 
 ```bash
-git clone https://github.com/asabaylus/teamhero.scripts.git /tmp/teamhero
+git clone https://github.com/asabaylus/teamhero.cli.git /tmp/teamhero
 cd /tmp/teamhero && bun install && bun build --compile --minify --outfile ~/.local/bin/teamhero-service scripts/run-report.ts
 ```
 
 #### Alternative: Homebrew (installs both binaries)
 
 ```bash
-brew tap asabaylus/teamhero https://github.com/asabaylus/teamhero.scripts
+brew tap asabaylus/teamhero https://github.com/asabaylus/teamhero.cli
 brew install teamhero
 ```
 

@@ -7,7 +7,7 @@
       "Read(//home/fragnot/.cache/teamhero/data-cache/**)",
       "Bash(for f in ~/.cache/teamhero/data-cache/visible-wins/*.json)",
       "Bash(do echo \"=== $f ===\")",
-      "Read(//home/fragnot/Project/teamhero.scripts/**)",
+      "Read(//home/fragnot/Project/teamhero.cli/**)",
       "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); [print\\(f'' GID: {t[\"\"gid\"\"]} Name: {t[\"\"name\"\"]}''\\) for t in d.get\\(''data'',d\\) if isinstance\\(t,dict\\) and ''gid'' in t]\")",
       "Bash(done)",
       "Bash(python3 -m json.tool)",

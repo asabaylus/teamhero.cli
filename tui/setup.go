@@ -2657,7 +2657,7 @@ func resolveServiceScript(script string) string {
 	// Absolute fallback
 	home, _ := os.UserHomeDir()
 	locations := []string{
-		filepath.Join(home, "teamhero.scripts", "scripts", script),
+		filepath.Join(home, "teamhero.cli", "scripts", script),
 	}
 	for _, loc := range locations {
 		if _, err := os.Stat(loc); err == nil {
