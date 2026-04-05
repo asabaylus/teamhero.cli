@@ -8,7 +8,10 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // ---------------------------------------------------------------------------
@@ -996,6 +999,35 @@ func TestEditorEnsureCursorVisible_NotReady(t *testing.T) {
 	m.ensureCursorVisible()
 }
 
+func TestEditorEnsureCursorVisible_ScrollUp(t *testing.T) {
+	m := inlineSettingsEditor{
+		ready:    true,
+		cursor:   0,
+		viewport: viewport.New(80, 5),
+	}
+	m.viewport.SetContent("a\nb\nc\nd\ne\nf\ng\nh")
+	m.viewport.SetYOffset(3)
+	m.ensureCursorVisible()
+	if m.viewport.YOffset != 0 {
+		t.Errorf("expected YOffset=0, got %d", m.viewport.YOffset)
+	}
+}
+
+func TestEditorEnsureCursorVisible_ScrollDown(t *testing.T) {
+	m := inlineSettingsEditor{
+		ready:    true,
+		cursor:   7,
+		viewport: viewport.New(80, 3),
+	}
+	m.viewport.SetContent("a\nb\nc\nd\ne\nf\ng\nh")
+	m.viewport.SetYOffset(0)
+	m.ensureCursorVisible()
+	expected := 7 - 3 + 1
+	if m.viewport.YOffset != expected {
+		t.Errorf("expected YOffset=%d, got %d", expected, m.viewport.YOffset)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Report Defaults section tests
 // ---------------------------------------------------------------------------
@@ -1099,5 +1131,1117 @@ func TestConfirmEdit_ConfigJsonItem(t *testing.T) {
 	}
 	if savedCfg.ExcludePrivate {
 		t.Error("expected ExcludePrivate=false after setting @@private_repos to Yes")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// prettyPrintJSON tests
+// ---------------------------------------------------------------------------
+
+func TestPrettyPrintJSON_ValidJSON(t *testing.T) {
+	result := prettyPrintJSON(`{"key":"value","num":42}`)
+	if !strings.Contains(result, "  ") {
+		t.Error("expected indented output")
+	}
+	if !strings.Contains(result, `"key"`) {
+		t.Error("expected key in output")
+	}
+}
+
+func TestPrettyPrintJSON_InvalidJSON(t *testing.T) {
+	input := "not json at all"
+	result := prettyPrintJSON(input)
+	if result != input {
+		t.Errorf("expected original string for invalid JSON, got %q", result)
+	}
+}
+
+func TestPrettyPrintJSON_Array(t *testing.T) {
+	result := prettyPrintJSON(`[1,2,3]`)
+	if !strings.Contains(result, "  ") {
+		t.Error("expected indented output for array")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// previewBoardsConfig tests
+// ---------------------------------------------------------------------------
+
+func TestPreviewBoardsConfig_FileExists(t *testing.T) {
+	origDir := os.Getenv("XDG_CONFIG_HOME")
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+	defer func() {
+		if origDir != "" {
+			os.Setenv("XDG_CONFIG_HOME", origDir)
+		} else {
+			os.Unsetenv("XDG_CONFIG_HOME")
+		}
+	}()
+
+	teamheroDir := filepath.Join(tmpDir, "teamhero")
+	os.MkdirAll(teamheroDir, 0o755)
+	os.WriteFile(filepath.Join(teamheroDir, "asana-config.json"), []byte(`{"boards":[{"id":"123"}]}`), 0o644)
+
+	result := previewBoardsConfig()
+	if result == "" {
+		t.Error("expected non-empty result for existing config")
+	}
+	if !strings.Contains(result, "boards") {
+		t.Error("expected 'boards' in output")
+	}
+}
+
+func TestPreviewBoardsConfig_FileNotFound(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+
+	result := previewBoardsConfig()
+	if result != "" {
+		t.Errorf("expected empty string for missing file, got %q", result)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// settingModalHelp tests
+// ---------------------------------------------------------------------------
+
+func TestSettingModalHelp_AllKnownKeys(t *testing.T) {
+	keys := []string{
+		"GITHUB_PERSONAL_ACCESS_TOKEN",
+		"OPENAI_API_KEY",
+		"ASANA_API_TOKEN",
+		"AI_MODEL",
+		"OPENAI_PROJECT",
+		"OPENAI_SERVICE_TIER",
+		"TEAMHERO_LOG_LEVEL",
+		"TEAMHERO_AI_DEBUG",
+		"TEAMHERO_AI_MAX_RETRIES",
+		"TEAMHERO_ENABLE_PERIOD_DELTAS",
+		"TEAMHERO_SEQUENTIAL",
+		"TEAMHERO_DISCREPANCY_CONFIDENCE_THRESHOLD",
+		"GITHUB_MAX_REPOSITORIES",
+		"TEAMHERO_MAX_PR_PAGES",
+		"USER_MAP",
+		"ASANA_WORKSPACE_GID",
+		"ASANA_DEFAULT_EMAIL_DOMAIN",
+		"MEETING_NOTES_DIR",
+		"GOOGLE_DRIVE_FOLDER_IDS",
+		"@@private_repos",
+		"@@archived_repos",
+		"@@include_bots",
+	}
+	for _, key := range keys {
+		result := settingModalHelp(key)
+		if result == "" {
+			t.Errorf("expected non-empty help for key %q", key)
+		}
+		// Should NOT be the default fallback for known keys
+		if result == "Press Enter to confirm your selection, or Esc to cancel." {
+			t.Errorf("key %q returned default help instead of specific help", key)
+		}
+	}
+}
+
+func TestSettingModalHelp_UnknownKey(t *testing.T) {
+	result := settingModalHelp("UNKNOWN_KEY_12345")
+	if result != "Press Enter to confirm your selection, or Esc to cancel." {
+		t.Errorf("expected default help for unknown key, got %q", result)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// styleBoldAndCode tests
+// ---------------------------------------------------------------------------
+
+func TestStyleBoldAndCode_Bold(t *testing.T) {
+	boldStyle := lipgloss.NewStyle().Bold(true)
+	codeStyle := lipgloss.NewStyle()
+	result := styleBoldAndCode("hello **world** end", boldStyle, codeStyle)
+	if strings.Contains(result, "**") {
+		t.Error("expected ** markers to be removed")
+	}
+	if !strings.Contains(result, "world") {
+		t.Error("expected 'world' in output")
+	}
+}
+
+func TestStyleBoldAndCode_Code(t *testing.T) {
+	boldStyle := lipgloss.NewStyle()
+	codeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("14"))
+	result := styleBoldAndCode("use `command` here", boldStyle, codeStyle)
+	if strings.Contains(result, "`") {
+		t.Error("expected backtick markers to be removed")
+	}
+	if !strings.Contains(result, "command") {
+		t.Error("expected 'command' in output")
+	}
+}
+
+func TestStyleBoldAndCode_NoMarkers(t *testing.T) {
+	boldStyle := lipgloss.NewStyle()
+	codeStyle := lipgloss.NewStyle()
+	input := "plain text"
+	result := styleBoldAndCode(input, boldStyle, codeStyle)
+	if result != input {
+		t.Errorf("expected unchanged text, got %q", result)
+	}
+}
+
+func TestStyleBoldAndCode_UnmatchedBold(t *testing.T) {
+	boldStyle := lipgloss.NewStyle()
+	codeStyle := lipgloss.NewStyle()
+	input := "only **one marker"
+	result := styleBoldAndCode(input, boldStyle, codeStyle)
+	if result != input {
+		t.Errorf("expected unchanged text for unmatched bold, got %q", result)
+	}
+}
+
+func TestStyleBoldAndCode_UnmatchedCode(t *testing.T) {
+	boldStyle := lipgloss.NewStyle()
+	codeStyle := lipgloss.NewStyle()
+	input := "only `one marker"
+	result := styleBoldAndCode(input, boldStyle, codeStyle)
+	if result != input {
+		t.Errorf("expected unchanged text for unmatched code, got %q", result)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// renderHelpStyled tests
+// ---------------------------------------------------------------------------
+
+func TestRenderHelpStyled_RegularParagraph(t *testing.T) {
+	result := renderHelpStyled("Hello world this is a test paragraph.", 40)
+	if result == "" {
+		t.Error("expected non-empty output")
+	}
+}
+
+func TestRenderHelpStyled_BulletList(t *testing.T) {
+	input := "- item one\n- item two\n- item three"
+	result := renderHelpStyled(input, 60)
+	if result == "" {
+		t.Error("expected non-empty output for bullet list")
+	}
+}
+
+func TestRenderHelpStyled_Table(t *testing.T) {
+	input := "| Col1 | Col2 |\n|------|------|\n| a | b |"
+	result := renderHelpStyled(input, 60)
+	if result == "" {
+		t.Error("expected non-empty output for table")
+	}
+}
+
+func TestRenderHelpStyled_EmptyParagraphs(t *testing.T) {
+	input := "first\n\n\n\nsecond"
+	result := renderHelpStyled(input, 60)
+	if !strings.Contains(result, "first") || !strings.Contains(result, "second") {
+		t.Error("expected both paragraphs in output")
+	}
+}
+
+func TestRenderHelpStyled_NarrowWidth(t *testing.T) {
+	result := renderHelpStyled("test", 5)
+	// Width < 10 should be clamped to 10
+	if result == "" {
+		t.Error("expected non-empty output even with narrow width")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// renderEditModal tests
+// ---------------------------------------------------------------------------
+
+func TestRenderEditModal_ValidItem(t *testing.T) {
+	m := &inlineSettingsEditor{
+		editIdx: 0,
+		items: []editorItem{
+			{key: "OPENAI_API_KEY", label: "OpenAI API Key", value: "sk-test"},
+		},
+	}
+	result := m.renderEditModal(60)
+	if result == "" {
+		t.Error("expected non-empty modal output")
+	}
+	if !strings.Contains(result, "OpenAI API Key") {
+		t.Error("expected label in modal output")
+	}
+}
+
+func TestRenderEditModal_OutOfBounds(t *testing.T) {
+	m := &inlineSettingsEditor{
+		editIdx: -1,
+		items:   []editorItem{},
+	}
+	result := m.renderEditModal(60)
+	if result != "" {
+		t.Errorf("expected empty string for out-of-bounds editIdx, got %q", result)
+	}
+}
+
+func TestRenderEditModal_NarrowWidth(t *testing.T) {
+	m := &inlineSettingsEditor{
+		editIdx: 0,
+		items: []editorItem{
+			{key: "AI_MODEL", label: "AI Model", value: "gpt-5-mini"},
+		},
+	}
+	result := m.renderEditModal(10)
+	if result == "" {
+		t.Error("expected non-empty modal even at narrow width")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// renderHelpContent tests
+// ---------------------------------------------------------------------------
+
+func TestRenderHelpContent_NoSelection(t *testing.T) {
+	m := &inlineSettingsEditor{
+		cursor: 0,
+		lines:  []editorLine{{text: "header", itemIndex: -1}},
+		items:  []editorItem{},
+	}
+	result := m.renderHelpContent(60)
+	if !strings.Contains(result, "Select a setting") {
+		t.Error("expected placeholder text when no item selected")
+	}
+}
+
+func TestRenderHelpContent_WithSelectedItem(t *testing.T) {
+	m := &inlineSettingsEditor{
+		cursor: 0,
+		lines:  []editorLine{{text: "GitHub Token", itemIndex: 0}},
+		items: []editorItem{
+			{key: "GITHUB_PERSONAL_ACCESS_TOKEN", label: "GitHub Token", value: "ghp_test", sensitive: true, description: "GitHub authentication token"},
+		},
+	}
+	result := m.renderHelpContent(60)
+	if !strings.Contains(result, "GitHub Token") {
+		t.Error("expected setting label in help content")
+	}
+	if !strings.Contains(result, "Current:") {
+		t.Error("expected 'Current:' label in help content")
+	}
+}
+
+func TestRenderHelpContent_WithJSONValue(t *testing.T) {
+	m := &inlineSettingsEditor{
+		cursor: 0,
+		lines:  []editorLine{{text: "User Map", itemIndex: 0}},
+		items: []editorItem{
+			{key: "USER_MAP", label: "User Map", value: `{"alice":{"name":"Alice"}}`, description: "Maps users"},
+		},
+	}
+	result := m.renderHelpContent(60)
+	if !strings.Contains(result, "Current:") {
+		t.Error("expected 'Current:' label for JSON value")
+	}
+}
+
+func TestRenderHelpContent_WithDefaultValue(t *testing.T) {
+	m := &inlineSettingsEditor{
+		cursor: 0,
+		lines:  []editorLine{{text: "AI Model", itemIndex: 0}},
+		items: []editorItem{
+			{key: "AI_MODEL", label: "AI Model", value: "", defaultVal: "gpt-5-mini", description: "Model choice"},
+		},
+	}
+	result := m.renderHelpContent(60)
+	if !strings.Contains(result, "Default:") {
+		t.Error("expected 'Default:' label when value is empty")
+	}
+}
+
+func TestRenderHelpContent_EmptyValue(t *testing.T) {
+	m := &inlineSettingsEditor{
+		cursor: 0,
+		lines:  []editorLine{{text: "Some Setting", itemIndex: 0}},
+		items: []editorItem{
+			{key: "SOME_KEY", label: "Some Setting", value: "", defaultVal: "", description: "Desc"},
+		},
+	}
+	result := m.renderHelpContent(60)
+	if !strings.Contains(result, "not set") {
+		t.Error("expected 'not set' for empty value with no default")
+	}
+}
+
+func TestRenderHelpContent_TooNarrow(t *testing.T) {
+	m := &inlineSettingsEditor{
+		cursor: 0,
+		lines:  []editorLine{{text: "test", itemIndex: 0}},
+		items:  []editorItem{{key: "X", label: "X"}},
+	}
+	result := m.renderHelpContent(10)
+	if result != "" {
+		t.Errorf("expected empty string for very narrow width, got %q", result)
+	}
+}
+
+func TestRenderHelpContent_EnvKeyShown(t *testing.T) {
+	m := &inlineSettingsEditor{
+		cursor: 0,
+		lines:  []editorLine{{text: "Log Level", itemIndex: 0}},
+		items: []editorItem{
+			{key: "TEAMHERO_LOG_LEVEL", label: "Log Level", value: "3", description: "Controls logging"},
+		},
+	}
+	result := m.renderHelpContent(60)
+	if !strings.Contains(result, "Env var:") {
+		t.Error("expected 'Env var:' label for non-special key")
+	}
+}
+
+func TestRenderHelpContent_SpecialKeyNoEnvVar(t *testing.T) {
+	m := &inlineSettingsEditor{
+		cursor: 0,
+		lines:  []editorLine{{text: "Boards", itemIndex: 0}},
+		items: []editorItem{
+			{key: "@@boards", label: "Boards", value: "", description: "Board config"},
+		},
+	}
+	result := m.renderHelpContent(60)
+	if strings.Contains(result, "Env var:") {
+		t.Error("expected no 'Env var:' for @@-prefixed key")
+	}
+}
+
+func TestRenderHelpContent_BoardsPreview(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+
+	teamheroDir := filepath.Join(tmpDir, "teamhero")
+	os.MkdirAll(teamheroDir, 0o755)
+	os.WriteFile(filepath.Join(teamheroDir, "asana-config.json"),
+		[]byte(`{"boards":[{"gid":"1"}]}`), 0o644)
+
+	m := &inlineSettingsEditor{
+		cursor: 0,
+		lines:  []editorLine{{text: "Boards", itemIndex: 0}},
+		items: []editorItem{
+			{key: "@@boards", label: "Boards", value: `{"boards":[]}`, description: "Board config"},
+		},
+	}
+	result := m.renderHelpContent(60)
+	if !strings.Contains(result, "Config:") {
+		t.Error("expected 'Config:' label for boards preview")
+	}
+}
+
+func TestRenderHelpContent_NoDescription(t *testing.T) {
+	m := &inlineSettingsEditor{
+		cursor: 0,
+		lines:  []editorLine{{text: "Test", itemIndex: 0}},
+		items: []editorItem{
+			{key: "TEST_KEY", label: "Test", value: "val", description: ""},
+		},
+	}
+	result := m.renderHelpContent(60)
+	if !strings.Contains(result, "No description available") {
+		t.Error("expected fallback description text")
+	}
+}
+
+func TestRenderHelpContent_DisplayValueTranslation(t *testing.T) {
+	m := &inlineSettingsEditor{
+		cursor: 0,
+		lines:  []editorLine{{text: "Sequential", itemIndex: 0}},
+		items: []editorItem{
+			{key: "TEAMHERO_SEQUENTIAL", label: "Sequential", value: "true", description: "Sequential mode"},
+		},
+	}
+	result := m.renderHelpContent(60)
+	if result == "" {
+		t.Error("expected non-empty output for display value translation")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// enterEditOrSpecial tests
+// ---------------------------------------------------------------------------
+
+func TestEnterEditOrSpecial_OutOfBounds(t *testing.T) {
+	m := &inlineSettingsEditor{cursor: -1, lines: nil}
+	result, _ := m.enterEditOrSpecial()
+	editor := result.(*inlineSettingsEditor)
+	if editor.mode != modeNavigate {
+		t.Error("expected mode to remain navigate for out-of-bounds cursor")
+	}
+}
+
+func TestEnterEditOrSpecial_NonSelectableLine(t *testing.T) {
+	m := &inlineSettingsEditor{
+		cursor: 0,
+		lines:  []editorLine{{text: "header", itemIndex: -1}},
+	}
+	result, _ := m.enterEditOrSpecial()
+	editor := result.(*inlineSettingsEditor)
+	if editor.mode != modeNavigate {
+		t.Error("expected mode to remain navigate for non-selectable line")
+	}
+}
+
+func TestEnterEditOrSpecial_SpecialNonSelect(t *testing.T) {
+	m := &inlineSettingsEditor{
+		cursor: 0,
+		lines:  []editorLine{{text: "Google Drive", itemIndex: 0}},
+		items: []editorItem{
+			{key: "@@gdrive", label: "Google Drive", special: true, itype: inputText},
+		},
+	}
+	result, _ := m.enterEditOrSpecial()
+	editor := result.(*inlineSettingsEditor)
+	if !editor.quitting {
+		t.Error("expected quitting for special non-select item")
+	}
+	if editor.action != "@@gdrive" {
+		t.Errorf("expected action '@@gdrive', got %q", editor.action)
+	}
+}
+
+func TestEnterEditOrSpecial_BoolItem(t *testing.T) {
+	m := &inlineSettingsEditor{
+		cursor: 0,
+		lines:  []editorLine{{text: "Debug", itemIndex: 0}},
+		items: []editorItem{
+			{key: "TEAMHERO_AI_DEBUG", label: "AI Debug", value: "true", itype: inputBool},
+		},
+	}
+	result, _ := m.enterEditOrSpecial()
+	editor := result.(*inlineSettingsEditor)
+	if editor.mode != modeEdit {
+		t.Error("expected mode to switch to edit")
+	}
+	if editor.editForm == nil {
+		t.Error("expected editForm to be created")
+	}
+}
+
+func TestEnterEditOrSpecial_YesNoItem(t *testing.T) {
+	m := &inlineSettingsEditor{
+		cursor: 0,
+		lines:  []editorLine{{text: "Private Repos", itemIndex: 0}},
+		items: []editorItem{
+			{key: "@@private_repos", label: "Private Repos", value: "Yes", itype: inputYesNo},
+		},
+	}
+	result, _ := m.enterEditOrSpecial()
+	editor := result.(*inlineSettingsEditor)
+	if editor.mode != modeEdit {
+		t.Error("expected mode to switch to edit for YesNo")
+	}
+	if editor.editForm == nil {
+		t.Error("expected editForm for YesNo")
+	}
+}
+
+func TestEnterEditOrSpecial_SelectItem(t *testing.T) {
+	m := &inlineSettingsEditor{
+		cursor: 0,
+		lines:  []editorLine{{text: "AI Model", itemIndex: 0}},
+		items: []editorItem{
+			{key: "AI_MODEL", label: "AI Model", value: "gpt-5-mini", itype: inputSelect, options: []string{"gpt-4.1-nano", "gpt-5-mini", "custom..."}},
+		},
+	}
+	result, _ := m.enterEditOrSpecial()
+	editor := result.(*inlineSettingsEditor)
+	if editor.mode != modeEdit {
+		t.Error("expected mode to switch to edit for Select")
+	}
+}
+
+func TestEnterEditOrSpecial_NumberItem(t *testing.T) {
+	m := &inlineSettingsEditor{
+		cursor: 0,
+		lines:  []editorLine{{text: "Max Retries", itemIndex: 0}},
+		items: []editorItem{
+			{key: "TEAMHERO_AI_MAX_RETRIES", label: "Max Retries", value: "3", itype: inputNumber},
+		},
+	}
+	result, _ := m.enterEditOrSpecial()
+	editor := result.(*inlineSettingsEditor)
+	if editor.mode != modeEdit {
+		t.Error("expected mode to switch to edit for Number")
+	}
+}
+
+func TestEnterEditOrSpecial_TextItem(t *testing.T) {
+	m := &inlineSettingsEditor{
+		cursor: 0,
+		lines:  []editorLine{{text: "Asana Domain", itemIndex: 0}},
+		items: []editorItem{
+			{key: "ASANA_DEFAULT_EMAIL_DOMAIN", label: "Asana Domain", value: "example.com", itype: inputText},
+		},
+	}
+	result, _ := m.enterEditOrSpecial()
+	editor := result.(*inlineSettingsEditor)
+	if editor.mode != modeEdit {
+		t.Error("expected mode to switch to edit for Text")
+	}
+}
+
+func TestEnterEditOrSpecial_JSONItem(t *testing.T) {
+	m := &inlineSettingsEditor{
+		cursor: 0,
+		lines:  []editorLine{{text: "User Map", itemIndex: 0}},
+		items: []editorItem{
+			{key: "USER_MAP", label: "User Map", value: `{"a":"b"}`, itype: inputJSON},
+		},
+	}
+	result, _ := m.enterEditOrSpecial()
+	editor := result.(*inlineSettingsEditor)
+	if editor.mode != modeEdit {
+		t.Error("expected mode to switch to edit for JSON")
+	}
+}
+
+func TestEnterEditOrSpecial_SelectSpecialWithOptions(t *testing.T) {
+	m := &inlineSettingsEditor{
+		cursor: 0,
+		lines:  []editorLine{{text: "Google Drive", itemIndex: 0}},
+		items: []editorItem{
+			{key: "@@gdrive", label: "Google Drive", special: true, itype: inputSelect, options: []string{"Connect now"}},
+		},
+	}
+	result, _ := m.enterEditOrSpecial()
+	editor := result.(*inlineSettingsEditor)
+	if editor.mode != modeEdit {
+		t.Error("expected mode to switch to edit for special select item")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// handleEditKey tests
+// ---------------------------------------------------------------------------
+
+func TestHandleEditKey_Escape(t *testing.T) {
+	m := &inlineSettingsEditor{
+		mode:     modeEdit,
+		editForm: nil,
+	}
+	result, _ := m.handleEditKey(tea.KeyMsg{Type: tea.KeyEscape})
+	editor := result.(*inlineSettingsEditor)
+	if editor.mode != modeNavigate {
+		t.Error("expected mode to switch to navigate on Esc")
+	}
+}
+
+func TestHandleEditKey_NoForm(t *testing.T) {
+	m := &inlineSettingsEditor{
+		mode:     modeEdit,
+		editForm: nil,
+	}
+	result, cmd := m.handleEditKey(tea.KeyMsg{Type: tea.KeyEnter})
+	editor := result.(*inlineSettingsEditor)
+	if editor.mode != modeEdit {
+		t.Error("expected mode to remain edit when no form and non-esc key")
+	}
+	if cmd != nil {
+		t.Error("expected nil cmd when no form")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// buildGDriveItem tests
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// confirmEdit additional branch tests
+// ---------------------------------------------------------------------------
+
+func TestConfirmEdit_GDriveAction(t *testing.T) {
+	m := &inlineSettingsEditor{
+		mode:    modeEdit,
+		editIdx: 0,
+		editVal: "Connect now",
+		cursor:  0,
+		items: []editorItem{
+			{key: "@@gdrive", label: "Google Drive"},
+		},
+		lines: []editorLine{
+			{text: "Google Drive", itemIndex: 0},
+		},
+	}
+	result, _ := m.confirmEdit()
+	editor := result.(*inlineSettingsEditor)
+	if !editor.quitting {
+		t.Error("expected quitting for @@gdrive action")
+	}
+	if editor.action != "@@gdrive" {
+		t.Errorf("expected action '@@gdrive', got %q", editor.action)
+	}
+}
+
+func TestConfirmEdit_CustomSelection(t *testing.T) {
+	m := &inlineSettingsEditor{
+		mode:    modeEdit,
+		editIdx: 0,
+		editVal: "custom...",
+		cursor:  0,
+		items: []editorItem{
+			{key: "AI_MODEL", label: "AI Model", value: "gpt-5-mini"},
+		},
+		lines: []editorLine{
+			{text: "AI Model", itemIndex: 0},
+		},
+	}
+	result, _ := m.confirmEdit()
+	editor := result.(*inlineSettingsEditor)
+	// Should create a new form for free-text input
+	if editor.editForm == nil {
+		t.Error("expected editForm for custom input")
+	}
+	if editor.editVal != "gpt-5-mini" {
+		t.Errorf("expected editVal to be current value 'gpt-5-mini', got %q", editor.editVal)
+	}
+}
+
+func TestConfirmEdit_BoardsJSON_Save(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+	teamheroDir := filepath.Join(tmpDir, "teamhero")
+	os.MkdirAll(teamheroDir, 0o755)
+
+	boardsJSON := `{"boards":[{"projectGid":"123","sections":["Done"]}]}`
+	m := &inlineSettingsEditor{
+		mode:    modeEdit,
+		editIdx: 0,
+		editVal: boardsJSON,
+		cursor:  0,
+		items: []editorItem{
+			{key: "@@boards", label: "Boards", value: "", defaultVal: "not set", itype: inputJSON},
+		},
+		lines: []editorLine{
+			{text: "Boards", itemIndex: 0},
+		},
+	}
+	result, _ := m.confirmEdit()
+	editor := result.(*inlineSettingsEditor)
+	if editor.statusMsg != "Saved" {
+		t.Errorf("expected 'Saved', got %q", editor.statusMsg)
+	}
+	if editor.items[0].value != boardsJSON {
+		t.Errorf("expected item value to be updated")
+	}
+}
+
+func TestConfirmEdit_BoardsJSON_Clear(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+	teamheroDir := filepath.Join(tmpDir, "teamhero")
+	os.MkdirAll(teamheroDir, 0o755)
+
+	// Create existing boards config
+	boardsPath := filepath.Join(teamheroDir, "asana-config.json")
+	os.WriteFile(boardsPath, []byte(`{"boards":[]}`), 0o644)
+
+	m := &inlineSettingsEditor{
+		mode:    modeEdit,
+		editIdx: 0,
+		editVal: "",
+		cursor:  0,
+		items: []editorItem{
+			{key: "@@boards", label: "Boards", value: `{"boards":[]}`, defaultVal: "1 configured", itype: inputJSON},
+		},
+		lines: []editorLine{
+			{text: "Boards", itemIndex: 0},
+		},
+	}
+	result, _ := m.confirmEdit()
+	editor := result.(*inlineSettingsEditor)
+	if editor.items[0].value != "" {
+		t.Error("expected value to be cleared")
+	}
+	if editor.items[0].defaultVal != "not set" {
+		t.Errorf("expected defaultVal 'not set', got %q", editor.items[0].defaultVal)
+	}
+}
+
+func TestConfirmEdit_RegularEnvKey_Clear(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+	teamheroDir := filepath.Join(tmpDir, "teamhero")
+	os.MkdirAll(teamheroDir, 0o755)
+
+	envPath := filepath.Join(teamheroDir, ".env")
+	os.WriteFile(envPath, []byte("AI_MODEL=gpt-5-mini\n"), 0o644)
+
+	m := &inlineSettingsEditor{
+		mode:    modeEdit,
+		editIdx: 0,
+		editVal: "",
+		cursor:  0,
+		envPath: envPath,
+		items: []editorItem{
+			{key: "AI_MODEL", label: "AI Model", value: "gpt-5-mini"},
+		},
+		lines: []editorLine{
+			{text: "AI Model", itemIndex: 0},
+		},
+	}
+	result, _ := m.confirmEdit()
+	editor := result.(*inlineSettingsEditor)
+	if editor.statusMsg != "Cleared" {
+		t.Errorf("expected 'Cleared', got %q", editor.statusMsg)
+	}
+	if editor.items[0].value != "" {
+		t.Error("expected value to be cleared")
+	}
+}
+
+func TestConfirmEdit_RegularEnvKey_SaveJSON(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+	teamheroDir := filepath.Join(tmpDir, "teamhero")
+	os.MkdirAll(teamheroDir, 0o755)
+
+	envPath := filepath.Join(teamheroDir, ".env")
+	os.WriteFile(envPath, []byte(""), 0o644)
+
+	m := &inlineSettingsEditor{
+		mode:    modeEdit,
+		editIdx: 0,
+		editVal: `{"alice":{"name":"Alice"}}`,
+		cursor:  0,
+		envPath: envPath,
+		items: []editorItem{
+			{key: "USER_MAP", label: "User Map", value: "", itype: inputJSON},
+		},
+		lines: []editorLine{
+			{text: "User Map", itemIndex: 0},
+		},
+	}
+	result, _ := m.confirmEdit()
+	editor := result.(*inlineSettingsEditor)
+	if editor.statusMsg != "Saved" {
+		t.Errorf("expected 'Saved', got %q", editor.statusMsg)
+	}
+}
+
+func TestConfirmEdit_ArchivedRepos(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+	teamheroDir := filepath.Join(tmpDir, "teamhero")
+	os.MkdirAll(teamheroDir, 0o755)
+
+	data, _ := json.Marshal(&ReportConfig{})
+	os.WriteFile(filepath.Join(teamheroDir, "config.json"), data, 0o644)
+
+	m := &inlineSettingsEditor{
+		mode:    modeEdit,
+		editIdx: 0,
+		editVal: "Yes",
+		cursor:  0,
+		envPath: filepath.Join(teamheroDir, ".env"),
+		items: []editorItem{
+			{key: "@@archived_repos", label: "Include Archived Repos", value: "No"},
+		},
+		lines: []editorLine{
+			{text: "Include Archived Repos = No", itemIndex: 0},
+		},
+	}
+	result, _ := m.confirmEdit()
+	editor := result.(*inlineSettingsEditor)
+	if editor.items[0].value != "Yes" {
+		t.Errorf("expected 'Yes', got %q", editor.items[0].value)
+	}
+}
+
+func TestConfirmEdit_IncludeBots(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+	teamheroDir := filepath.Join(tmpDir, "teamhero")
+	os.MkdirAll(teamheroDir, 0o755)
+
+	data, _ := json.Marshal(&ReportConfig{})
+	os.WriteFile(filepath.Join(teamheroDir, "config.json"), data, 0o644)
+
+	m := &inlineSettingsEditor{
+		mode:    modeEdit,
+		editIdx: 0,
+		editVal: "Yes",
+		cursor:  0,
+		envPath: filepath.Join(teamheroDir, ".env"),
+		items: []editorItem{
+			{key: "@@include_bots", label: "Include Bot Accounts", value: "No"},
+		},
+		lines: []editorLine{
+			{text: "Include Bot Accounts = No", itemIndex: 0},
+		},
+	}
+	result, _ := m.confirmEdit()
+	editor := result.(*inlineSettingsEditor)
+	if editor.items[0].value != "Yes" {
+		t.Errorf("expected 'Yes', got %q", editor.items[0].value)
+	}
+}
+
+func TestConfirmEdit_EmptyNoExistingValue(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+	teamheroDir := filepath.Join(tmpDir, "teamhero")
+	os.MkdirAll(teamheroDir, 0o755)
+
+	envPath := filepath.Join(teamheroDir, ".env")
+	os.WriteFile(envPath, []byte(""), 0o644)
+
+	m := &inlineSettingsEditor{
+		mode:    modeEdit,
+		editIdx: 0,
+		editVal: "",
+		cursor:  0,
+		envPath: envPath,
+		items: []editorItem{
+			{key: "AI_MODEL", label: "AI Model", value: ""},
+		},
+		lines: []editorLine{
+			{text: "AI Model", itemIndex: 0},
+		},
+	}
+	result, _ := m.confirmEdit()
+	editor := result.(*inlineSettingsEditor)
+	if editor.statusMsg != "" {
+		t.Errorf("expected empty statusMsg for no-op, got %q", editor.statusMsg)
+	}
+}
+
+func TestConfirmEdit_OutOfBounds(t *testing.T) {
+	m := &inlineSettingsEditor{
+		mode:    modeEdit,
+		editIdx: 5,
+		items:   []editorItem{},
+	}
+	result, _ := m.confirmEdit()
+	editor := result.(*inlineSettingsEditor)
+	if editor.mode != modeNavigate {
+		t.Error("expected mode to switch to navigate for out-of-bounds editIdx")
+	}
+}
+
+func TestConfirmEdit_StoreValueTranslation(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+	teamheroDir := filepath.Join(tmpDir, "teamhero")
+	os.MkdirAll(teamheroDir, 0o755)
+
+	envPath := filepath.Join(teamheroDir, ".env")
+	os.WriteFile(envPath, []byte(""), 0o644)
+
+	m := &inlineSettingsEditor{
+		mode:    modeEdit,
+		editIdx: 0,
+		editVal: "sequential",
+		cursor:  0,
+		envPath: envPath,
+		items: []editorItem{
+			{key: "TEAMHERO_SEQUENTIAL", label: "Sequential", value: ""},
+		},
+		lines: []editorLine{
+			{text: "Sequential", itemIndex: 0},
+		},
+	}
+	result, _ := m.confirmEdit()
+	editor := result.(*inlineSettingsEditor)
+	if editor.statusMsg != "Saved" {
+		t.Errorf("expected 'Saved', got %q", editor.statusMsg)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// handleNavigateKey tests (covers ensureCursorVisible + moveCursor paths)
+// ---------------------------------------------------------------------------
+
+func TestHandleNavigateKey_Up(t *testing.T) {
+	m := &inlineSettingsEditor{
+		mode:   modeNavigate,
+		cursor: 1,
+		lines: []editorLine{
+			{text: "Item A", itemIndex: 0},
+			{text: "Item B", itemIndex: 1},
+		},
+		items: []editorItem{{key: "a"}, {key: "b"}},
+	}
+	result, _ := m.handleNavigateKey(tea.KeyMsg{Type: tea.KeyUp})
+	editor := result.(*inlineSettingsEditor)
+	if editor.cursor != 0 {
+		t.Errorf("expected cursor=0, got %d", editor.cursor)
+	}
+}
+
+func TestHandleNavigateKey_Down(t *testing.T) {
+	m := &inlineSettingsEditor{
+		mode:   modeNavigate,
+		cursor: 0,
+		lines: []editorLine{
+			{text: "Item A", itemIndex: 0},
+			{text: "Item B", itemIndex: 1},
+		},
+		items: []editorItem{{key: "a"}, {key: "b"}},
+	}
+	result, _ := m.handleNavigateKey(tea.KeyMsg{Type: tea.KeyDown})
+	editor := result.(*inlineSettingsEditor)
+	if editor.cursor != 1 {
+		t.Errorf("expected cursor=1, got %d", editor.cursor)
+	}
+}
+
+func TestHandleNavigateKey_Home(t *testing.T) {
+	m := &inlineSettingsEditor{
+		mode:   modeNavigate,
+		cursor: 2,
+		lines: []editorLine{
+			{text: "header", itemIndex: -1},
+			{text: "Item A", itemIndex: 0},
+			{text: "Item B", itemIndex: 1},
+		},
+		items: []editorItem{{key: "a"}, {key: "b"}},
+	}
+	result, _ := m.handleNavigateKey(tea.KeyMsg{Type: tea.KeyHome})
+	editor := result.(*inlineSettingsEditor)
+	if editor.cursor != 1 {
+		t.Errorf("expected cursor=1 (first selectable), got %d", editor.cursor)
+	}
+}
+
+func TestHandleNavigateKey_End(t *testing.T) {
+	m := &inlineSettingsEditor{
+		mode:   modeNavigate,
+		cursor: 0,
+		lines: []editorLine{
+			{text: "Item A", itemIndex: 0},
+			{text: "Item B", itemIndex: 1},
+			{text: "footer", itemIndex: -1},
+		},
+		items: []editorItem{{key: "a"}, {key: "b"}},
+	}
+	result, _ := m.handleNavigateKey(tea.KeyMsg{Type: tea.KeyEnd})
+	editor := result.(*inlineSettingsEditor)
+	if editor.cursor != 1 {
+		t.Errorf("expected cursor=1 (last selectable), got %d", editor.cursor)
+	}
+}
+
+func TestHandleNavigateKey_PgUp(t *testing.T) {
+	m := &inlineSettingsEditor{
+		mode:   modeNavigate,
+		cursor: 0,
+		lines:  []editorLine{{text: "Item A", itemIndex: 0}},
+		items:  []editorItem{{key: "a"}},
+	}
+	result, _ := m.handleNavigateKey(tea.KeyMsg{Type: tea.KeyPgUp})
+	if result == nil {
+		t.Error("expected non-nil result")
+	}
+}
+
+func TestHandleNavigateKey_PgDown(t *testing.T) {
+	m := &inlineSettingsEditor{
+		mode:   modeNavigate,
+		cursor: 0,
+		lines:  []editorLine{{text: "Item A", itemIndex: 0}},
+		items:  []editorItem{{key: "a"}},
+	}
+	result, _ := m.handleNavigateKey(tea.KeyMsg{Type: tea.KeyPgDown})
+	if result == nil {
+		t.Error("expected non-nil result")
+	}
+}
+
+func TestHandleNavigateKey_Quit(t *testing.T) {
+	m := &inlineSettingsEditor{
+		mode:   modeNavigate,
+		cursor: 0,
+		lines:  []editorLine{{text: "Item A", itemIndex: 0}},
+		items:  []editorItem{{key: "a"}},
+	}
+	result, _ := m.handleNavigateKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	editor := result.(*inlineSettingsEditor)
+	if !editor.quitting {
+		t.Error("expected quitting on 'q'")
+	}
+}
+
+func TestHandleNavigateKey_UnknownKey(t *testing.T) {
+	m := &inlineSettingsEditor{
+		mode:   modeNavigate,
+		cursor: 0,
+		lines:  []editorLine{{text: "Item A", itemIndex: 0}},
+		items:  []editorItem{{key: "a"}},
+	}
+	result, cmd := m.handleNavigateKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	editor := result.(*inlineSettingsEditor)
+	if editor.cursor != 0 {
+		t.Errorf("expected cursor unchanged, got %d", editor.cursor)
+	}
+	if cmd != nil {
+		t.Error("expected nil cmd for unknown key")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// lastSelectableLine tests
+// ---------------------------------------------------------------------------
+
+func TestLastSelectableLine_NoSelectable(t *testing.T) {
+	m := &inlineSettingsEditor{
+		lines: []editorLine{
+			{text: "header", itemIndex: -1},
+			{text: "blank", itemIndex: -1},
+		},
+	}
+	idx := m.lastSelectableLine()
+	if idx != 0 {
+		t.Errorf("expected 0 for no selectable lines, got %d", idx)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// handleEditKey with form delegation
+// ---------------------------------------------------------------------------
+
+func TestHandleEditKey_DelegateToForm(t *testing.T) {
+	// Create a real huh form to delegate to
+	val := "test"
+	f := huh.NewForm(huh.NewGroup(
+		huh.NewInput().Title("Test").Value(&val),
+	)).WithTheme(huh.ThemeCharm()).WithWidth(40)
+
+	m := &inlineSettingsEditor{
+		mode:     modeEdit,
+		editForm: f,
+		editIdx:  0,
+		items: []editorItem{
+			{key: "AI_MODEL", label: "AI Model", value: "gpt-5-mini"},
+		},
+		lines: []editorLine{
+			{text: "AI Model", itemIndex: 0},
+		},
+	}
+	// Send a regular key to the form
+	result, _ := m.handleEditKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	if result == nil {
+		t.Error("expected non-nil result from form delegation")
+	}
+}
+
+func TestBuildGDriveItem_NotConnected(t *testing.T) {
+	// Without credentials, should show "not connected"
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+	os.MkdirAll(filepath.Join(tmpDir, "teamhero"), 0o755)
+
+	item := buildGDriveItem()
+	if item.key != "@@gdrive" {
+		t.Errorf("expected key '@@gdrive', got %q", item.key)
+	}
+	if item.value != "not connected" {
+		t.Errorf("expected 'not connected', got %q", item.value)
+	}
+	if !item.special {
+		t.Error("expected special=true")
 	}
 }

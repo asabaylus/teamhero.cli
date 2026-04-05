@@ -64,4 +64,4 @@ sync-branch: "beads-sync"
 # - linear.url
 # - linear.api-key
 # - github.org
-# - github.repo
+# - github.repono-db: true
