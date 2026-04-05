@@ -1,0 +1,20 @@
+[
+	{
+		"gid": "3001",
+		"name": "Project Delta",
+		"custom_fields": [
+			{
+				"gid": "cf2",
+				"name": "Status",
+				"display_value": "On Track",
+				"number_value": null,
+				"type": "enum"
+			}
+		]
+	},
+	{
+		"gid": "3002",
+		"name": "Project Epsilon",
+		"custom_fields": []
+	}
+]

@@ -1,0 +1,92 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# GoReleaser configuration for TeamHero.
+#
+# Local testing:
+#   goreleaser check
+#   goreleaser release --snapshot --clean
+
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: teamhero-tui
+    dir: tui
+    binary: teamhero-tui
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - id: default
+    format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+    name_template: "teamhero-v{{ .Version }}-{{ .Os }}-{{ .Arch }}"
+    files:
+      - src: "dist/service/{{ .Os }}_{{ .Arch }}/teamhero-service*"
+        strip_parent: true
+
+checksum:
+  name_template: SHA256SUMS
+
+release:
+  github:
+    owner: asabaylus
+    name: teamhero.scripts
+  draft: false
+  prerelease: auto
+  extra_files:
+    - glob: dist/plugin/teamhero-scripts-plugin.zip
+    - glob: dist/extra/install.sh
+
+brews:
+  - name: teamhero
+    repository:
+      owner: asabaylus
+      name: homebrew-teamhero
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/asabaylus/teamhero.scripts"
+    description: "Developer contribution report generator with interactive TUI"
+    license: MIT
+    install: |
+      bin.install "teamhero-tui" => "teamhero"
+      bin.install "teamhero-service" if File.exist?("teamhero-service")
+    test: |
+      assert_match version.to_s, shell_output("#{bin}/teamhero --version")
+
+nfpms:
+  - id: deb
+    package_name: teamhero
+    file_name_template: "teamhero_{{ .Version }}_{{ .Arch }}"
+    vendor: TeamHero
+    homepage: "https://github.com/asabaylus/teamhero.scripts"
+    description: "Developer contribution report generator with interactive TUI"
+    license: MIT
+    maintainer: "TeamHero <release@teamhero.dev>"
+    formats:
+      - deb
+    bindir: /usr/local/bin
+    contents:
+      - src: "dist/service/{{ .Os }}_{{ .Arch }}/teamhero-service"
+        dst: /usr/local/bin/teamhero-service
+        file_info:
+          mode: 0755
+
+changelog:
+  use: github-native

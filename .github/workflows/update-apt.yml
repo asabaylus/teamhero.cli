@@ -1,0 +1,115 @@
+name: Update APT Repository
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  update-apt:
+    runs-on: ubuntu-latest
+    if: "!github.event.release.prerelease"
+
+    steps:
+      - name: Download .deb files from release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p debs
+          TAG="${{ github.event.release.tag_name }}"
+          VERSION="${TAG#v}"
+
+          for arch in amd64 arm64; do
+            DEB_NAME="teamhero_${VERSION}_${arch}.deb"
+            URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/${DEB_NAME}"
+            echo "Downloading ${DEB_NAME}..."
+            curl -fsSL "$URL" -o "debs/${DEB_NAME}" || echo "Warning: ${DEB_NAME} not found"
+          done
+
+          ls -la debs/
+
+      - name: Clone APT repository
+        run: |
+          git clone "https://x-access-token:${{ secrets.APT_REPO_TOKEN }}@github.com/asabaylus/apt.teamhero.dev.git" apt-repo
+
+      - name: Import GPG key
+        env:
+          APT_GPG_PRIVATE_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+          APT_GPG_PASSPHRASE: ${{ secrets.APT_GPG_PASSPHRASE }}
+        run: |
+          echo "$APT_GPG_PRIVATE_KEY" | gpg --batch --import
+          # Trust the key
+          KEY_ID=$(gpg --list-keys --keyid-format long "release@teamhero.dev" | grep -E '^\s' | head -1 | tr -d ' ')
+          echo "${KEY_ID}:6:" | gpg --import-ownertrust
+
+      - name: Update pool with new .deb files
+        run: |
+          mkdir -p apt-repo/pool/main/t/teamhero
+          cp debs/*.deb apt-repo/pool/main/t/teamhero/ 2>/dev/null || true
+
+      - name: Generate Packages files
+        run: |
+          cd apt-repo
+
+          for arch in amd64 arm64; do
+            dir="dists/stable/main/binary-${arch}"
+            mkdir -p "$dir"
+            dpkg-scanpackages --arch "$arch" pool/ > "$dir/Packages"
+            gzip -9c "$dir/Packages" > "$dir/Packages.gz"
+            echo "Generated Packages for ${arch}: $(wc -l < "$dir/Packages") lines"
+          done
+
+      - name: Generate Release file
+        env:
+          APT_GPG_PASSPHRASE: ${{ secrets.APT_GPG_PASSPHRASE }}
+        run: |
+          cd apt-repo/dists/stable
+
+          # Generate Release
+          printf '%s\n' \
+            "Origin: TeamHero" \
+            "Label: TeamHero" \
+            "Suite: stable" \
+            "Codename: stable" \
+            "Architectures: amd64 arm64" \
+            "Components: main" \
+            "Description: TeamHero APT Repository" \
+            "Date: $(date -Ru)" \
+            > Release
+
+          # Add checksums
+          {
+            echo "SHA256:"
+            for f in main/binary-*/Packages main/binary-*/Packages.gz; do
+              if [ -f "$f" ]; then
+                SIZE=$(stat -c%s "$f")
+                HASH=$(sha256sum "$f" | cut -d' ' -f1)
+                printf " %s %s %s\n" "$HASH" "$SIZE" "$f"
+              fi
+            done
+          } >> Release
+
+          # Sign Release
+          gpg --batch --yes --pinentry-mode loopback \
+            --passphrase "$APT_GPG_PASSPHRASE" \
+            --armor --detach-sign --output Release.gpg Release
+
+          gpg --batch --yes --pinentry-mode loopback \
+            --passphrase "$APT_GPG_PASSPHRASE" \
+            --armor --clearsign --output InRelease Release
+
+      - name: Export public key
+        run: |
+          gpg --export --armor "release@teamhero.dev" > apt-repo/teamhero.gpg
+
+      - name: Push to APT repository
+        run: |
+          cd apt-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && echo "No changes" && exit 0
+          git commit -m "Update packages for ${{ github.event.release.tag_name }}"
+          git push

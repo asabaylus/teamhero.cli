@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Team Hero — Automated Weekly Status Reports for Engineering Managers</title>
+  <meta name="description" content="Free, open-source CLI that connects to GitHub and Asana and writes your weekly status report in 5 minutes. Built for engineering managers." />
+  <meta property="og:title" content="Team Hero — Stop Writing Status Reports" />
+  <meta property="og:description" content="Free, open-source CLI. Connects to GitHub + Asana. Writes your weekly status report in 5 minutes for ~2¢." />
+  <meta property="og:type" content="website" />
+
+  <!-- Google Analytics 4 (gtag.js) — async, non-blocking -->
+  <script src="site.config.js"></script>
+  <script>
+    (function () {
+      var id = (typeof SITE_CONFIG !== "undefined" && SITE_CONFIG.gaMeasurementId)
+        ? SITE_CONFIG.gaMeasurementId
+        : "G-XXXXXXXXXX";
+      if (id === "G-XXXXXXXXXX") return;
+      var s = document.createElement("script");
+      s.async = true;
+      s.src = "https://www.googletagmanager.com/gtag/js?id=" + id;
+      document.head.appendChild(s);
+      window.dataLayer = window.dataLayer || [];
+      function gtag() { dataLayer.push(arguments); }
+      window.gtag = gtag;
+      gtag("js", new Date());
+      gtag("config", id);
+    })();
+  </script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300;1,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- ===== COMING SOON OVERLAY ===== -->
+<div id="coming-soon-overlay">
+  <div class="coming-soon-content">
+    <span class="coming-soon-eyebrow">Team<span style="color:#3DD68C;">_</span><span style="color:#E94560;">Hero</span></span>
+    <h1 class="coming-soon-title">Coming Soon</h1>
+    <p class="coming-soon-sub">Automated weekly status reports for engineering managers.<br/>Free, open source, and almost ready.</p>
+    <div class="coming-soon-divider"></div>
+    <a href="https://github.com/asabaylus/teamhero.cli" class="btn-primary" target="_blank" rel="noopener">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+      Star on GitHub
+    </a>
+  </div>
+</div>
+
+<!-- ===== NAV ===== -->
+<nav>
+  <a href="#hero" class="nav-logo">Team<span style="color:#3DD68C;">_</span><span>Hero</span></a>
+  <ul class="nav-links">
+    <li><a href="#how-it-works">How It Works</a></li>
+    <li><a href="#what-you-get">Features</a></li>
+    <li><a href="#built-to-grow">Open Source</a></li>
+  </ul>
+  <a href="https://github.com" class="nav-cta" target="_blank" rel="noopener">
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+    ★ GitHub
+  </a>
+</nav>
+
+<!-- ===== HERO ===== -->
+<section id="hero">
+  <div class="hero-grid-overlay"></div>
+  <div class="hero-glow"></div>
+  <div class="hero-content">
+    <span class="eyebrow">Free &amp; Open Source CLI for Engineering Managers</span>
+    <h1 class="hero-headline">
+      Automate your weekly status report.<br/>
+      <span class="line-2">Five minutes and 2¢.</span>
+    </h1>
+    <p class="hero-sub">
+      Team Hero connects to your <strong>GitHub</strong> and <strong>Asana</strong>, reads your meeting notes,
+      reconciles the conflicts, and writes the report for you.
+    </p>
+    <div class="hero-actions">
+      <div class="install-snippet">
+        <code id="install-cmd">curl -fsSL https://github.com/asabaylus/teamhero.cli/releases/latest/download/install.sh | bash</code>
+        <button class="copy-btn" onclick="copyText('install-cmd', this)" title="Copy to clipboard">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+        </button>
+      </div>
+      <div class="hero-buttons-row">
+        <button class="btn-install-options" onclick="document.getElementById('install-modal').classList.add('open')">
+          All install options
+        </button>
+        <button class="btn-example-report" onclick="document.getElementById('report-modal').classList.add('open')">
+          View a full example report
+        </button>
+        <a href="https://github.com" class="btn-primary" target="_blank" rel="noopener">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+          View on GitHub
+        </a>
+      </div>
+      <div class="star-badge">
+        <span class="star">★</span>
+        <span id="star-count">— stars</span>
+        &nbsp;·&nbsp; MIT License
+      </div>
+    </div>
+    <div class="integration-row">
+      <span class="integration-label">Integrates with</span>
+      <div class="integration-pills">
+        <span class="pill"><span class="pill-dot"></span>GitHub</span>
+        <span class="pill"><span class="pill-dot"></span>Asana</span>
+        <span class="pill">Meeting Transcripts<span class="pill-dot"></span></span>
+        <span class="pill soon"><span class="pill-dot soon-dot"></span>Jira <em style="font-size:0.65rem;margin-left:0.2rem;">soon</em></span>
+        <span class="pill soon"><span class="pill-dot soon-dot"></span>Linear <em style="font-size:0.65rem;margin-left:0.2rem;">soon</em></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== THE PAIN ===== -->
+<section id="pain">
+  <div class="pain-inner reveal">
+    <p class="section-label">// The Problem</p>
+    <div class="pain-prose">
+      <p>You know this Friday. It's 6 PM. You have five tabs open: GitHub, Asana, last week's meeting transcript, the Google Doc you copy from every time, and a Slack thread where someone mentioned a blocker that definitely isn't in the ticket system. You're going to spend the next several hours stitching all of this together into something defensible before you can stop working.</p>
+      <p>The worst part? It's not that you're slow. It's that the data lives everywhere and nothing agrees. A PR got merged but the ticket is still open. The sprint velocity looks fine until you account for the two engineers who were heads-down on an incident. The meeting transcript says one thing; the Asana task says another. Someone has to reconcile all of it. That someone is you. Every single week.</p>
+    </div>
+    <div class="pull-quote">
+      "Save yourself hours every week. Because writing status reports is soul sucking work."
+    </div>
+    <p class="transition-line">There's a better way. And it's <strong>OpenSource</strong>.</p>
+  </div>
+</section>
+
+<!-- ===== HOW IT WORKS ===== -->
+<section id="how-it-works">
+  <div class="reveal">
+    <p class="section-label">// How It Works</p>
+    <h2 class="section-title">Install. Setup. Report.<br/>That's the whole thing.</h2>
+  </div>
+  <div class="steps-grid reveal">
+    <div class="step">
+      <div class="step-num">STEP 01 — INSTALL</div>
+      <div class="step-title">One line to install</div>
+      <p class="step-body">Homebrew, curl, or APT — pick your platform. Works on macOS, Linux, and Windows via WSL. Also ships as a Claude Code plugin.</p>
+    </div>
+    <div class="step">
+      <div class="step-num">STEP 02 — SETUP</div>
+      <div class="step-title">Connect your accounts</div>
+      <p class="step-body">Run the guided setup wizard. Add your GitHub token and OpenAI key. Optionally connect Asana and Google Drive for meeting transcripts. Takes about two minutes.</p>
+    </div>
+    <div class="step">
+      <div class="step-num">STEP 03 — REPORT</div>
+      <div class="step-title">Generate your report</div>
+      <p class="step-body">Pick your org, repos, team members, date range, and sections from the interactive TUI. Team Hero pulls, reconciles, and writes. ~5 minutes. ~2¢.</p>
+      <span class="step-cmd">$ teamhero report</span>
+    </div>
+    <div class="step">
+      <div class="step-num">STEP 04 — REVIEW &amp; SEND</div>
+      <div class="step-title">Check the discrepancies</div>
+      <p class="step-body">Team Hero flags where your data sources disagree. Review the discrepancy log, amend what you want, and send it. Next week, just re-run — your settings are saved.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===== WHAT YOU GET ===== -->
+<section id="what-you-get">
+  <div class="reveal">
+    <p class="section-label">// What You Get</p>
+    <h2 class="section-title">A report your boss<br/>can actually verify.</h2>
+  </div>
+  <div class="report-layout">
+    <div class="terminal reveal">
+      <div class="term-bar">
+        <div class="term-dot r"></div>
+        <div class="term-dot y"></div>
+        <div class="term-dot g"></div>
+        <div class="term-title">teamhero-report-acme-eng-2026-03-14.md</div>
+      </div>
+      <div class="term-body">
+        <div><span class="term-prompt">$</span> <span class="term-cmd">teamhero report --headless --foreground</span></div>
+        <div class="term-success">✔ Organization ready: Acme Engineering (acme-eng) — 0:00</div>
+        <div class="term-success">✔ Repositories queued: 28 — 0:01</div>
+        <div class="term-success">✔ Members queued: 6 — 0:01</div>
+        <div class="term-muted">→ Calculating repository metrics (28 repos)...</div>
+        <div class="term-muted">→ Fetching Asana tasks for "Platform Q1"...</div>
+        <div class="term-muted">→ Ingesting 3 meeting transcripts...</div>
+        <div class="term-muted">→ Reconciling sources and generating report...</div>
+        <div class="term-muted">→ Done in 4m 12s (~$0.02)</div>
+        <br/>
+        <div class="term-section">## This Week's Visible Wins &amp; Delivered Outcomes</div>
+        <br/>
+        <div class="term-out"><strong>Auth Service</strong></div>
+        <div class="term-out">* Token validation refactor shipped; 40% latency</div>
+        <div class="term-out">  reduction confirmed in load tests (completed).</div>
+        <div class="term-out">* Session storage migration blocked by compliance</div>
+        <div class="term-out">  review; legal sign-off expected Monday (blocked).</div>
+        <br/>
+        <div class="term-out"><strong>Payments</strong></div>
+        <div class="term-out">* Stripe webhook retry logic merged; resolves</div>
+        <div class="term-out">  dropped events under rate limiting (completed).</div>
+        <br/>
+        <div class="term-section">## Weekly Engineering Summary (2026-03-08 – 2026-03-14)</div>
+        <div class="term-out">Processed <span class="term-value">34 PRs</span> across 28 repositories,</div>
+        <div class="term-out">with contributions from <span class="term-value">6 engineers</span>, <span class="term-value">19 merged</span>.</div>
+        <br/>
+        <div class="term-section">## Discrepancy Report</div>
+        <div class="term-warn">1. PR #412 merged Wed — Asana task "Payments refactor"</div>
+        <div class="term-warn">   still shows In Progress. Recommend: close ticket.</div>
+        <div class="term-warn">   Contributor: Sarah Chen | Confidence: 90%</div>
+        <br/>
+        <div class="term-success">✓ Report saved: teamhero-report-acme-eng-2026-03-14.md</div>
+      </div>
+    </div>
+    <div class="feat-cards reveal">
+      <div class="feat-card">
+        <div class="feat-card-title"><span class="feat-icon">📊</span> Hard numbers, real sources</div>
+        <div class="feat-card-body">PRs, commits, task counts, velocity — pulled directly from GitHub and Asana, not guessed. Every number in the report is defensible.</div>
+      </div>
+      <div class="feat-card">
+        <div class="feat-card-title"><span class="feat-icon">⚠️</span> Discrepancy log</div>
+        <div class="feat-card-body">Team Hero catches conflicts between your data sources before your boss does. The ticket that says one thing and the PR that says another — flagged, every time.</div>
+      </div>
+      <div class="feat-card">
+        <div class="feat-card-title"><span class="feat-icon">🎛️</span> Configurable sections</div>
+        <div class="feat-card-body">Generate only what your executive actually reads. Skip what's irrelevant. Adjust scope per team, per project, per week.</div>
+      </div>
+      <div class="feat-card">
+        <div class="feat-card-title"><span class="feat-icon">💸</span> Your API key. Your cost.</div>
+        <div class="feat-card-body">No subscription. No premium tier. Bring your own AI API key. Team Hero uses it for inference and gets out of the way.
+          <div class="cost-chip">≈ $0.02 per report</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== MYTH BUSTING ===== -->
+<section id="why-not-ai">
+  <div class="myth-inner reveal">
+    <p class="section-label">// The Obvious Question</p>
+    <h2 class="section-title">Why not just ask an AI?</h2>
+    <div class="myth-body">
+      <p>Fair question. Yes, any AI — ChatGPT, Claude, Gemini — can write a status report. Give it a template and some bullet points and you'll get a perfectly decent document back. Nobody's disputing that.</p>
+      <p>Here's the problem: the writing isn't where the 6 hours goes. The 6 hours goes to <em>gathering</em> — opening GitHub, opening Asana, cross-referencing a meeting transcript from Tuesday that contradicts what the ticket says, figuring out why the sprint velocity looks off, tracking down the PR that got merged but never closed. That part is manual. That part is brutal. And a general-purpose AI does exactly none of it.</p>
+      <p>Team Hero does that part. It connects to your actual sources, pulls the actual data, reconciles the actual conflicts, and then — yes — uses an AI model to write the prose. The writing is fast. It was always fast. The work is the gathering. That's what Team Hero is for.</p>
+    </div>
+    <div class="myth-quote">
+      "Any AI can write the report.<br/>Team Hero actually knows what happened."
+    </div>
+  </div>
+</section>
+
+<!-- ===== BUILT TO GROW ===== -->
+<section id="built-to-grow">
+  <div class="reveal">
+    <p class="section-label">// Built to Grow</p>
+    <h2 class="section-title">Integrations today.<br/>More on the way.</h2>
+  </div>
+  <div class="grow-grid">
+    <div class="reveal">
+      <table class="integration-table">
+        <thead>
+          <tr>
+            <th>Integration</th>
+            <th>Status</th>
+            <th>Details</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>GitHub</td>
+            <td><span class="badge-live"><span class="live-dot"></span> Live</span></td>
+            <td style="color:var(--muted);font-size:0.82rem;">PRs, commits, reviews, contributors</td>
+          </tr>
+          <tr>
+            <td>Asana</td>
+            <td><span class="badge-live"><span class="live-dot"></span> Live</span></td>
+            <td style="color:var(--muted);font-size:0.82rem;">Projects, tasks, priorities, blockers</td>
+          </tr>
+          <tr>
+            <td>Meeting Transcripts</td>
+            <td><span class="badge-live"><span class="live-dot"></span> Live</span></td>
+            <td style="color:var(--muted);font-size:0.82rem;">Static files ingested via config</td>
+          </tr>
+          <tr>
+            <td>Jira</td>
+            <td><span class="badge-soon">Coming Soon</span></td>
+            <td style="color:var(--muted);font-size:0.82rem;">On the roadmap</td>
+          </tr>
+          <tr>
+            <td>Linear</td>
+            <td><span class="badge-soon">Coming Soon</span></td>
+            <td style="color:var(--muted);font-size:0.82rem;">On the roadmap</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="agent-box reveal">
+      <div class="agent-title">Built for the terminal.<br/>Ready for your pipeline.</div>
+      <p class="agent-body">Team Hero's CLI is fully non-interactive — every action available in the terminal works headlessly. No prompts, no GUI, no surprises. Drop it into GitHub Actions, run it from Claude Code, or wire it into your own automation without modification.</p>
+      <div class="agent-tags">
+        <span class="tag">GitHub Actions</span>
+        <span class="tag">Claude Code</span>
+        <span class="tag">CI/CD pipelines</span>
+        <span class="tag">cron jobs</span>
+        <span class="tag">headless</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== FOOTER CTA ===== -->
+<section id="footer-cta">
+  <div class="footer-cta-inner reveal">
+    <h2 class="footer-title">Stop writing.<br/>Start leading.</h2>
+    <p class="footer-sub">Free, open source, and ready to run.</p>
+    <a href="https://github.com" class="btn-primary" target="_blank" rel="noopener" style="margin:0 auto;">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+      Free and Open Source — View on GitHub
+    </a>
+  </div>
+</section>
+
+<!-- ===== FOOTER ===== -->
+<footer>
+  <span>© 2026 Team Hero</span>
+  <div class="footer-links">
+    <a href="https://github.com" target="_blank" rel="noopener">GitHub</a>
+    <a href="https://github.com" target="_blank" rel="noopener">MIT License</a>
+  </div>
+</footer>
+
+<!-- ===== INSTALL MODAL ===== -->
+<div id="install-modal" class="report-modal" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="install-modal-content">
+    <button class="report-modal-close" onclick="document.getElementById('install-modal').classList.remove('open')">&times;</button>
+    <div class="install-modal-header">
+      <h3>Install Team Hero</h3>
+      <p class="install-modal-sub">Choose your platform. One command to get started.</p>
+    </div>
+    <div class="install-tabs">
+      <button class="install-tab active" onclick="switchInstallTab('macos', this)">macOS</button>
+      <button class="install-tab" onclick="switchInstallTab('linux', this)">Linux</button>
+      <button class="install-tab" onclick="switchInstallTab('windows', this)">Windows</button>
+      <button class="install-tab" onclick="switchInstallTab('claude', this)">Claude Code</button>
+    </div>
+
+    <div class="install-panel active" id="panel-macos">
+      <div class="install-option">
+        <div class="install-option-label">Homebrew (recommended)</div>
+        <div class="install-code-row">
+          <code id="cmd-macos-brew">brew install asabaylus/teamhero/teamhero</code>
+          <button class="copy-btn" onclick="copyText('cmd-macos-brew', this)" title="Copy">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="install-option">
+        <div class="install-option-label">curl</div>
+        <div class="install-code-row">
+          <code id="cmd-macos-curl">curl -fsSL https://github.com/asabaylus/teamhero.cli/releases/latest/download/install.sh | bash</code>
+          <button class="copy-btn" onclick="copyText('cmd-macos-curl', this)" title="Copy">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="install-then">
+        <div class="install-option-label">Then run setup</div>
+        <div class="install-code-row">
+          <code id="cmd-macos-setup">teamhero setup && teamhero doctor</code>
+          <button class="copy-btn" onclick="copyText('cmd-macos-setup', this)" title="Copy">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="install-panel" id="panel-linux">
+      <div class="install-option">
+        <div class="install-option-label">APT (Debian / Ubuntu)</div>
+        <div class="install-code-row install-code-multiline">
+          <code id="cmd-linux-apt">curl -fsSL https://apt.teamhero.dev/teamhero.gpg | sudo gpg --dearmor -o /usr/share/keyrings/teamhero.gpg
+echo "deb [signed-by=/usr/share/keyrings/teamhero.gpg] https://apt.teamhero.dev stable main" | sudo tee /etc/apt/sources.list.d/teamhero.list
+sudo apt-get update && sudo apt-get install teamhero</code>
+          <button class="copy-btn" onclick="copyText('cmd-linux-apt', this)" title="Copy">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="install-option">
+        <div class="install-option-label">Homebrew</div>
+        <div class="install-code-row">
+          <code id="cmd-linux-brew">brew install asabaylus/teamhero/teamhero</code>
+          <button class="copy-btn" onclick="copyText('cmd-linux-brew', this)" title="Copy">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="install-option">
+        <div class="install-option-label">curl</div>
+        <div class="install-code-row">
+          <code id="cmd-linux-curl">curl -fsSL https://github.com/asabaylus/teamhero.cli/releases/latest/download/install.sh | bash</code>
+          <button class="copy-btn" onclick="copyText('cmd-linux-curl', this)" title="Copy">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="install-then">
+        <div class="install-option-label">Then run setup</div>
+        <div class="install-code-row">
+          <code id="cmd-linux-setup">teamhero setup && teamhero doctor</code>
+          <button class="copy-btn" onclick="copyText('cmd-linux-setup', this)" title="Copy">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="install-panel" id="panel-windows">
+      <div class="install-option">
+        <div class="install-option-label">Windows (via WSL)</div>
+        <p class="install-note">Team Hero runs natively on WSL. Open your WSL terminal and use any Linux install method.</p>
+        <div class="install-code-row">
+          <code id="cmd-windows-curl">curl -fsSL https://github.com/asabaylus/teamhero.cli/releases/latest/download/install.sh | bash</code>
+          <button class="copy-btn" onclick="copyText('cmd-windows-curl', this)" title="Copy">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="install-then">
+        <div class="install-option-label">Then run setup</div>
+        <div class="install-code-row">
+          <code id="cmd-windows-setup">teamhero setup && teamhero doctor</code>
+          <button class="copy-btn" onclick="copyText('cmd-windows-setup', this)" title="Copy">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="install-panel" id="panel-claude">
+      <div class="install-option">
+        <div class="install-option-label">Claude Code Plugin</div>
+        <p class="install-note">Use Team Hero directly from Claude Code without a separate install. Just tell Claude to generate your report.</p>
+        <div class="install-code-row install-code-multiline">
+          <code id="cmd-claude-install">claude plugin marketplace add asabaylus/teamhero.cli
+claude plugin install teamhero-cli@teamhero</code>
+          <button class="copy-btn" onclick="copyText('cmd-claude-install', this)" title="Copy">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="install-then">
+        <div class="install-option-label">Then just ask</div>
+        <div class="install-code-row">
+          <code id="cmd-claude-run" class="install-prompt">Generate a Team Hero report for my org for the last two weeks</code>
+          <button class="copy-btn" onclick="copyText('cmd-claude-run', this)" title="Copy">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== EXAMPLE REPORT MODAL ===== -->
+<div id="report-modal" class="report-modal" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="report-modal-content">
+    <button class="report-modal-close" onclick="document.getElementById('report-modal').classList.remove('open')">&times;</button>
+    <div class="report-modal-header">
+      <span class="report-modal-filename">teamhero-report-acme-eng-2026-03-14.md</span>
+      <span class="report-modal-badge">Example Report</span>
+    </div>
+    <article class="md">
+
+      <h2>This Week's Visible Wins &amp; Delivered Outcomes</h2>
+
+      <p><strong>Auth Service</strong></p>
+      <ul>
+        <li>Token validation refactor shipped Thursday; load tests confirm 40% latency reduction (completed).</li>
+        <li>Session storage migration blocked by compliance review; legal sign-off expected Monday (blocked).</li>
+        <li>Rate-limiter tuning deployed to staging; production rollout pending QA sign-off (in progress).</li>
+      </ul>
+
+      <p><strong>Payments</strong></p>
+      <ul>
+        <li>Stripe webhook retry logic merged; resolves dropped events under rate limiting (completed).</li>
+        <li>Subscription billing audit script delivered; identified 12 mismatched renewal dates (completed).</li>
+        <li>PCI scope reduction documentation submitted to auditor (in progress).</li>
+      </ul>
+
+      <p><strong>Infrastructure</strong></p>
+      <ul>
+        <li>Kubernetes node pool migration completed; all workloads running on ARM instances (completed).</li>
+        <li>Staging environment instability root-caused to memory limits; fix deployed (completed).</li>
+      </ul>
+
+      <p><strong>Onboarding</strong></p>
+      <ul>
+        <li>Email verification flow redesigned; conversion rate data expected next week (in progress).</li>
+        <li>SSO integration with Okta scoped; estimate is 3 sprints (scheduled).</li>
+      </ul>
+
+      <h2>Progress on Quarterly Roadmap</h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Initiative / Epic</th>
+            <th>Next Milestone &amp; Date</th>
+            <th>Status</th>
+            <th>Key Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Auth v2 — Zero-trust session management</strong></td>
+            <td>Mar 21 — Production rollout</td>
+            <td class="status-green">On Track</td>
+            <td>Token refactor shipped; session storage blocked on legal review. Rate-limiter in staging.</td>
+          </tr>
+          <tr>
+            <td><strong>Payments — PCI scope reduction</strong></td>
+            <td>Apr 5 — Audit submission</td>
+            <td class="status-green">On Track</td>
+            <td>Webhook retry shipped. Billing audit complete. PCI docs submitted.</td>
+          </tr>
+          <tr>
+            <td><strong>Platform — ARM migration</strong></td>
+            <td>Mar 14 — Complete</td>
+            <td class="status-green">Done</td>
+            <td>All workloads migrated. ~18% compute cost reduction observed.</td>
+          </tr>
+          <tr>
+            <td><strong>Growth — Onboarding redesign</strong></td>
+            <td>Apr 15 — A/B test launch</td>
+            <td class="status-yellow">At Risk</td>
+            <td>Email verification redesigned but conversion data pending. SSO scoped at 3 sprints.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h1>Weekly Engineering Summary (2026-03-08 &ndash; 2026-03-14)</h1>
+
+      <p>Processed 34 PRs across 28 repositories, with contributions from 6 engineers, 19 merged during the window.</p>
+
+      <hr/>
+
+      <h2>At-a-Glance Summary</h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Developer</th>
+            <th>Commits</th>
+            <th>PRs Opened</th>
+            <th>PRs Merged</th>
+            <th>Lines Added</th>
+            <th>Lines Deleted</th>
+            <th>Reviews</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Sarah Chen</td>
+            <td>47</td>
+            <td>6</td>
+            <td>5</td>
+            <td>3,218</td>
+            <td>891</td>
+            <td>4</td>
+          </tr>
+          <tr>
+            <td>Marcus Rivera</td>
+            <td>31</td>
+            <td>4</td>
+            <td>4</td>
+            <td>1,842</td>
+            <td>2,106</td>
+            <td>6</td>
+          </tr>
+          <tr>
+            <td>Priya Patel</td>
+            <td>28</td>
+            <td>5</td>
+            <td>4</td>
+            <td>4,521</td>
+            <td>312</td>
+            <td>3</td>
+          </tr>
+          <tr>
+            <td>Jake Morrison</td>
+            <td>19</td>
+            <td>3</td>
+            <td>3</td>
+            <td>967</td>
+            <td>1,445</td>
+            <td>2</td>
+          </tr>
+          <tr>
+            <td>Lin Wei</td>
+            <td>22</td>
+            <td>4</td>
+            <td>2</td>
+            <td>2,890</td>
+            <td>154</td>
+            <td>5</td>
+          </tr>
+          <tr>
+            <td>Alex Okafor</td>
+            <td>8</td>
+            <td>2</td>
+            <td>1</td>
+            <td>423</td>
+            <td>67</td>
+            <td>0</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <blockquote>
+        <em>Note: This table provides a quick view of activity across the team. Reviews are counted as approved, changes requested, or commented.</em>
+      </blockquote>
+
+      <hr/>
+
+      <h2>Individual Updates</h2>
+
+      <h3>Sarah Chen (@sarahchen)</h3>
+      <p>Sarah led the auth token validation refactor, replacing the legacy JWT verification chain with a streamlined middleware that eliminates redundant database lookups on every request. Load tests show a 40% reduction in p95 latency for authenticated endpoints. She also completed the Stripe webhook retry implementation, adding exponential backoff and idempotency checks that resolve the dropped-event issue reported by the payments team last sprint. Both changes are merged and running in production.</p>
+
+      <h3>Marcus Rivera (@marcusrivera)</h3>
+      <p>Marcus completed the Kubernetes ARM migration, moving all production workloads from x86 to Graviton instances and updating the Helm charts and CI pipelines accordingly. Early metrics show an ~18% reduction in compute costs. He also root-caused the staging environment instability to undersized memory limits on the API gateway pods and deployed a fix. Both the migration and the staging fix are live.</p>
+
+      <h3>Priya Patel (@priyapatel)</h3>
+      <p>Priya built the subscription billing audit script that cross-references Stripe subscription records against the internal billing database, identifying 12 accounts with mismatched renewal dates. She also drafted the PCI scope reduction documentation and submitted it to the external auditor. The email verification flow redesign is in progress with the new templates deployed to staging, though conversion data won't be available until next week's A/B test begins.</p>
+
+      <h3>Jake Morrison (@jakemorrison)</h3>
+      <p>Jake delivered the rate-limiter tuning for the auth service, adjusting per-endpoint thresholds based on production traffic patterns from the last 90 days. The changes are deployed to staging and awaiting QA sign-off before production rollout. He also reviewed and approved three PRs across the auth and payments services.</p>
+
+      <h3>Lin Wei (@linwei)</h3>
+      <p>Lin scoped the Okta SSO integration, producing a technical design document and estimating the work at three sprints. She also advanced the onboarding flow redesign by implementing the new email verification UI components and writing integration tests for the verification endpoint. The SSO work is scheduled to begin next sprint pending product prioritization.</p>
+
+      <h3>Alex Okafor (@alexokafor)</h3>
+      <p>No notable shipped outcomes were delivered by Alex Okafor during Mar 8, 2026 &ndash; Mar 14, 2026.</p>
+
+      <hr/>
+
+      <h2>Discrepancy Report</h2>
+      <p><strong>Period:</strong> Mar 8, 2026 &ndash; Mar 14, 2026 &nbsp;|&nbsp; <strong>Generated:</strong> Mar 14, 2026, 5:23 PM</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Issue</th>
+            <th>Contributor</th>
+            <th>Confidence</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td>PR #412 merged Wednesday &mdash; Asana task "Stripe webhook retry" still shows In Progress.</td>
+            <td>Sarah Chen</td>
+            <td>90%</td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td>Report claims ~18% compute cost reduction from ARM migration, but no cost dashboard or billing data provided.</td>
+            <td>Marcus Rivera</td>
+            <td>85%</td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td>Report states "12 mismatched renewal dates" identified, but billing audit script PR does not include validation tests.</td>
+            <td>Priya Patel</td>
+            <td>80%</td>
+          </tr>
+          <tr>
+            <td>4</td>
+            <td>Report attributes rate-limiter tuning to production traffic analysis but no traffic data or methodology referenced.</td>
+            <td>Jake Morrison</td>
+            <td>75%</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <hr/>
+
+      <h3>1. PR #412 merged Wednesday &mdash; Asana task still shows In Progress.</h3>
+      <p><strong>Contributor:</strong> Sarah Chen (@sarahchen) &nbsp;|&nbsp; <strong>Confidence: 90%</strong></p>
+      <p>GitHub PR #412 ("feat: Stripe webhook retry with exponential backoff") was merged on Wednesday, Mar 12. However, the corresponding Asana task "Implement webhook retry logic" remains in the "In Progress" column of the Payments sprint board. The task was not moved to "Done" after the PR merge.</p>
+      <p><strong>Evidence:</strong></p>
+      <ul>
+        <li>GitHub PR #412 &mdash; MERGED, Mar 12</li>
+        <li>Asana task "Implement webhook retry logic" &mdash; Status: In Progress</li>
+      </ul>
+      <p><strong>Action:</strong> Close the Asana task or update its status to reflect the merged PR.</p>
+
+      <hr/>
+
+      <h3>2. Report claims ~18% compute cost reduction but no billing data provided.</h3>
+      <p><strong>Contributor:</strong> Marcus Rivera (@marcusrivera) &nbsp;|&nbsp; <strong>Confidence: 85%</strong></p>
+      <p>The individual summary states the ARM migration yielded "~18% reduction in compute costs." The merged PRs (Helm chart updates, CI pipeline changes) confirm the migration was completed, but no cost dashboard screenshot, billing comparison, or AWS Cost Explorer data was provided. The claim is plausible given known Graviton pricing but not verifiable from the provided evidence.</p>
+      <p><strong>Evidence:</strong></p>
+      <ul>
+        <li>GitHub PRs #398, #401, #405 &mdash; MERGED (Helm charts, CI pipelines)</li>
+        <li>No cost data, billing reports, or dashboard references provided</li>
+      </ul>
+      <p><strong>Action:</strong> Attach AWS billing comparison or Cost Explorer data to support the claimed reduction, or soften language to "expected ~18% reduction based on Graviton pricing."</p>
+
+      <hr/>
+
+      <h3>3. Billing audit script PR lacks validation tests.</h3>
+      <p><strong>Contributor:</strong> Priya Patel (@priyapatel) &nbsp;|&nbsp; <strong>Confidence: 80%</strong></p>
+      <p>The report states the billing audit script "identified 12 accounts with mismatched renewal dates." PR #409 contains the script but no unit or integration tests validating the mismatch-detection logic. Without tests, the accuracy of the "12 accounts" figure cannot be independently verified.</p>
+      <p><strong>Evidence:</strong></p>
+      <ul>
+        <li>GitHub PR #409 &mdash; MERGED, contains audit script</li>
+        <li>No test files in PR diff</li>
+      </ul>
+      <p><strong>Action:</strong> Add tests for the audit script's matching logic, or provide the raw output log that shows the 12 identified accounts.</p>
+
+      <hr/>
+
+      <h3>4. Rate-limiter tuning claims based on traffic analysis without supporting data.</h3>
+      <p><strong>Contributor:</strong> Jake Morrison (@jakemorrison) &nbsp;|&nbsp; <strong>Confidence: 75%</strong></p>
+      <p>The report states rate-limiter thresholds were "adjusted based on production traffic patterns from the last 90 days." PR #415 updates the rate-limit configuration values but includes no traffic analysis, methodology notes, or references to monitoring dashboards that informed the new thresholds.</p>
+      <p><strong>Evidence:</strong></p>
+      <ul>
+        <li>GitHub PR #415 &mdash; OPEN (staging), config changes only</li>
+        <li>No traffic data, Grafana links, or analysis documents referenced</li>
+      </ul>
+      <p><strong>Action:</strong> Reference the traffic analysis or monitoring dashboard used to determine the new thresholds, or note that values were set based on engineering judgment rather than empirical data.</p>
+
+    </article>
+  </div>
+</div>
+
+<script>
+  // ===== SCROLL REVEAL =====
+  const observer = new IntersectionObserver(
+    entries => entries.forEach(e => e.isIntersecting && e.target.classList.add('visible')),
+    { threshold: 0.1, rootMargin: '0px 0px -60px 0px' }
+  );
+  document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+  // ===== STAR COUNT PLACEHOLDER =====
+  document.getElementById('star-count').textContent = 'Star on GitHub';
+
+  // ===== MODAL ESC KEY =====
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      document.getElementById('report-modal').classList.remove('open');
+      document.getElementById('install-modal').classList.remove('open');
+    }
+  });
+
+  // ===== INSTALL TABS =====
+  function switchInstallTab(platform, btn) {
+    document.querySelectorAll('.install-tab').forEach(function(t) { t.classList.remove('active'); });
+    document.querySelectorAll('.install-panel').forEach(function(p) { p.classList.remove('active'); });
+    btn.classList.add('active');
+    document.getElementById('panel-' + platform).classList.add('active');
+  }
+
+  // ===== COPY TO CLIPBOARD =====
+  function copyText(id, btn) {
+    var el = document.getElementById(id);
+    navigator.clipboard.writeText(el.textContent.trim()).then(function() {
+      btn.classList.add('copied');
+      setTimeout(function() { btn.classList.remove('copied'); }, 1500);
+    });
+  }
+</script>
+
+</body>
+</html>

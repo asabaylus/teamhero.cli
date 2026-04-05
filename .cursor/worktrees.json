@@ -1,0 +1,7 @@
+{
+  "setup-worktree": [
+    "bun install",
+    "bun run build",
+    "cp $ROOT_WORKTREE_PATH/.env.local .env.local 2>/dev/null || cp $ROOT_WORKTREE_PATH/.env .env 2>/dev/null || true"
+  ]
+}

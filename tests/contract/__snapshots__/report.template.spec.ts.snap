@@ -1,0 +1,60 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`report template matches the canonical markdown structure 1`] = `
+"# Weekly Engineering Summary (2025-08-20T00:00:00.000Z – 2025-09-19T00:00:00.000Z)
+
+Processed 42 PRs across 12 repositories, with contributions from 18 engineers.  
+
+---
+
+## **At-a-Glance Summary**
+| Developer        | Commits | PRs Opened | PRs Closed | PRs Merged | Lines Added | Lines Deleted | Reviews |
+|------------------|--------:|-----------:|-----------:|-----------:|------------:|--------------:|--------:|
+| Dev Two | 8 | 6 | 0 | 6 | 890 | 450 | 4 |
+| Dev One | 12 | 4 | 0 | 4 | 1234 | 220 | 9 |
+
+> *Note: This table provides a quick view of activity across the team. Reviews are counted as approved, changes requested, or commented.*
+
+---
+
+## **Individual Updates**
+
+### Dev Two (@dev2)
+
+Dev Two shipped billing improvements
+
+- **Open pull requests**
+  - None
+
+- **Merged pull requests**
+  - None
+
+- **Closed pull requests**
+  - None
+
+- **Commits**
+  - None
+
+- **Completed tasks**
+  - None
+
+### Dev One (@dev1)
+
+Dev One led database migration and resolved incidents
+
+- **Open pull requests**
+  - None
+
+- **Merged pull requests**
+  - None
+
+- **Closed pull requests**
+  - None
+
+- **Commits**
+  - None
+
+- **Completed tasks**
+  - None
+"
+`;

@@ -1,0 +1,42 @@
+{
+	"$schema": "https://raw.githubusercontent.com/biomejs/biome/main/schema.json",
+	"files": {
+		"ignore": [
+			"dist",
+			"node_modules",
+			".beads/",
+			".cursor/",
+			".claude/",
+			"coverage/",
+			"_bmad-output/",
+			"_bmad/",
+			"claude-plugin/",
+			".mcp.json",
+			".claude-plugin/",
+			"site/"
+		]
+	},
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"style": {
+				"noNonNullAssertion": "off",
+				"useImportType": "off"
+			},
+			"complexity": {
+				"noForEach": "off"
+			},
+			"performance": {
+				"noDelete": "off"
+			},
+			"suspicious": {
+				"noExplicitAny": "off",
+				"noImplicitAnyLet": "off",
+				"noControlCharactersInRegex": "off"
+			}
+		}
+	},
+	"formatter": {
+		"formatWithErrors": true
+	}
+}

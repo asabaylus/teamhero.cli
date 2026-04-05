@@ -1,0 +1,14 @@
+[
+	{
+		"sha": "commit-alice",
+		"stats": { "additions": 10, "deletions": 3 },
+		"commit": { "author": { "date": "2025-09-20T00:00:00Z" } },
+		"author": { "login": "alice" }
+	},
+	{
+		"sha": "commit-bob",
+		"stats": { "additions": 5, "deletions": 2 },
+		"commit": { "author": { "date": "2025-09-21T00:00:00Z" } },
+		"author": { "login": "bob" }
+	}
+]

@@ -1,0 +1,15 @@
+{
+  "name": "teamhero",
+  "description": "TeamHero — developer contribution reports for GitHub organizations",
+  "owner": {
+    "name": "Asa Baylus"
+  },
+  "plugins": [
+    {
+      "name": "teamhero-scripts",
+      "source": "./claude-plugin",
+      "description": "Generate developer contribution reports — PRs, commits, LOC, Asana tasks, AI-powered visible wins.",
+      "version": "1.0.0"
+    }
+  ]
+}

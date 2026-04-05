@@ -1,0 +1,62 @@
+[
+	{
+		"gid": "2001",
+		"name": "Project Alpha",
+		"custom_fields": [
+			{
+				"gid": "cf1",
+				"name": "RICE Score",
+				"display_value": "85",
+				"number_value": 85,
+				"type": "number"
+			},
+			{
+				"gid": "cf2",
+				"name": "Status",
+				"display_value": "On Track",
+				"number_value": null,
+				"type": "enum"
+			}
+		]
+	},
+	{
+		"gid": "2002",
+		"name": "Project Beta",
+		"custom_fields": [
+			{
+				"gid": "cf1",
+				"name": "RICE Score",
+				"display_value": "42",
+				"number_value": 42,
+				"type": "number"
+			},
+			{
+				"gid": "cf2",
+				"name": "Status",
+				"display_value": "At Risk",
+				"number_value": null,
+				"type": "enum"
+			}
+		]
+	},
+	{
+		"gid": "2003",
+		"name": "Project Gamma",
+		"custom_fields": [
+			{
+				"gid": "cf1",
+				"name": "RICE Score",
+				"display_value": "95",
+				"number_value": 95,
+				"type": "number"
+			},
+			{
+				"gid": "cf2",
+				"name": "Status",
+				"display_value": "On Track",
+				"number_value": null,
+				"type": "enum"
+			}
+		]
+	}
+]

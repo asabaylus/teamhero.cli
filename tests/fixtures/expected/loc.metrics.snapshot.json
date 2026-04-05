@@ -1,0 +1,36 @@
+[
+	{
+		"login": "alice",
+		"additions": 10,
+		"deletions": 3,
+		"net": 7,
+		"commit_count": 1,
+		"completed": {
+			"additions": 10,
+			"deletions": 3,
+			"commit_count": 1
+		},
+		"inProgress": {
+			"additions": 0,
+			"deletions": 0,
+			"commit_count": 0
+		}
+	},
+	{
+		"login": "bob",
+		"additions": 5,
+		"deletions": 2,
+		"net": 3,
+		"commit_count": 1,
+		"completed": {
+			"additions": 5,
+			"deletions": 2,
+			"commit_count": 1
+		},
+		"inProgress": {
+			"additions": 0,
+			"deletions": 0,
+			"commit_count": 0
+		}
+	}
+]

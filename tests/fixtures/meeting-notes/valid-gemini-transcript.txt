@@ -1,0 +1,12 @@
+[00:00:15] Alice: Good morning everyone, let's start with the sprint review.
+[00:00:30] Bob: Sure. I finished the authentication module yesterday.
+[00:01:05] Alice: Great work. How are we on the dashboard?
+[00:01:20] Carol: The frontend is about 80% done. I need to integrate the chart library.
+[00:01:45] Bob: I can help with the API endpoints for the charts.
+[00:02:10] Alice: Perfect. Let's pair on that after this meeting.
+[00:02:30] David: I deployed the staging environment updates this morning.
+[00:02:50] Alice: Excellent. Any blockers from anyone?
+[00:03:10] Carol: I'm waiting on the design specs for the settings page.
+[00:03:30] Alice: I'll follow up with the design team today. Anything else?
+[00:03:50] Bob: We should discuss the database migration plan.
+[00:04:15] Alice: Good point. Let's schedule a dedicated session for that.

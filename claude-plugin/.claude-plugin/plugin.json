@@ -1,0 +1,11 @@
+{
+  "name": "teamhero-scripts",
+  "description": "Generate developer contribution reports for GitHub organizations — PRs, commits, LOC, Asana tasks, AI-powered visible wins.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Asa Baylus"
+  },
+  "homepage": "https://github.com/asabaylus/teamhero.scripts",
+  "license": "MIT",
+  "mcpServers": "../.mcp.json"
+}

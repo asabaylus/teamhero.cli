@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "asana": {
+      "type": "http",
+      "url": "https://mcp.asana.com/v2/mcp"
+    },
+    "google-drive": {
+      "type": "http",
+      "url": "https://www.googleapis.com/drive/v3/mcp"
+    }
+  }
+}

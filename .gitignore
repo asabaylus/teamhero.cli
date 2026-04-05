@@ -1,0 +1,82 @@
+# Dependency directories
+node_modules/
+
+# BMAD Framework (reinstallable, not project-specific)
+_bmad/
+# _bmad-output/
+
+# Tool metadata (reinstallable, not project source)
+.codex/
+.specify/
+.changeset/
+specs/
+.cursorrules
+
+# BMAD temporary/state files
+**/project-scan-report.json
+
+# Claude Code — ignore everything, then whitelist project infrastructure
+.claude/*
+# Project settings (hooks config, MCP servers)
+!.claude/settings.json
+# Setup hooks (init + maintenance)
+!.claude/hooks/
+.claude/hooks/*
+!.claude/hooks/setup_init.sh
+!.claude/hooks/setup_maintenance.sh
+# Slash commands (install workflow)
+!.claude/commands/
+.claude/commands/*
+!.claude/commands/install.md
+!.claude/commands/install-hil.md
+!.claude/commands/maintenance.md
+
+# Compiled binaries
+codex
+codex-init
+vendor
+
+# Logs and diagnostics
+*.log
+
+# Local environment configuration
+.env*
+!.env.schema
+
+# Temporary artifacts
+.codex.diff.*
+*.swp
+*.tmp
+
+# OS-specific clutter
+.DS_Store
+
+# Build artifacts
+dist/
+
+# Go TUI build output
+tui/teamhero-tui
+tui/tui
+tui/build/
+
+# Service binary build output
+teamhero-service
+
+# Distribution archives
+dist/
+
+# Reports
+teamhero-report-*
+docs/maintenance_results.md
+
+# Cache
+out
+claude-plugin/bin/
+teamhero-scripts-plugin.zip
+.cache/
+
+# Coverage HTML reports
+coverage/
+
+# Maintenance results
+docs/maintenance_results.md

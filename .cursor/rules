@@ -1,0 +1,32 @@
+# Cursor Rules for TeamHero CLI
+
+Architecture guardrails
+• Use ports-and-adapters. Define RepoProvider, SelectionUI, and ReportRunner interfaces in the core.  
+• The CLI entry composes adapters and calls a single core orchestration function.  
+• No side effects in core. File IO, logging, process env, and child processes live at the edges.
+
+Interactive policy
+• The Go TUI (tui/) is the primary interactive frontend. Headless mode is used in CI and pipes.
+• Never block on prompts in non-interactive contexts.
+
+Vendoring policy
+• The Go TUI resolves its own binary at build time. Provide an env to force headless locally.
+
+Contracts and flags
+• Preserve existing flags and output. Add --repos for CSV input and --no-confirm to skip confirmation.  
+• Default path favors "all repos" when non-interactive or when the user accepts defaults.
+
+Testing
+• Core unit tests use fakes.  
+• CI runs headless integration with --repos.  
+• Optional smoke test for the TUI is allowed behind a flag and is not required in CI.
+
+Code style
+• Small files, single responsibility.
+• Pure functions in core, thin adapters, explicit error messages.
+
+AI Generation Policy
+• When using generative AI to write code or generate content, never implement fallback behaviors that would allow the system to continue with degraded functionality.
+• If AI generation fails, the entire operation must fail with a clear error message rather than falling back to alternative approaches.
+• No silent fallbacks are permitted under any circumstances when AI-generated content is involved.
+
