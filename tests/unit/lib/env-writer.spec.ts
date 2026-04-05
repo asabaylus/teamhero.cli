@@ -54,11 +54,7 @@ describe("writeEnvFile", () => {
 	});
 
 	it("updates existing keys in place", async () => {
-		await writeFile(
-			join(tempDir, ".env"),
-			"FOO=old\nBAR=keep\n",
-			"utf8",
-		);
+		await writeFile(join(tempDir, ".env"), "FOO=old\nBAR=keep\n", "utf8");
 		writeEnvFile({ FOO: "new" });
 		const content = await readFile(join(tempDir, ".env"), "utf8");
 		expect(content).toContain("FOO=new");
@@ -103,11 +99,7 @@ describe("writeEnvFile", () => {
 	});
 
 	it("preserves blank lines", async () => {
-		await writeFile(
-			join(tempDir, ".env"),
-			"FOO=bar\n\nBAZ=qux\n",
-			"utf8",
-		);
+		await writeFile(join(tempDir, ".env"), "FOO=bar\n\nBAZ=qux\n", "utf8");
 		writeEnvFile({ NEW: "val" });
 		const content = await readFile(join(tempDir, ".env"), "utf8");
 		expect(content).toContain("FOO=bar");

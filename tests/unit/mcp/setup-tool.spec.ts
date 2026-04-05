@@ -195,13 +195,11 @@ describe("teamhero_setup tool", () => {
 		it("validates GitHub token successfully", async () => {
 			fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
 				async (input: any) => {
-					const url =
-						typeof input === "string" ? input : input.toString();
+					const url = typeof input === "string" ? input : input.toString();
 					if (url.includes("api.github.com/user")) {
-						return new Response(
-							JSON.stringify({ login: "testuser" }),
-							{ status: 200 },
-						);
+						return new Response(JSON.stringify({ login: "testuser" }), {
+							status: 200,
+						});
 					}
 					return new Response("Not Found", { status: 404 });
 				},
@@ -227,11 +225,9 @@ describe("teamhero_setup tool", () => {
 		});
 
 		it("detects invalid GitHub token", async () => {
-			fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
-				async () => {
-					return new Response("Unauthorized", { status: 401 });
-				},
-			);
+			fetchSpy = spyOn(globalThis, "fetch").mockImplementation(async () => {
+				return new Response("Unauthorized", { status: 401 });
+			});
 
 			const handler = capturedHandlers.CallTool;
 			const result = await handler({
@@ -256,13 +252,11 @@ describe("teamhero_setup tool", () => {
 		it("validates OpenAI key successfully", async () => {
 			fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
 				async (input: any) => {
-					const url =
-						typeof input === "string" ? input : input.toString();
+					const url = typeof input === "string" ? input : input.toString();
 					if (url.includes("api.openai.com")) {
-						return new Response(
-							JSON.stringify({ data: [{ id: "gpt-4" }] }),
-							{ status: 200 },
-						);
+						return new Response(JSON.stringify({ data: [{ id: "gpt-4" }] }), {
+							status: 200,
+						});
 					}
 					return new Response("Not Found", { status: 404 });
 				},
@@ -289,8 +283,7 @@ describe("teamhero_setup tool", () => {
 		it("validates Asana token successfully", async () => {
 			fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
 				async (input: any) => {
-					const url =
-						typeof input === "string" ? input : input.toString();
+					const url = typeof input === "string" ? input : input.toString();
 					if (url.includes("asana.com")) {
 						return new Response(
 							JSON.stringify({
@@ -323,11 +316,9 @@ describe("teamhero_setup tool", () => {
 		});
 
 		it("handles fetch errors gracefully", async () => {
-			fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
-				async () => {
-					throw new Error("Network error");
-				},
-			);
+			fetchSpy = spyOn(globalThis, "fetch").mockImplementation(async () => {
+				throw new Error("Network error");
+			});
 
 			const handler = capturedHandlers.CallTool;
 			const result = await handler({

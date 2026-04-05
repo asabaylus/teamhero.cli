@@ -63,21 +63,18 @@ export async function pollForToken(
 	while (Date.now() < deadline) {
 		await new Promise((r) => setTimeout(r, pollInterval));
 
-		const res = await fetch(
-			"https://github.com/login/oauth/access_token",
-			{
-				method: "POST",
-				headers: {
-					Accept: "application/json",
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({
-					client_id: getClientId(),
-					device_code: deviceCode,
-					grant_type: "urn:ietf:params:oauth:grant-type:device_code",
-				}),
+		const res = await fetch("https://github.com/login/oauth/access_token", {
+			method: "POST",
+			headers: {
+				Accept: "application/json",
+				"Content-Type": "application/json",
 			},
-		);
+			body: JSON.stringify({
+				client_id: getClientId(),
+				device_code: deviceCode,
+				grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+			}),
+		});
 
 		const data = (await res.json()) as TokenPollResponse;
 
@@ -97,9 +94,7 @@ export async function pollForToken(
 			case "access_denied":
 				throw new Error("Authorization was denied by the user.");
 			default:
-				throw new Error(
-					`Unexpected error during authorization: ${data.error}`,
-				);
+				throw new Error(`Unexpected error during authorization: ${data.error}`);
 		}
 	}
 
@@ -141,12 +136,10 @@ export async function authorizeGitHub(): Promise<{
 	const deviceCode = await requestDeviceCode();
 
 	// Show the user code and URL on stderr (visible to user through Go TUI)
-	process.stderr.write(`\n  Open this URL in your browser:\n`);
+	process.stderr.write("\n  Open this URL in your browser:\n");
 	process.stderr.write(`  ${deviceCode.verification_uri}\n\n`);
-	process.stderr.write(
-		`  Then enter this code: ${deviceCode.user_code}\n\n`,
-	);
-	process.stderr.write(`  Waiting for authorization...\n`);
+	process.stderr.write(`  Then enter this code: ${deviceCode.user_code}\n\n`);
+	process.stderr.write("  Waiting for authorization...\n");
 
 	// Try to open browser automatically
 	openBrowser(deviceCode.verification_uri);

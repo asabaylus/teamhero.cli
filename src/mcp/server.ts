@@ -100,8 +100,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 						properties: {
 							github_token: {
 								type: "string",
-								description:
-									"GitHub Personal Access Token or OAuth token",
+								description: "GitHub Personal Access Token or OAuth token",
 							},
 							openai_api_key: {
 								type: "string",
@@ -109,8 +108,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 							},
 							asana_api_token: {
 								type: "string",
-								description:
-									"Asana Personal Access Token (optional)",
+								description: "Asana Personal Access Token (optional)",
 							},
 						},
 					},
@@ -122,8 +120,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 					},
 					config: {
 						type: "object",
-						description:
-							"Report configuration written to config.json",
+						description: "Report configuration written to config.json",
 						properties: {
 							org: {
 								type: "string",
@@ -141,15 +138,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 							},
 							useAllRepos: {
 								type: "boolean",
-								description:
-									"Use all org repos (default: true)",
+								description: "Use all org repos (default: true)",
 							},
 						},
 					},
 					validate: {
 						type: "boolean",
-						description:
-							"Validate credentials against APIs (default: true)",
+						description: "Validate credentials against APIs (default: true)",
 					},
 				},
 			},
@@ -384,9 +379,7 @@ async function handleSetup(args: Record<string, unknown>) {
 	}
 
 	// Check for invalid credentials — still write but warn
-	const invalidCreds = credentialResults.filter(
-		(r) => r.status === "invalid",
-	);
+	const invalidCreds = credentialResults.filter((r) => r.status === "invalid");
 	if (invalidCreds.length > 0) {
 		consola.warn(
 			`[mcp-setup] Some credentials failed validation: ${invalidCreds.map((c) => c.key).join(", ")}`,
@@ -411,19 +404,20 @@ async function handleSetup(args: Record<string, unknown>) {
 		// Merge with existing config if present
 		let existingConfig: Record<string, unknown> = {};
 		try {
-			existingConfig = JSON.parse(
-				readFileSync(configPath, "utf8"),
-			) as Record<string, unknown>;
+			existingConfig = JSON.parse(readFileSync(configPath, "utf8")) as Record<
+				string,
+				unknown
+			>;
 		} catch {
 			// No existing config
 		}
 
 		const merged = { ...existingConfig, ...config };
-		writeFileSync(configPath, JSON.stringify(merged, null, 2) + "\n", {
+		writeFileSync(configPath, `${JSON.stringify(merged, null, 2)}\n`, {
 			mode: 0o600,
 		});
 		configSaved = true;
-		consola.debug(`[mcp-setup] Wrote config.json`);
+		consola.debug("[mcp-setup] Wrote config.json");
 	}
 
 	return {

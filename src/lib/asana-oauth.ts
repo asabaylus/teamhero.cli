@@ -72,9 +72,7 @@ async function refreshAccessToken(
 	opts?: { clientId?: string; clientSecret?: string },
 ): Promise<AsanaTokens> {
 	const clientId =
-		opts?.clientId ??
-		process.env.ASANA_OAUTH_CLIENT_ID ??
-		ASANA_CLIENT_ID;
+		opts?.clientId ?? process.env.ASANA_OAUTH_CLIENT_ID ?? ASANA_CLIENT_ID;
 	const params: Record<string, string> = {
 		client_id: clientId,
 		grant_type: "refresh_token",
@@ -180,9 +178,7 @@ export async function authorizeAsana(opts?: {
 	clientSecret?: string;
 }): Promise<{ name?: string }> {
 	const clientId =
-		opts?.clientId ??
-		process.env.ASANA_OAUTH_CLIENT_ID ??
-		ASANA_CLIENT_ID;
+		opts?.clientId ?? process.env.ASANA_OAUTH_CLIENT_ID ?? ASANA_CLIENT_ID;
 	const clientSecret = opts?.clientSecret;
 	const codeVerifier = generateCodeVerifier();
 	const codeChallenge = generateCodeChallenge(codeVerifier);

@@ -40,26 +40,26 @@ describe("requestDeviceCode", () => {
 			interval: 5,
 		};
 
-		globalThis.fetch = mock(async () =>
-			new Response(JSON.stringify(mockResponse), {
-				status: 200,
-				headers: { "Content-Type": "application/json" },
-			}),
+		globalThis.fetch = mock(
+			async () =>
+				new Response(JSON.stringify(mockResponse), {
+					status: 200,
+					headers: { "Content-Type": "application/json" },
+				}),
 		) as typeof fetch;
 
 		const result = await requestDeviceCode();
 		expect(result.device_code).toBe("dc_test123");
 		expect(result.user_code).toBe("ABCD-1234");
-		expect(result.verification_uri).toBe(
-			"https://github.com/login/device",
-		);
+		expect(result.verification_uri).toBe("https://github.com/login/device");
 		expect(result.expires_in).toBe(900);
 		expect(result.interval).toBe(5);
 	});
 
 	it("throws on non-OK response", async () => {
-		globalThis.fetch = mock(async () =>
-			new Response("Forbidden", { status: 403, statusText: "Forbidden" }),
+		globalThis.fetch = mock(
+			async () =>
+				new Response("Forbidden", { status: 403, statusText: "Forbidden" }),
 		) as typeof fetch;
 
 		await expect(requestDeviceCode()).rejects.toThrow(
@@ -70,19 +70,21 @@ describe("requestDeviceCode", () => {
 	it("sends correct request body", async () => {
 		let capturedBody: string | null = null;
 
-		globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
-			capturedBody = init?.body as string;
-			return new Response(
-				JSON.stringify({
-					device_code: "dc_test",
-					user_code: "CODE",
-					verification_uri: "https://github.com/login/device",
-					expires_in: 900,
-					interval: 5,
-				}),
-				{ status: 200, headers: { "Content-Type": "application/json" } },
-			);
-		}) as typeof fetch;
+		globalThis.fetch = mock(
+			async (input: RequestInfo | URL, init?: RequestInit) => {
+				capturedBody = init?.body as string;
+				return new Response(
+					JSON.stringify({
+						device_code: "dc_test",
+						user_code: "CODE",
+						verification_uri: "https://github.com/login/device",
+						expires_in: 900,
+						interval: 5,
+					}),
+					{ status: 200, headers: { "Content-Type": "application/json" } },
+				);
+			},
+		) as typeof fetch;
 
 		await requestDeviceCode();
 		expect(capturedBody).not.toBeNull();
@@ -120,11 +122,12 @@ describe("pollForToken", () => {
 	});
 
 	it("throws on expired_token error", async () => {
-		globalThis.fetch = mock(async () =>
-			new Response(
-				JSON.stringify({ error: "expired_token" }),
-				{ status: 200, headers: { "Content-Type": "application/json" } },
-			),
+		globalThis.fetch = mock(
+			async () =>
+				new Response(JSON.stringify({ error: "expired_token" }), {
+					status: 200,
+					headers: { "Content-Type": "application/json" },
+				}),
 		) as typeof fetch;
 
 		await expect(pollForToken("dc_test", 0.01, 30)).rejects.toThrow(
@@ -133,11 +136,12 @@ describe("pollForToken", () => {
 	});
 
 	it("throws on access_denied error", async () => {
-		globalThis.fetch = mock(async () =>
-			new Response(
-				JSON.stringify({ error: "access_denied" }),
-				{ status: 200, headers: { "Content-Type": "application/json" } },
-			),
+		globalThis.fetch = mock(
+			async () =>
+				new Response(JSON.stringify({ error: "access_denied" }), {
+					status: 200,
+					headers: { "Content-Type": "application/json" },
+				}),
 		) as typeof fetch;
 
 		await expect(pollForToken("dc_test", 0.01, 30)).rejects.toThrow(
@@ -153,10 +157,10 @@ describe("pollForToken", () => {
 			callCount++;
 			callTimestamps.push(Date.now());
 			if (callCount === 1) {
-				return new Response(
-					JSON.stringify({ error: "slow_down" }),
-					{ status: 200, headers: { "Content-Type": "application/json" } },
-				);
+				return new Response(JSON.stringify({ error: "slow_down" }), {
+					status: 200,
+					headers: { "Content-Type": "application/json" },
+				});
 			}
 			return new Response(
 				JSON.stringify({
@@ -181,11 +185,12 @@ describe("pollForToken", () => {
 	}, 15_000); // 15s timeout for the 5s slow_down wait
 
 	it("throws on unknown error", async () => {
-		globalThis.fetch = mock(async () =>
-			new Response(
-				JSON.stringify({ error: "some_unknown_error" }),
-				{ status: 200, headers: { "Content-Type": "application/json" } },
-			),
+		globalThis.fetch = mock(
+			async () =>
+				new Response(JSON.stringify({ error: "some_unknown_error" }), {
+					status: 200,
+					headers: { "Content-Type": "application/json" },
+				}),
 		) as typeof fetch;
 
 		await expect(pollForToken("dc_test", 0.01, 30)).rejects.toThrow(
@@ -195,11 +200,12 @@ describe("pollForToken", () => {
 
 	it("throws when deadline expires without a token", async () => {
 		// Expires immediately (expiresIn=0), but interval is very short
-		globalThis.fetch = mock(async () =>
-			new Response(
-				JSON.stringify({ error: "authorization_pending" }),
-				{ status: 200, headers: { "Content-Type": "application/json" } },
-			),
+		globalThis.fetch = mock(
+			async () =>
+				new Response(JSON.stringify({ error: "authorization_pending" }), {
+					status: 200,
+					headers: { "Content-Type": "application/json" },
+				}),
 		) as typeof fetch;
 
 		await expect(pollForToken("dc_test", 0.01, 0)).rejects.toThrow(
@@ -210,11 +216,12 @@ describe("pollForToken", () => {
 
 describe("validateGitHubToken", () => {
 	it("returns login on valid token", async () => {
-		globalThis.fetch = mock(async () =>
-			new Response(
-				JSON.stringify({ login: "testuser" }),
-				{ status: 200, headers: { "Content-Type": "application/json" } },
-			),
+		globalThis.fetch = mock(
+			async () =>
+				new Response(JSON.stringify({ login: "testuser" }), {
+					status: 200,
+					headers: { "Content-Type": "application/json" },
+				}),
 		) as typeof fetch;
 
 		const login = await validateGitHubToken("gho_valid");
@@ -222,8 +229,8 @@ describe("validateGitHubToken", () => {
 	});
 
 	it("throws on invalid token (401)", async () => {
-		globalThis.fetch = mock(async () =>
-			new Response("Unauthorized", { status: 401 }),
+		globalThis.fetch = mock(
+			async () => new Response("Unauthorized", { status: 401 }),
 		) as typeof fetch;
 
 		await expect(validateGitHubToken("gho_bad")).rejects.toThrow(
@@ -232,8 +239,8 @@ describe("validateGitHubToken", () => {
 	});
 
 	it("throws on server error (500)", async () => {
-		globalThis.fetch = mock(async () =>
-			new Response("Server Error", { status: 500 }),
+		globalThis.fetch = mock(
+			async () => new Response("Server Error", { status: 500 }),
 		) as typeof fetch;
 
 		await expect(validateGitHubToken("gho_bad")).rejects.toThrow(
@@ -244,19 +251,19 @@ describe("validateGitHubToken", () => {
 	it("sends correct authorization header", async () => {
 		let capturedHeaders: Headers | null = null;
 
-		globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
-			capturedHeaders = new Headers(init?.headers);
-			return new Response(
-				JSON.stringify({ login: "testuser" }),
-				{ status: 200, headers: { "Content-Type": "application/json" } },
-			);
-		}) as typeof fetch;
+		globalThis.fetch = mock(
+			async (input: RequestInfo | URL, init?: RequestInit) => {
+				capturedHeaders = new Headers(init?.headers);
+				return new Response(JSON.stringify({ login: "testuser" }), {
+					status: 200,
+					headers: { "Content-Type": "application/json" },
+				});
+			},
+		) as typeof fetch;
 
 		await validateGitHubToken("gho_mytoken");
 		expect(capturedHeaders).not.toBeNull();
-		expect(capturedHeaders!.get("Authorization")).toBe(
-			"Bearer gho_mytoken",
-		);
+		expect(capturedHeaders!.get("Authorization")).toBe("Bearer gho_mytoken");
 		expect(capturedHeaders!.get("User-Agent")).toBe("teamhero-cli");
 	});
 });

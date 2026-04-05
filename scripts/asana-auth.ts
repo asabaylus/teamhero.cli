@@ -59,7 +59,6 @@ async function main(): Promise<void> {
 				process.stdout.write(JSON.stringify(result));
 				return;
 			}
-			case "authorize":
 			default: {
 				const result = await authorizeAsana({
 					clientId: input?.clientId,
