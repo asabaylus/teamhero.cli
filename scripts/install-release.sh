@@ -71,9 +71,9 @@ fetch_latest_version() {
   local tag
 
   if command -v curl &>/dev/null; then
-    tag="$(curl -fsSL "$url" | grep '"tag_name"' | head -1 | sed -E 's/.*"tag_name":\s*"([^"]+)".*/\1/')"
+    tag="$(curl -fsSL "$url" | grep '"tag_name"' | head -1 | sed -E 's/.*"tag_name":[ ]*"([^"]+)".*/\1/')"
   elif command -v wget &>/dev/null; then
-    tag="$(wget -qO- "$url" | grep '"tag_name"' | head -1 | sed -E 's/.*"tag_name":\s*"([^"]+)".*/\1/')"
+    tag="$(wget -qO- "$url" | grep '"tag_name"' | head -1 | sed -E 's/.*"tag_name":[ ]*"([^"]+)".*/\1/')"
   else
     echo "Error: curl or wget is required." >&2
     exit 1
