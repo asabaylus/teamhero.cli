@@ -47,7 +47,7 @@ checksum:
 release:
   github:
     owner: asabaylus
-    name: teamhero.scripts
+    name: teamhero.cli
   draft: false
   prerelease: auto
   extra_files:
@@ -61,7 +61,7 @@ brews:
       name: homebrew-teamhero
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Formula
-    homepage: "https://github.com/asabaylus/teamhero.scripts"
+    homepage: "https://github.com/asabaylus/teamhero.cli"
     description: "Developer contribution report generator with interactive TUI"
     license: MIT
     install: |
@@ -75,7 +75,7 @@ nfpms:
     package_name: teamhero
     file_name_template: "teamhero_{{ .Version }}_{{ .Arch }}"
     vendor: TeamHero
-    homepage: "https://github.com/asabaylus/teamhero.scripts"
+    homepage: "https://github.com/asabaylus/teamhero.cli"
     description: "Developer contribution report generator with interactive TUI"
     license: MIT
     maintainer: "TeamHero <release@teamhero.dev>"
