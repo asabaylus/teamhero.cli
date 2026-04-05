@@ -94,9 +94,9 @@ download_and_extract() {
   local archive_ext="tar.gz"
   local url="https://github.com/${REPO}/releases/download/${version}/${archive_name}.${archive_ext}"
 
-  local tmpdir
-  tmpdir="$(mktemp -d)"
-  trap 'rm -rf "$tmpdir"' EXIT
+  TMPDIR_CLEANUP="$(mktemp -d)"
+  local tmpdir="$TMPDIR_CLEANUP"
+  trap 'rm -rf "${TMPDIR_CLEANUP:-}"' EXIT
 
   echo "Downloading TeamHero ${version} for ${platform}/${arch}..."
   if command -v curl &>/dev/null; then
