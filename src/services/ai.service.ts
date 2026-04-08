@@ -74,6 +74,8 @@ export interface AIServiceConfig {
 	baseRetryDelayMs?: number; // default: 500ms
 	// Per-request timeout for discrepancy analysis (default: 2 minutes)
 	discrepancyTimeoutMs?: number;
+	// Optional per-section system prompts. "default" applies to all sections unless overridden.
+	systemPrompts?: Record<string, string>;
 }
 
 export class AIService {
@@ -93,6 +95,7 @@ export class AIService {
 	private readonly maxRetries: number;
 	private readonly baseRetryDelayMs: number;
 	private readonly discrepancyTimeoutMs: number;
+	private readonly systemPrompts: Record<string, string>;
 	private loggedEnabledNotice = false;
 	private loggedClientReady = false;
 	// Policy: Do NOT implement silent fallbacks for AI-generated content.
@@ -152,6 +155,7 @@ export class AIService {
 				getEnv("TEAMHERO_AI_DISCREPANCY_TIMEOUT") ?? "120000",
 				10,
 			);
+		this.systemPrompts = config.systemPrompts ?? {};
 	}
 
 	private get enabled(): boolean {
@@ -177,6 +181,15 @@ export class AIService {
 			);
 		}
 		return client;
+	}
+
+	/**
+	 * Resolve the system prompt for a given section.
+	 * Section-specific prompt takes precedence over the `default` prompt.
+	 * Returns undefined when no custom prompt is configured (preserving current behavior).
+	 */
+	private getSystemPrompt(section: string): string | undefined {
+		return this.systemPrompts[section] || this.systemPrompts.default || undefined;
 	}
 
 	private rethrowAsConnectionOrAuthError(
@@ -433,6 +446,7 @@ export class AIService {
 		input: string,
 		context: { onStatus?: (message: string) => void },
 		retryCount = 0,
+		instructions?: string,
 	): Promise<any> {
 		const client = this.createClient();
 		const maxRetries = this.maxRetries;
@@ -446,6 +460,10 @@ export class AIService {
 				model,
 				input,
 			};
+
+			if (instructions) {
+				requestOptions.instructions = instructions;
+			}
 
 			// Add flex processing if enabled (only available for certain models)
 			if (this.enableFlexProcessing) {
@@ -475,7 +493,7 @@ export class AIService {
 					`Transient error (status=${status}${errorCode ? `, code=${errorCode}` : ""}), retrying in ${backoffMs}ms...`,
 				);
 				await new Promise((resolve) => setTimeout(resolve, backoffMs));
-				return this.makeFlexRequest(model, input, context, retryCount + 1);
+				return this.makeFlexRequest(model, input, context, retryCount + 1, instructions);
 			}
 
 			// Handle timeout errors (408) with fallback to standard processing
@@ -484,6 +502,7 @@ export class AIService {
 					"Flex processing timed out, falling back to standard processing...",
 				);
 				const fallbackOptions: any = { model, input };
+				if (instructions) fallbackOptions.instructions = instructions;
 				const response = await client.responses.create(fallbackOptions);
 				return response;
 			}
@@ -517,7 +536,8 @@ export class AIService {
 				`estimatedTokens=${Math.ceil(prompt.length / 3)}`,
 			].join(" | ");
 			await appendBatchLog(`${batchHeader}\n${prompt}\n\n`);
-			const response = await this.makeFlexRequest(model, prompt, context);
+			const instructions = this.getSystemPrompt("teamHighlight");
+			const response = await this.makeFlexRequest(model, prompt, context, 0, instructions);
 			const text = (response as any)?.output_text as string | undefined;
 			const finishReason =
 				(response as any)?.output?.[0]?.stop_reason ??
@@ -604,7 +624,8 @@ export class AIService {
 				`estimatedTokens=${Math.ceil(promptLength / 3)}`,
 			].join(" | ");
 			await appendBatchLog(`${batchHeader}\n${prompt}\n\n`);
-			const response = await this.makeFlexRequest(model, prompt, context);
+			const instructions = this.getSystemPrompt("memberHighlights");
+			const response = await this.makeFlexRequest(model, prompt, context, 0, instructions);
 			const text = (response as any)?.output_text as string | undefined;
 			const finishReason =
 				(response as any)?.output?.[0]?.stop_reason ??
@@ -759,7 +780,8 @@ export class AIService {
 				`estimatedTokens=${Math.ceil(prompt.length / 3)}`,
 			].join(" | ");
 			await appendBatchLog(`${batchHeader}\n${prompt}\n\n`);
-			const response = await this.makeFlexRequest(model, prompt, {});
+			const individualInstructions = this.getSystemPrompt("individualSummaries");
+			const response = await this.makeFlexRequest(model, prompt, {}, 0, individualInstructions);
 			const text = (response as any)?.output_text as string | undefined;
 			const finishReason =
 				(response as any)?.output?.[0]?.stop_reason ??
@@ -896,6 +918,11 @@ export class AIService {
 				text: { format: VISIBLE_WINS_SCHEMA },
 			};
 
+			const visibleWinsInstructions = this.getSystemPrompt("visibleWins");
+			if (visibleWinsInstructions) {
+				requestOptions.instructions = visibleWinsInstructions;
+			}
+
 			if (this.enableFlexProcessing) {
 				requestOptions.service_tier = "flex";
 			}
@@ -1007,6 +1034,11 @@ export class AIService {
 				input: prompt,
 				text: { format: DISCREPANCY_ANALYSIS_SCHEMA },
 			};
+
+			const discrepancyInstructions = this.getSystemPrompt("discrepancyAnalysis");
+			if (discrepancyInstructions) {
+				requestOptions.instructions = discrepancyInstructions;
+			}
 
 			if (this.enableFlexProcessing) {
 				requestOptions.service_tier = "flex";
@@ -1145,6 +1177,11 @@ export class AIService {
 				input: prompt,
 				text: { format: ROADMAP_SYNTHESIS_SCHEMA },
 			};
+
+			const roadmapInstructions = this.getSystemPrompt("roadmapSynthesis");
+			if (roadmapInstructions) {
+				requestOptions.instructions = roadmapInstructions;
+			}
 
 			if (this.enableFlexProcessing) {
 				requestOptions.service_tier = "flex";

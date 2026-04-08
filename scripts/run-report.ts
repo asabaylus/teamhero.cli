@@ -185,7 +185,10 @@ async function main(): Promise<void> {
 			stderr: process.stderr,
 		});
 
-		const ai = new AIService({ logger: logger.withTag("ai") });
+		const ai = new AIService({
+			logger: logger.withTag("ai"),
+			systemPrompts: input.systemPrompts,
+		});
 		const userMap = parseUserMap(getEnv("USER_MAP"));
 		const asana = new AsanaService({
 			token: getEnv("ASANA_API_TOKEN"),

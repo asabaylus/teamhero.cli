@@ -71,8 +71,9 @@ type ReportConfig struct {
 	Sections         ReportSections  `json:"sections"`
 	Sequential       bool            `json:"sequential"`
 	ConfirmBeforeRun bool            `json:"confirmBeforeRun"`
-	DiscrepancyThreshold    int             `json:"discrepancyThreshold"`
-	Template                string          `json:"template,omitempty"`
+	DiscrepancyThreshold    int               `json:"discrepancyThreshold"`
+	Template                string            `json:"template,omitempty"`
+	SystemPrompts           map[string]string `json:"systemPrompts,omitempty"`
 
 	// Transient fields — not persisted to config.json
 	FlushCache  string `json:"-"` // wizard cache flush choice (e.g. "all", "all:since=2026-02-20")
@@ -121,8 +122,9 @@ type ReportCommandInput struct {
 	FlushCache      string         `json:"flushCache,omitempty"`
 	Mode            string         `json:"mode,omitempty"`
 	OutputPath      string         `json:"outputPath,omitempty"`
-	OutputFormat    string         `json:"outputFormat,omitempty"`
-	Template        string         `json:"template,omitempty"`
+	OutputFormat    string            `json:"outputFormat,omitempty"`
+	Template        string            `json:"template,omitempty"`
+	SystemPrompts   map[string]string `json:"systemPrompts,omitempty"`
 }
 
 // configDir returns the XDG-compatible config directory for teamhero.
@@ -269,6 +271,9 @@ func (c *ReportConfig) ToCommandInput(mode string) ReportCommandInput {
 	}
 	if len(c.Members) > 0 {
 		input.Members = c.Members
+	}
+	if len(c.SystemPrompts) > 0 {
+		input.SystemPrompts = c.SystemPrompts
 	}
 	return input
 }

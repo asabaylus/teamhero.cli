@@ -1048,3 +1048,92 @@ func TestToCommandInput_OutputFormatFlagSet(t *testing.T) {
 		t.Errorf("expected OutputFormat=json, got %q", input.OutputFormat)
 	}
 }
+
+// SystemPrompts tests
+
+func TestSystemPrompts_RoundTrip(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+
+	cfg := DefaultConfig()
+	cfg.Org = "acme"
+	cfg.SystemPrompts = map[string]string{
+		"default":      "Write concisely.",
+		"visibleWins":  "Focus on revenue impact.",
+		"teamHighlight": "Use a formal tone.",
+	}
+
+	if err := SaveConfig(&cfg); err != nil {
+		t.Fatalf("SaveConfig failed: %v", err)
+	}
+
+	loaded, err := LoadSavedConfig()
+	if err != nil {
+		t.Fatalf("LoadSavedConfig failed: %v", err)
+	}
+	if loaded == nil {
+		t.Fatal("LoadSavedConfig returned nil")
+	}
+
+	if len(loaded.SystemPrompts) != 3 {
+		t.Errorf("expected 3 system prompts, got %d", len(loaded.SystemPrompts))
+	}
+	if loaded.SystemPrompts["default"] != "Write concisely." {
+		t.Errorf("expected default prompt 'Write concisely.', got %q", loaded.SystemPrompts["default"])
+	}
+	if loaded.SystemPrompts["visibleWins"] != "Focus on revenue impact." {
+		t.Errorf("expected visibleWins prompt, got %q", loaded.SystemPrompts["visibleWins"])
+	}
+	if loaded.SystemPrompts["teamHighlight"] != "Use a formal tone." {
+		t.Errorf("expected teamHighlight prompt, got %q", loaded.SystemPrompts["teamHighlight"])
+	}
+}
+
+func TestSystemPrompts_OmittedWhenEmpty(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Org = "acme"
+	// No SystemPrompts set
+
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatalf("Marshal failed: %v", err)
+	}
+
+	var raw map[string]interface{}
+	json.Unmarshal(data, &raw)
+	if _, exists := raw["systemPrompts"]; exists {
+		t.Error("expected systemPrompts to be omitted from JSON when empty")
+	}
+}
+
+func TestToCommandInput_WithSystemPrompts(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Org = "acme"
+	cfg.SystemPrompts = map[string]string{
+		"default":     "Be brief.",
+		"visibleWins": "Focus on outcomes.",
+	}
+
+	input := cfg.ToCommandInput("headless")
+
+	if len(input.SystemPrompts) != 2 {
+		t.Errorf("expected 2 system prompts in command input, got %d", len(input.SystemPrompts))
+	}
+	if input.SystemPrompts["default"] != "Be brief." {
+		t.Errorf("expected default prompt, got %q", input.SystemPrompts["default"])
+	}
+	if input.SystemPrompts["visibleWins"] != "Focus on outcomes." {
+		t.Errorf("expected visibleWins prompt, got %q", input.SystemPrompts["visibleWins"])
+	}
+}
+
+func TestToCommandInput_WithoutSystemPrompts(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Org = "acme"
+
+	input := cfg.ToCommandInput("headless")
+
+	if input.SystemPrompts != nil {
+		t.Errorf("expected nil SystemPrompts when not set, got %v", input.SystemPrompts)
+	}
+}

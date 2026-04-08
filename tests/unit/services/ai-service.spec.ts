@@ -1045,3 +1045,127 @@ describe("AIService.makeFlexRequest", () => {
 		expect(createFn).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe("AIService — system prompts", () => {
+	beforeEach(() => {
+		mocked(getEnv).mockReturnValue(undefined);
+	});
+
+	it("getSystemPrompt returns undefined when no prompts configured", () => {
+		const service = new AIService({ apiKey: "sk-test" });
+		expect((service as any).getSystemPrompt("teamHighlight")).toBeUndefined();
+	});
+
+	it("getSystemPrompt returns section-specific prompt", () => {
+		const service = new AIService({
+			apiKey: "sk-test",
+			systemPrompts: {
+				teamHighlight: "Be formal.",
+				visibleWins: "Focus on revenue.",
+			},
+		});
+		expect((service as any).getSystemPrompt("teamHighlight")).toBe(
+			"Be formal.",
+		);
+		expect((service as any).getSystemPrompt("visibleWins")).toBe(
+			"Focus on revenue.",
+		);
+	});
+
+	it("getSystemPrompt falls back to default when section key missing", () => {
+		const service = new AIService({
+			apiKey: "sk-test",
+			systemPrompts: { default: "Write concisely." },
+		});
+		expect((service as any).getSystemPrompt("teamHighlight")).toBe(
+			"Write concisely.",
+		);
+		expect((service as any).getSystemPrompt("discrepancyAnalysis")).toBe(
+			"Write concisely.",
+		);
+	});
+
+	it("getSystemPrompt prefers section-specific over default", () => {
+		const service = new AIService({
+			apiKey: "sk-test",
+			systemPrompts: {
+				default: "Write concisely.",
+				teamHighlight: "Be formal.",
+			},
+		});
+		expect((service as any).getSystemPrompt("teamHighlight")).toBe(
+			"Be formal.",
+		);
+		// Other sections should fall back to default
+		expect((service as any).getSystemPrompt("visibleWins")).toBe(
+			"Write concisely.",
+		);
+	});
+
+	it("makeFlexRequest includes instructions when system prompt is set", async () => {
+		const createFn = mock().mockResolvedValue({
+			output_text: "result",
+			output: [{ stop_reason: "stop" }],
+			usage: { input_tokens: 10, output_tokens: 5 },
+		});
+		const service = new AIService({
+			apiKey: "sk-test",
+			systemPrompts: { default: "Be pirate." },
+		});
+		spyOn(service as any, "createClient").mockReturnValue({
+			responses: { create: createFn },
+		});
+
+		await (service as any).makeFlexRequest(
+			"gpt-5-mini",
+			"test prompt",
+			{},
+			0,
+			"Be pirate.",
+		);
+
+		const callArgs = createFn.mock.calls[0][0];
+		expect(callArgs.instructions).toBe("Be pirate.");
+		expect(callArgs.input).toBe("test prompt");
+	});
+
+	it("makeFlexRequest omits instructions when undefined", async () => {
+		const createFn = mock().mockResolvedValue({
+			output_text: "result",
+			output: [{ stop_reason: "stop" }],
+			usage: { input_tokens: 10, output_tokens: 5 },
+		});
+		const service = new AIService({ apiKey: "sk-test" });
+		spyOn(service as any, "createClient").mockReturnValue({
+			responses: { create: createFn },
+		});
+
+		await (service as any).makeFlexRequest(
+			"gpt-5-mini",
+			"test prompt",
+			{},
+			0,
+			undefined,
+		);
+
+		const callArgs = createFn.mock.calls[0][0];
+		expect(callArgs.instructions).toBeUndefined();
+	});
+
+	it("stores systemPrompts from config", () => {
+		const prompts = {
+			default: "General prompt.",
+			teamHighlight: "Team prompt.",
+		};
+		const service = new AIService({
+			apiKey: "sk-test",
+			systemPrompts: prompts,
+		});
+		expect((service as any).systemPrompts).toEqual(prompts);
+	});
+
+	it("defaults systemPrompts to empty object", () => {
+		const service = new AIService({ apiKey: "sk-test" });
+		expect((service as any).systemPrompts).toEqual({});
+	});
+});

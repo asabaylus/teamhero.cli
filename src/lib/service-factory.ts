@@ -19,6 +19,7 @@ export interface ServiceFactoryOptions {
 	cacheOptions?: CacheOptions;
 	progressFactory?: ProgressReporterFactory;
 	logger?: typeof consola;
+	systemPrompts?: Record<string, string>;
 }
 
 export async function createReportService(
@@ -32,7 +33,10 @@ export async function createReportService(
 	const octokit = await loadOctokitFromEnv();
 	const scope = new ScopeService(octokit);
 	const metrics = new MetricsService(octokit, logger.withTag("metrics"));
-	const ai = new AIService({ logger: logger.withTag("ai") });
+	const ai = new AIService({
+		logger: logger.withTag("ai"),
+		systemPrompts: options.systemPrompts,
+	});
 
 	const cachedMetrics = new CachedMetricsProvider(
 		metrics,

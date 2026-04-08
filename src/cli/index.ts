@@ -50,6 +50,8 @@ export interface ReportCommandInput {
 	flushCache?: string;
 	/** Report template: "detailed" (default), "executive", "individual". */
 	template?: string;
+	/** Optional custom system prompts. Use "default" for all sections, or section-specific keys to override. */
+	systemPrompts?: Record<string, string>;
 }
 
 export interface ReportResult {

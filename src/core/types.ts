@@ -468,3 +468,11 @@ export interface PeriodDeltas {
 	/** True when previous period data was successfully collected. */
 	hasPreviousPeriod: boolean;
 }
+
+/**
+ * Optional per-section system prompts sent as the `instructions` parameter to the AI API.
+ * The `default` key applies to all sections unless a section-specific key overrides it.
+ * Known keys: default, teamHighlight, memberHighlights, individualSummaries,
+ * visibleWins, discrepancyAnalysis, roadmapSynthesis.
+ */
+export type SystemPrompts = Record<string, string>;
