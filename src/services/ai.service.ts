@@ -189,7 +189,9 @@ export class AIService {
 	 * Returns undefined when no custom prompt is configured (preserving current behavior).
 	 */
 	private getSystemPrompt(section: string): string | undefined {
-		return this.systemPrompts[section] || this.systemPrompts.default || undefined;
+		return (
+			this.systemPrompts[section] || this.systemPrompts.default || undefined
+		);
 	}
 
 	private rethrowAsConnectionOrAuthError(
@@ -493,7 +495,13 @@ export class AIService {
 					`Transient error (status=${status}${errorCode ? `, code=${errorCode}` : ""}), retrying in ${backoffMs}ms...`,
 				);
 				await new Promise((resolve) => setTimeout(resolve, backoffMs));
-				return this.makeFlexRequest(model, input, context, retryCount + 1, instructions);
+				return this.makeFlexRequest(
+					model,
+					input,
+					context,
+					retryCount + 1,
+					instructions,
+				);
 			}
 
 			// Handle timeout errors (408) with fallback to standard processing
@@ -537,7 +545,13 @@ export class AIService {
 			].join(" | ");
 			await appendBatchLog(`${batchHeader}\n${prompt}\n\n`);
 			const instructions = this.getSystemPrompt("teamHighlight");
-			const response = await this.makeFlexRequest(model, prompt, context, 0, instructions);
+			const response = await this.makeFlexRequest(
+				model,
+				prompt,
+				context,
+				0,
+				instructions,
+			);
 			const text = (response as any)?.output_text as string | undefined;
 			const finishReason =
 				(response as any)?.output?.[0]?.stop_reason ??
@@ -625,7 +639,13 @@ export class AIService {
 			].join(" | ");
 			await appendBatchLog(`${batchHeader}\n${prompt}\n\n`);
 			const instructions = this.getSystemPrompt("memberHighlights");
-			const response = await this.makeFlexRequest(model, prompt, context, 0, instructions);
+			const response = await this.makeFlexRequest(
+				model,
+				prompt,
+				context,
+				0,
+				instructions,
+			);
 			const text = (response as any)?.output_text as string | undefined;
 			const finishReason =
 				(response as any)?.output?.[0]?.stop_reason ??
@@ -780,8 +800,16 @@ export class AIService {
 				`estimatedTokens=${Math.ceil(prompt.length / 3)}`,
 			].join(" | ");
 			await appendBatchLog(`${batchHeader}\n${prompt}\n\n`);
-			const individualInstructions = this.getSystemPrompt("individualSummaries");
-			const response = await this.makeFlexRequest(model, prompt, {}, 0, individualInstructions);
+			const individualInstructions = this.getSystemPrompt(
+				"individualSummaries",
+			);
+			const response = await this.makeFlexRequest(
+				model,
+				prompt,
+				{},
+				0,
+				individualInstructions,
+			);
 			const text = (response as any)?.output_text as string | undefined;
 			const finishReason =
 				(response as any)?.output?.[0]?.stop_reason ??
@@ -1035,7 +1063,9 @@ export class AIService {
 				text: { format: DISCREPANCY_ANALYSIS_SCHEMA },
 			};
 
-			const discrepancyInstructions = this.getSystemPrompt("discrepancyAnalysis");
+			const discrepancyInstructions = this.getSystemPrompt(
+				"discrepancyAnalysis",
+			);
 			if (discrepancyInstructions) {
 				requestOptions.instructions = discrepancyInstructions;
 			}
