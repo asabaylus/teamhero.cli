@@ -295,8 +295,7 @@ const TECHNICAL_WINS_VERBOSITY_GUIDE: Record<
 > = {
 	concise: "Terse, outcome-only. No explanation or context.",
 	standard: "Include brief context (one short clause per bullet).",
-	detailed:
-		"Include impact or rationale (one short sentence max per bullet).",
+	detailed: "Include impact or rationale (one short sentence max per bullet).",
 };
 
 export function buildTechnicalWinsPrompt(

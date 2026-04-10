@@ -26,4 +26,3 @@ export function resolveSectionAudience(
 	if (!raw) return undefined;
 	return raw.slice(0, maxChars);
 }
-

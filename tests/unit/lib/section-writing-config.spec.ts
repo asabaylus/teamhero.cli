@@ -17,4 +17,3 @@ describe("section-writing-config", () => {
 		delete process.env.TEST_AUDIENCE;
 	});
 });
-

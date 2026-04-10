@@ -17,8 +17,7 @@ import type { TechnicalWinsSubheadings } from "./ai-prompts.js";
 export function resolveTechnicalWinsSubheadings(
 	raw?: string,
 ): TechnicalWinsSubheadings {
-	const value = (raw ?? getEnv("TECHNICAL_WINS_SUBHEADINGS") ?? "")
-		.trim();
+	const value = (raw ?? getEnv("TECHNICAL_WINS_SUBHEADINGS") ?? "").trim();
 	if (!value || value.toLowerCase() === "auto") {
 		return "auto";
 	}

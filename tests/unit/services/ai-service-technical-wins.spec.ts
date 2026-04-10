@@ -1,7 +1,7 @@
 import { describe, expect, it, mock, spyOn } from "bun:test";
 import type { TechnicalFoundationalWinsResult } from "../../../src/core/types.js";
-import type { TechnicalWinsContext } from "../../../src/services/ai-prompts.js";
 import { AIService } from "../../../src/services/ai.service.js";
+import type { TechnicalWinsContext } from "../../../src/services/ai-prompts.js";
 
 function makeContext(
 	overrides: Partial<TechnicalWinsContext> = {},
@@ -120,9 +120,7 @@ describe("AIService.generateTechnicalWinsSection", () => {
 
 		await expect(
 			service.generateTechnicalWinsSection(makeContext()),
-		).rejects.toThrow(
-			/Empty AI response for Technical \/ Foundational Wins/,
-		);
+		).rejects.toThrow(/Empty AI response for Technical \/ Foundational Wins/);
 	});
 
 	it("wraps API errors via rethrowAsConnectionOrAuthError", async () => {

@@ -33,10 +33,6 @@ import { getEnv } from "../lib/env.js";
 import { IndividualSummaryCache } from "../lib/individual-cache.js";
 import { cacheDir } from "../lib/paths.js";
 import { createDefaultRegistry } from "../lib/renderer-registry.js";
-import {
-	resolveSectionAudience,
-	resolveSectionVerbosity,
-} from "../lib/section-writing-config.js";
 import type {
 	ReportMemberMetrics,
 	ReportRenderInput,
@@ -50,6 +46,10 @@ import {
 } from "../lib/roadmap-extractor.js";
 import { RunHistoryStore } from "../lib/run-history.js";
 import { appendRunLogEntry } from "../lib/run-log.js";
+import {
+	resolveSectionAudience,
+	resolveSectionVerbosity,
+} from "../lib/section-writing-config.js";
 import { appendUnifiedLog } from "../lib/unified-log.js";
 import { enrichMemberDisplayNames } from "../lib/user-map.js";
 import { isVisibleWinsEnabled } from "../lib/visible-wins-config.js";
@@ -557,7 +557,9 @@ export class ReportService {
 			let visibleWinsAccomplishments: ProjectAccomplishment[] | undefined;
 			let visibleWinsProjects: ProjectTask[] | undefined;
 			const visibleWinsErrors: string[] = [];
-			let technicalFoundationalWins: TechnicalFoundationalWinsResult | undefined;
+			let technicalFoundationalWins:
+				| TechnicalFoundationalWinsResult
+				| undefined;
 
 			const includeIndividualContributions =
 				input.sections.reportSections.individualContributions !== false;
@@ -890,8 +892,7 @@ export class ReportService {
 						}
 
 						if (cached) {
-							technicalFoundationalWins =
-								normalizeTechnicalWinsResult(cached);
+							technicalFoundationalWins = normalizeTechnicalWinsResult(cached);
 						} else {
 							const raw = await this.deps.ai.generateTechnicalWinsSection({
 								windowStart: window.startDate,

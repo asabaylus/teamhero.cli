@@ -172,9 +172,7 @@ describe("normalizeTechnicalWinsResult", () => {
 
 	it("trims whitespace on category names and wins", () => {
 		const raw: TechnicalFoundationalWinsResult = {
-			categories: [
-				{ category: "  AI / Engineering  ", wins: ["  Win one  "] },
-			],
+			categories: [{ category: "  AI / Engineering  ", wins: ["  Win one  "] }],
 		};
 		const result = normalizeTechnicalWinsResult(raw);
 		expect(result.categories[0].category).toBe("AI / Engineering");

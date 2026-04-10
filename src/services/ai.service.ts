@@ -20,8 +20,8 @@ import {
 	buildIndividualSummariesPrompt,
 	buildMemberHighlightsPrompt,
 	buildRoadmapSynthesisPrompt,
-	buildTechnicalWinsPrompt,
 	buildTeamPrompt,
+	buildTechnicalWinsPrompt,
 	buildVisibleWinsExtractionPrompt,
 	DISCREPANCY_ANALYSIS_SCHEMA,
 	type FinalReportContext,
@@ -29,8 +29,8 @@ import {
 	type MemberHighlightContext,
 	type MemberHighlightsContext,
 	ROADMAP_SYNTHESIS_SCHEMA,
-	TECHNICAL_WINS_SCHEMA,
 	type RoadmapSynthesisContext,
+	TECHNICAL_WINS_SCHEMA,
 	type TeamHighlightContext,
 	type TechnicalWinsContext,
 	VISIBLE_WINS_SCHEMA,
@@ -591,9 +591,7 @@ export class AIService {
 				);
 			}
 
-			context.onStatus?.(
-				"Generating Technical / Foundational Wins via AI...",
-			);
+			context.onStatus?.("Generating Technical / Foundational Wins via AI...");
 
 			const requestOptions: Record<string, unknown> = {
 				model,
@@ -630,7 +628,9 @@ export class AIService {
 				);
 			}
 
-			context.onStatus?.("Processing Technical / Foundational Wins response...");
+			context.onStatus?.(
+				"Processing Technical / Foundational Wins response...",
+			);
 
 			const parsed = JSON.parse(outputText) as TechnicalFoundationalWinsResult;
 			return parsed;

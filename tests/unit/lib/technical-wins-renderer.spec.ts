@@ -30,7 +30,9 @@ describe("renderTechnicalWinsSection", () => {
 
 		const output = renderTechnicalWinsSection(result);
 
-		expect(output).toContain("## **This Week's Technical / Foundational Wins**");
+		expect(output).toContain(
+			"## **This Week's Technical / Foundational Wins**",
+		);
 		expect(output).toContain("* AI / Engineering");
 		expect(output).toContain("** Subscribed to Anthropic Team plan");
 		expect(output).toContain("** Provisioned Salesforce repo");
@@ -43,7 +45,9 @@ describe("renderTechnicalWinsSection", () => {
 	it("renders an empty-categories result as just the header", () => {
 		const result: TechnicalFoundationalWinsResult = { categories: [] };
 		const output = renderTechnicalWinsSection(result);
-		expect(output).toContain("## **This Week's Technical / Foundational Wins**");
+		expect(output).toContain(
+			"## **This Week's Technical / Foundational Wins**",
+		);
 	});
 
 	it("keeps the category order the AI produced", () => {
