@@ -12,12 +12,6 @@ interface DeviceCodeResponse {
 	interval: number;
 }
 
-interface TokenResponse {
-	access_token: string;
-	token_type: string;
-	scope: string;
-}
-
 interface TokenPollResponse {
 	access_token?: string;
 	token_type?: string;
@@ -158,7 +152,10 @@ export async function checkGitHubStatus(token: string): Promise<{
 		const user = (await res.json()) as { login: string };
 		const scopeHeader = res.headers.get("X-OAuth-Scopes");
 		const scopes = scopeHeader
-			? scopeHeader.split(",").map((s) => s.trim()).filter(Boolean)
+			? scopeHeader
+					.split(",")
+					.map((s) => s.trim())
+					.filter(Boolean)
 			: undefined;
 		return { valid: true, login: user.login, method, scopes };
 	} catch {

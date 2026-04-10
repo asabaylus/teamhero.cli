@@ -27,7 +27,8 @@ describe("AuthService", () => {
 	describe("ensureAuthenticated", () => {
 		it("returns authenticated=true when token is present", async () => {
 			mockGetEnv.mockImplementation((key: string) => {
-				if (key === "GITHUB_PERSONAL_ACCESS_TOKEN") return "ghp_valid_token_123";
+				if (key === "GITHUB_PERSONAL_ACCESS_TOKEN")
+					return "ghp_valid_token_123";
 				if (key === "GITHUB_AUTH_METHOD") return "pat";
 				return undefined;
 			});

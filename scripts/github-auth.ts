@@ -64,9 +64,7 @@ async function main(): Promise<void> {
 				process.exit(1);
 			}
 			const status = await checkGitHubStatus(token);
-			process.stdout.write(
-				JSON.stringify({ ok: true, ...status }),
-			);
+			process.stdout.write(JSON.stringify({ ok: true, ...status }));
 			return;
 		}
 

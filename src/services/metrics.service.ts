@@ -26,50 +26,6 @@ export type MemberMetricsResult = MetricsMemberResult;
 export type MetricsResult = Omit<MetricsCollectionResult, "mergedTotal">;
 export type MergedPullRequestInfo = RawPullRequestInfo;
 
-interface PullRequestContributionNode {
-	pullRequest: {
-		number: number;
-		title: string;
-		merged: boolean;
-		mergedAt: string | null;
-		closedAt: string | null;
-		state: "OPEN" | "CLOSED" | "MERGED";
-		additions: number;
-		deletions: number;
-		url: string;
-		bodyText: string | null;
-		repository: {
-			name: string;
-			owner: {
-				login: string;
-			} | null;
-		} | null;
-		commits: {
-			totalCount: number;
-			nodes: Array<{
-				commit: {
-					oid: string;
-					messageHeadline: string | null;
-					message: string;
-					committedDate: string;
-					additions: number;
-					deletions: number;
-					url: string;
-				} | null;
-			}>;
-		} | null;
-	} | null;
-}
-
-interface PullRequestReviewNode {
-	pullRequestReview: {
-		state: "APPROVED" | "CHANGES_REQUESTED" | "COMMENTED";
-		comments: {
-			totalCount: number;
-		};
-	} | null;
-}
-
 interface CommitAggregate {
 	commits: number;
 	additions: number;

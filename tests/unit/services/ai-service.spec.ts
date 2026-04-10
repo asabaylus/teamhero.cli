@@ -701,7 +701,7 @@ describe("AIService.analyzeSectionDiscrepancies", () => {
 				},
 			],
 		});
-		const { createFn, mockReturnValue } = mockClient(responseJson);
+		const { mockReturnValue } = mockClient(responseJson);
 		const service = new AIService({ apiKey: "sk-test" });
 		spyOn(service as any, "createClient").mockReturnValue(mockReturnValue);
 

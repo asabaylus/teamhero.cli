@@ -72,7 +72,10 @@ describe("requestDeviceCode", () => {
 	it("throws on 401 with OAuth app error", async () => {
 		globalThis.fetch = mock(
 			async () =>
-				new Response("Unauthorized", { status: 401, statusText: "Unauthorized" }),
+				new Response("Unauthorized", {
+					status: 401,
+					statusText: "Unauthorized",
+				}),
 		) as typeof fetch;
 
 		await expect(requestDeviceCode()).rejects.toThrow(
@@ -83,7 +86,10 @@ describe("requestDeviceCode", () => {
 	it("throws on 422 with device flow error", async () => {
 		globalThis.fetch = mock(
 			async () =>
-				new Response("Unprocessable", { status: 422, statusText: "Unprocessable Entity" }),
+				new Response("Unprocessable", {
+					status: 422,
+					statusText: "Unprocessable Entity",
+				}),
 		) as typeof fetch;
 
 		await expect(requestDeviceCode()).rejects.toThrow(
@@ -94,7 +100,10 @@ describe("requestDeviceCode", () => {
 	it("throws on other non-OK response with status", async () => {
 		globalThis.fetch = mock(
 			async () =>
-				new Response("Server Error", { status: 500, statusText: "Internal Server Error" }),
+				new Response("Server Error", {
+					status: 500,
+					statusText: "Internal Server Error",
+				}),
 		) as typeof fetch;
 
 		await expect(requestDeviceCode()).rejects.toThrow(
