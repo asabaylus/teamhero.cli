@@ -682,6 +682,28 @@ func TestEnterEditOrSpecial_SensitiveTextItem(t *testing.T) {
 	}
 }
 
+func TestEnterEditOrSpecial_GitHubCredential(t *testing.T) {
+	m := &inlineSettingsEditor{
+		cursor: 0,
+		lines:  []editorLine{{text: "item", itemIndex: 0}},
+		items: []editorItem{
+			{key: "GITHUB_PERSONAL_ACCESS_TOKEN", label: "GitHub (OAuth or token)", itype: inputText, sensitive: true, value: "ghp_xxx"},
+		},
+	}
+
+	result, cmd := m.enterEditOrSpecial()
+	editor := result.(*inlineSettingsEditor)
+	if !editor.quitting {
+		t.Error("expected quitting=true for GITHUB_PERSONAL_ACCESS_TOKEN")
+	}
+	if editor.action != actionInlineGitHubAuth {
+		t.Errorf("expected action %q, got %q", actionInlineGitHubAuth, editor.action)
+	}
+	if cmd == nil {
+		t.Error("expected non-nil cmd (tea.Quit)")
+	}
+}
+
 func TestEnterEditOrSpecial_EmptyBoolValue(t *testing.T) {
 	m := &inlineSettingsEditor{
 		cursor: 0,

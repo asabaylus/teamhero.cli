@@ -4,13 +4,14 @@
  * Invoked by the Go TUI to connect GitHub via browser-based sign-in.
  *
  * Protocol:
- *   stdin  <- optional JSON: { action?: "device_flow" | "validate", token?: string }
+ *   stdin  <- optional JSON: { action?: "device_flow" | "validate" | "status" | "disconnect", token?: string }
  *   stdout -> JSON result: { "ok": true, "token": "...", "login": "..." }
  *                       or { "ok": false, "error": "..." }
  *   exit 0 = success, exit 1 = error
  */
 import {
 	authorizeGitHub,
+	checkGitHubStatus,
 	validateGitHubToken,
 } from "../src/lib/github-oauth.js";
 
@@ -51,6 +52,26 @@ async function main(): Promise<void> {
 			}
 			const login = await validateGitHubToken(token);
 			process.stdout.write(JSON.stringify({ ok: true, login }));
+			return;
+		}
+
+		if (action === "status") {
+			const token = input?.token;
+			if (!token) {
+				process.stdout.write(
+					JSON.stringify({ ok: false, error: "No token provided" }),
+				);
+				process.exit(1);
+			}
+			const status = await checkGitHubStatus(token);
+			process.stdout.write(
+				JSON.stringify({ ok: true, ...status }),
+			);
+			return;
+		}
+
+		if (action === "disconnect") {
+			process.stdout.write(JSON.stringify({ ok: true }));
 			return;
 		}
 

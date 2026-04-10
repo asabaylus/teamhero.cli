@@ -73,7 +73,7 @@ export interface ReportResult {
 
 export interface LoginResult {
 	authenticated: boolean;
-	provider: "token";
+	provider: "oauth" | "pat" | "token";
 	message: string;
 }
 
