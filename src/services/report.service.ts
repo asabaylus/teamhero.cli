@@ -32,6 +32,10 @@ import { getEnv } from "../lib/env.js";
 import { IndividualSummaryCache } from "../lib/individual-cache.js";
 import { cacheDir } from "../lib/paths.js";
 import { createDefaultRegistry } from "../lib/renderer-registry.js";
+import {
+	resolveSectionAudience,
+	resolveSectionVerbosity,
+} from "../lib/section-writing-config.js";
 import type {
 	ReportMemberMetrics,
 	ReportRenderInput,
@@ -256,6 +260,8 @@ export class ReportService {
 			const includeTaskTracker = input.sections.dataSources.asana;
 			const includeIndividual =
 				input.sections.reportSections.individualContributions !== false;
+			const includeTechnicalWins =
+				input.sections.reportSections.technicalFoundationalWins !== false;
 
 			// Core steps always present: org + repos/skip + members + metrics/skip + taskTracker/skip + final + write = 7
 			let expectedSteps = 7;
@@ -263,6 +269,7 @@ export class ReportService {
 			if (isVisibleWinsEnabled(input.sections.reportSections))
 				expectedSteps += 1;
 			if (includeIndividual) expectedSteps += 2; // highlights + team highlight
+			if (includeTechnicalWins) expectedSteps += 1;
 
 			progress =
 				this.deps.progressFactory?.create({
@@ -543,6 +550,7 @@ export class ReportService {
 			let visibleWinsAccomplishments: ProjectAccomplishment[] | undefined;
 			let visibleWinsProjects: ProjectTask[] | undefined;
 			const visibleWinsErrors: string[] = [];
+			let technicalFoundationalWins: string | undefined;
 
 			const includeIndividualContributions =
 				input.sections.reportSections.individualContributions !== false;
@@ -772,6 +780,60 @@ export class ReportService {
 			} else {
 				await vwPromise;
 				await highlightsPromise;
+			}
+
+			if (includeTechnicalWins) {
+				const winsStep = progress.start(
+					"Generating Technical / Foundational Wins section",
+				);
+				try {
+					const currentWeekItems = [
+						...new Set(
+							(visibleWinsAccomplishments ?? [])
+								.flatMap((acc) => acc.bullets.map((b) => b.text.trim()))
+								.filter(Boolean),
+						),
+					];
+					let previousWeekItems: string[] = [];
+					try {
+						const history = new RunHistoryStore();
+						const recent = await history.list(organization.login, 1);
+						if (recent.length > 0) {
+							const snapshot = await history.loadSnapshot(
+								organization.login,
+								recent[0].filename,
+							);
+							const prior =
+								typeof snapshot?.technicalFoundationalWins === "string"
+									? snapshot.technicalFoundationalWins
+									: "";
+							previousWeekItems = prior
+								.split("\n")
+								.map((x) => x.replace(/^[#*\-\s]+/, "").trim())
+								.filter((x) => x.length > 0);
+						}
+					} catch {
+						// best effort only
+					}
+					technicalFoundationalWins =
+						await this.deps.ai.generateTechnicalWinsSection({
+							windowStart: window.startDate,
+							windowEnd: window.endDate,
+							verbosity: resolveSectionVerbosity(
+								"TECHNICAL_WINS_VERBOSITY",
+								"standard",
+							),
+							subheadingMode:
+								getEnv("TECHNICAL_WINS_SUBHEADINGS") ?? "auto",
+							audience: resolveSectionAudience("TECHNICAL_WINS_AUDIENCE"),
+							currentWeekItems,
+							previousWeekItems,
+						});
+					winsStep.succeed("Technical / Foundational Wins section ready");
+				} catch (error) {
+					winsStep.fail("Technical / Foundational Wins skipped");
+					this.logger.warn(`Technical/foundational wins failed: ${error}`);
+				}
 			}
 
 			const totals = this.computeTotals(
@@ -1116,6 +1178,8 @@ export class ReportService {
 					git: input.sections.dataSources.git,
 					taskTracker: input.sections.dataSources.asana,
 					visibleWins: input.sections.reportSections.visibleWins,
+					technicalFoundationalWins:
+						input.sections.reportSections.technicalFoundationalWins,
 					individualContributions:
 						input.sections.reportSections.individualContributions,
 					discrepancyLog: input.sections.reportSections.discrepancyLog,
@@ -1123,6 +1187,7 @@ export class ReportService {
 				warnings: metricsResult?.warnings,
 				errors: [...(metricsResult?.errors ?? []), ...visibleWinsErrors],
 				visibleWins: visibleWinsAccomplishments,
+				technicalFoundationalWins,
 				visibleWinsProjects,
 				roadmapEntries,
 				roadmapTitle: this.deps.roadmapTitle,

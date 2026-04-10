@@ -50,6 +50,16 @@ export interface FinalReportContext {
 	onStatus?: (message: string) => void;
 }
 
+export interface TechnicalWinsContext {
+	windowStart: string;
+	windowEnd: string;
+	verbosity: "concise" | "standard" | "detailed";
+	subheadingMode: string;
+	audience?: string;
+	currentWeekItems: string[];
+	previousWeekItems?: string[];
+}
+
 export interface IndividualSummariesContext {
 	payloads: ContributorSummaryPayload[];
 	windowHuman: string;
@@ -236,6 +246,48 @@ export function buildIndividualSummariesPrompt(
 	);
 
 	return [...header, "", "Contributors:", ...blocks].join("\n");
+}
+
+export const TECHNICAL_WINS_SCHEMA = {
+	type: "json_schema" as const,
+	name: "technical_foundational_wins",
+	strict: true,
+	schema: {
+		type: "object" as const,
+		properties: {
+			sectionMarkdown: { type: "string" as const },
+		},
+		required: ["sectionMarkdown"] as const,
+		additionalProperties: false as const,
+	},
+} as const;
+
+export function buildTechnicalWinsPrompt(context: TechnicalWinsContext): string {
+	const current = context.currentWeekItems.map((x) => `- ${x}`).join("\n");
+	const previous = (context.previousWeekItems ?? []).map((x) => `- ${x}`).join(
+		"\n",
+	);
+	const audienceLine = context.audience
+		? `Target audience: ${context.audience}`
+		: "Target audience: engineering leadership";
+	return [
+		"You are writing one report section in markdown.",
+		"Write the section title exactly as: ## This Week’s Technical / Foundational Wins",
+		"Then output grouped bullet lists by subheading (### ...).",
+		"Include only key wins from the current week and do not repeat prior-week wins unless materially changed.",
+		`Verbosity: ${context.verbosity}.`,
+		`Subheading mode: ${context.subheadingMode}. If mode is 'auto' or 'duplicate', infer subheadings from content.`,
+		audienceLine,
+		`Date window: ${context.windowStart} to ${context.windowEnd}.`,
+		"",
+		"Current-week source items:",
+		current || "- (none)",
+		"",
+		"Prior-week wins (avoid duplicates):",
+		previous || "- (none available)",
+		"",
+		"Return markdown only in sectionMarkdown.",
+	].join("\n");
 }
 
 function buildIndividualSummaryBlock(
