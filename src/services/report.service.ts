@@ -21,6 +21,7 @@ import type {
 	ScopeProvider,
 	SectionDiscrepancy,
 	TaskTrackerProvider,
+	TechnicalFoundationalWinsResult,
 	VisibleWinsProvider,
 } from "../core/types.js";
 import {
@@ -45,6 +46,10 @@ import {
 } from "../lib/roadmap-extractor.js";
 import { RunHistoryStore } from "../lib/run-history.js";
 import { appendRunLogEntry } from "../lib/run-log.js";
+import {
+	resolveSectionAudience,
+	resolveSectionVerbosity,
+} from "../lib/section-writing-config.js";
 import { appendUnifiedLog } from "../lib/unified-log.js";
 import { enrichMemberDisplayNames } from "../lib/user-map.js";
 import { isVisibleWinsEnabled } from "../lib/visible-wins-config.js";
@@ -80,6 +85,12 @@ import {
 	extractPeriodSummary,
 	extractPeriodSummaryFromSnapshot,
 } from "./period-deltas.service.js";
+import {
+	flattenTechnicalWinsForDedup,
+	hashTechnicalWinsInput,
+	normalizeTechnicalWinsResult,
+	resolveTechnicalWinsSubheadings,
+} from "./technical-wins.service.js";
 
 /**
  * Content-addressable hash for member highlight caching.
@@ -254,15 +265,23 @@ export class ReportService {
 			// LOC requires git — auto-enable if LOC is requested
 			const includeGit = input.sections.dataSources.git || includeLoc;
 			const includeTaskTracker = input.sections.dataSources.asana;
+			const includeTechnicalWins =
+				input.sections.reportSections.technicalFoundationalWins !== false;
+			// Technical wins depends on visible-wins and individual-contributions
+			// data, so auto-enable those pipelines even if their sections are off.
 			const includeIndividual =
-				input.sections.reportSections.individualContributions !== false;
+				input.sections.reportSections.individualContributions !== false ||
+				includeTechnicalWins;
+			const collectVisibleWins =
+				isVisibleWinsEnabled(input.sections.reportSections) ||
+				includeTechnicalWins;
 
 			// Core steps always present: org + repos/skip + members + metrics/skip + taskTracker/skip + final + write = 7
 			let expectedSteps = 7;
 			if (includeLoc) expectedSteps += 1;
-			if (isVisibleWinsEnabled(input.sections.reportSections))
-				expectedSteps += 1;
+			if (collectVisibleWins) expectedSteps += 1;
 			if (includeIndividual) expectedSteps += 2; // highlights + team highlight
+			if (includeTechnicalWins) expectedSteps += 1;
 
 			progress =
 				this.deps.progressFactory?.create({
@@ -543,12 +562,14 @@ export class ReportService {
 			let visibleWinsAccomplishments: ProjectAccomplishment[] | undefined;
 			let visibleWinsProjects: ProjectTask[] | undefined;
 			const visibleWinsErrors: string[] = [];
+			let technicalFoundationalWins:
+				| TechnicalFoundationalWinsResult
+				| undefined;
 
-			const includeIndividualContributions =
-				input.sections.reportSections.individualContributions !== false;
+			const includeIndividualContributions = includeIndividual;
 
 			const vwPromise = (async () => {
-				if (!isVisibleWinsEnabled(input.sections.reportSections)) return;
+				if (!collectVisibleWins) return;
 				const vwStep = progress.start("Collecting Visible Wins data");
 				if (!this.deps.visibleWins) {
 					this.logger.warn(
@@ -772,6 +793,181 @@ export class ReportService {
 			} else {
 				await vwPromise;
 				await highlightsPromise;
+			}
+
+			if (includeTechnicalWins) {
+				const winsStep = progress.start(
+					"Generating Technical / Foundational Wins section",
+				);
+				try {
+					// Build current-week input from visible-wins bullets, individual
+					// summaries, and the team highlight (if available).
+					const currentWeekSet = new Set<string>();
+					for (const acc of visibleWinsAccomplishments ?? []) {
+						for (const bullet of acc.bullets) {
+							const text = bullet.text.trim();
+							if (text) currentWeekSet.add(text);
+						}
+					}
+					for (const member of memberMetrics) {
+						const summary = member.aiSummary?.trim();
+						if (summary && summary.length > 0) {
+							currentWeekSet.add(`${member.displayName}: ${summary}`);
+						}
+					}
+					if (teamHighlight && teamHighlight.trim().length > 0) {
+						currentWeekSet.add(`Team Summary: ${teamHighlight.trim()}`);
+					}
+					const currentWeekItems = Array.from(currentWeekSet);
+
+					// Best-effort load of the previous run's Technical Wins result
+					// so the AI can skip duplicates. Supports both the new typed
+					// format and the legacy markdown-string snapshot format.
+					let previousWeekItems: string[] = [];
+					try {
+						const history = new RunHistoryStore();
+						const recent = await history.list(organization.login, 1);
+						if (recent.length > 0) {
+							const snapshot = await history.loadSnapshot(
+								organization.login,
+								recent[0].filename,
+							);
+							const prior = snapshot?.technicalFoundationalWins as
+								| TechnicalFoundationalWinsResult
+								| string
+								| undefined;
+							previousWeekItems = flattenTechnicalWinsForDedup(prior);
+						}
+					} catch {
+						// best effort only — dedup is not required for correctness
+					}
+
+					const verbosity = resolveSectionVerbosity(
+						"TECHNICAL_WINS_VERBOSITY",
+						"standard",
+					);
+					const subheadings = resolveTechnicalWinsSubheadings();
+					const audience = resolveSectionAudience("TECHNICAL_WINS_AUDIENCE");
+
+					if (currentWeekItems.length === 0) {
+						winsStep.fail(
+							"Technical / Foundational Wins skipped — no input data available",
+						);
+					} else {
+						// Build cross-section context for strategic framing
+						let visibleWinsSummary: string | undefined;
+						if (visibleWinsAccomplishments) {
+							const lines: string[] = [];
+							for (const acc of visibleWinsAccomplishments) {
+								if (acc.bullets.length === 0) continue;
+								lines.push(acc.projectName);
+								for (const b of acc.bullets) {
+									lines.push(`* ${b.text}`);
+								}
+							}
+							if (lines.length > 0) {
+								visibleWinsSummary = lines.join("\n");
+							}
+						}
+
+						let roadmapContext: string | undefined;
+						const roadmapNames = (this.deps.boardConfigs ?? [])
+							.flatMap((b) => b.roadmapItems ?? b.rocks ?? [])
+							.map((r) => r.displayName);
+						if (roadmapNames.length > 0) {
+							roadmapContext = roadmapNames.map((n) => `- ${n}`).join("\n");
+						}
+
+						// Content-addressed cache — mirrors the visible-wins pattern.
+						const twCacheOpts = this.deps.cacheOptions ?? {};
+						const twSourceMatch =
+							twCacheOpts.flush ||
+							twCacheOpts.flushSources?.includes("technical-wins");
+						const shouldFlushTw =
+							!!twSourceMatch &&
+							(!twCacheOpts.flushSince ||
+								window.startISO >= twCacheOpts.flushSince);
+						const twCache =
+							new FileSystemCacheStore<TechnicalFoundationalWinsResult>({
+								namespace: "technical-wins",
+								defaultTtlSeconds: 0,
+							});
+						const isTestMode = !!getEnv("TEAMHERO_TEST_MODE");
+						const twHash = hashTechnicalWinsInput({
+							currentWeekItems,
+							previousWeekItems,
+							verbosity,
+							subheadings,
+							audience,
+							windowStart: window.startDate,
+							windowEnd: window.endDate,
+							visibleWinsSummary,
+							roadmapContext,
+						});
+
+						let cached: TechnicalFoundationalWinsResult | null = null;
+						if (!isTestMode && !shouldFlushTw) {
+							cached = await twCache.get(twHash, { permanent: true });
+							if (cached) {
+								await appendUnifiedLog({
+									timestamp: new Date().toISOString(),
+									runId: "",
+									category: "cache",
+									event: "cache-hit",
+									namespace: "technical-wins",
+									inputHash: twHash,
+									org: input.org,
+								});
+							}
+						}
+
+						if (cached) {
+							technicalFoundationalWins = normalizeTechnicalWinsResult(cached);
+						} else {
+							const raw = await this.deps.ai.generateTechnicalWinsSection({
+								windowStart: window.startDate,
+								windowEnd: window.endDate,
+								verbosity,
+								subheadings,
+								audience,
+								currentWeekItems,
+								previousWeekItems,
+								visibleWinsSummary,
+								roadmapContext,
+								onStatus: (msg) => winsStep.update(msg),
+							});
+							technicalFoundationalWins = normalizeTechnicalWinsResult(raw);
+							if (!isTestMode) {
+								await twCache.set(twHash, technicalFoundationalWins);
+								await appendUnifiedLog({
+									timestamp: new Date().toISOString(),
+									runId: "",
+									category: "cache",
+									event: shouldFlushTw
+										? "cache-flush-and-set"
+										: "cache-miss-and-set",
+									namespace: "technical-wins",
+									inputHash: twHash,
+									org: input.org,
+								});
+							}
+						}
+
+						const catCount = technicalFoundationalWins.categories.length;
+						const winCount = technicalFoundationalWins.categories.reduce(
+							(sum, c) => sum + c.wins.length,
+							0,
+						);
+						winsStep.succeed(
+							`Technical / Foundational Wins ready (${catCount} categories, ${winCount} wins)`,
+						);
+					}
+				} catch (error) {
+					const message =
+						error instanceof Error ? error.message : String(error);
+					this.logger.warn(`Technical/foundational wins failed: ${message}`);
+					winsStep.fail("Technical / Foundational Wins skipped due to error");
+				}
 			}
 
 			const totals = this.computeTotals(
@@ -1116,6 +1312,8 @@ export class ReportService {
 					git: input.sections.dataSources.git,
 					taskTracker: input.sections.dataSources.asana,
 					visibleWins: input.sections.reportSections.visibleWins,
+					technicalFoundationalWins:
+						input.sections.reportSections.technicalFoundationalWins,
 					individualContributions:
 						input.sections.reportSections.individualContributions,
 					discrepancyLog: input.sections.reportSections.discrepancyLog,
@@ -1123,6 +1321,7 @@ export class ReportService {
 				warnings: metricsResult?.warnings,
 				errors: [...(metricsResult?.errors ?? []), ...visibleWinsErrors],
 				visibleWins: visibleWinsAccomplishments,
+				technicalFoundationalWins,
 				visibleWinsProjects,
 				roadmapEntries,
 				roadmapTitle: this.deps.roadmapTitle,

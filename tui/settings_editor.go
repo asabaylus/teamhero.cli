@@ -281,7 +281,7 @@ func settingHelpText(envKey, description string) string {
 	// Provide richer help for credentials and common settings
 	switch envKey {
 	case "GITHUB_PERSONAL_ACCESS_TOKEN":
-		return "GitHub authentication token. Used to read repositories, pull requests, commits, and org members. Press Enter to sign in with OAuth or paste a token."
+		return "GitHub access for repos, pull requests, commits, and org members. Press Enter to choose: sign in with GitHub (OAuth), paste a Personal Access Token, or disconnect."
 	case "OPENAI_API_KEY":
 		return "OpenAI API key for AI-powered summaries, member highlights, and discrepancy analysis. Get one at platform.openai.com/api-keys"
 	case "ASANA_API_TOKEN":
@@ -588,6 +588,13 @@ func (m *inlineSettingsEditor) enterEditOrSpecial() (tea.Model, tea.Cmd) {
 	if item.special && item.itype != inputSelect {
 		m.quitting = true
 		m.action = item.key
+		return m, tea.Quit
+	}
+
+	// GitHub: leave Bubble Tea and run OAuth / PAT / disconnect (device flow needs stderr + browser).
+	if item.key == "GITHUB_PERSONAL_ACCESS_TOKEN" {
+		m.quitting = true
+		m.action = actionInlineGitHubAuth
 		return m, tea.Quit
 	}
 
@@ -931,7 +938,7 @@ func aiModelHelpTable() string {
 func settingModalHelp(envKey string) string {
 	switch envKey {
 	case "GITHUB_PERSONAL_ACCESS_TOKEN":
-		return "Your GitHub token grants read access to repositories, pull requests, commits, and organization members. You can sign in via OAuth (browser) or paste a Personal Access Token. To create a PAT: GitHub > Settings > Developer settings > Personal access tokens > Fine-grained tokens. Required scopes: Contents, Metadata, Pull requests, Members (read)."
+		return "Your GitHub credential grants read access to repositories, pull requests, commits, and organization members.\n\nPress Enter on this row to open a menu: **Quick Setup** (OAuth / browser sign-in), **Advanced** (paste a Personal Access Token), or **Disconnect** when a token is already saved.\n\nTo create a PAT: GitHub > Settings > Developer settings > Personal access tokens > Fine-grained tokens. Required scopes: Contents, Metadata, Pull requests, Members (read)."
 	case "OPENAI_API_KEY":
 		return "The OpenAI API key powers AI summaries, member highlights, and discrepancy analysis. Get one at platform.openai.com/api-keys. You'll need a funded account — API calls typically cost $0.01-0.10 per report depending on team size and model choice."
 	case "ASANA_API_TOKEN":
@@ -1300,7 +1307,7 @@ func (m *inlineSettingsEditor) rebuildLine(lineIdx int) {
 }
 
 // showInlineSettingsEditor runs the unified inline settings editor.
-// Returns the special action key (e.g., "@@gdrive", "@@boards") if the user
+// Returns the special action key (e.g., "@@gdrive", "@@boards", actionInlineGitHubAuth) if the user
 // selected a sub-flow, or "" if the user quit normally.
 func showInlineSettingsEditor(existing map[string]string, creds []credential, boardsStatus boardsConfigStatus) (string, error) {
 	m := newInlineSettingsEditor(existing, creds, boardsStatus)

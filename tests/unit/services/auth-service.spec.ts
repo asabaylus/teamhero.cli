@@ -26,12 +26,30 @@ describe("AuthService", () => {
 
 	describe("ensureAuthenticated", () => {
 		it("returns authenticated=true when token is present", async () => {
-			mockGetEnv.mockReturnValue("ghp_valid_token_123");
+			mockGetEnv.mockImplementation((key: string) => {
+				if (key === "GITHUB_PERSONAL_ACCESS_TOKEN")
+					return "ghp_valid_token_123";
+				if (key === "GITHUB_AUTH_METHOD") return "pat";
+				return undefined;
+			});
 
 			const result = await service.ensureAuthenticated();
 			expect(result.authenticated).toBe(true);
-			expect(result.provider).toBe("token");
-			expect(result.message).toContain("GITHUB_PERSONAL_ACCESS_TOKEN");
+			expect(result.provider).toBe("pat");
+			expect(result.message).toContain("Personal Access Token");
+		});
+
+		it("returns oauth provider when auth method is oauth", async () => {
+			mockGetEnv.mockImplementation((key: string) => {
+				if (key === "GITHUB_PERSONAL_ACCESS_TOKEN") return "gho_test_token";
+				if (key === "GITHUB_AUTH_METHOD") return "oauth";
+				return undefined;
+			});
+
+			const result = await service.ensureAuthenticated();
+			expect(result.authenticated).toBe(true);
+			expect(result.provider).toBe("oauth");
+			expect(result.message).toContain("GitHub sign-in");
 		});
 
 		it("passes the correct env key to getEnv", async () => {
@@ -47,7 +65,7 @@ describe("AuthService", () => {
 			const result = await service.ensureAuthenticated();
 			expect(result.authenticated).toBe(false);
 			expect(result.provider).toBe("token");
-			expect(result.message).toContain("Missing GITHUB_PERSONAL_ACCESS_TOKEN");
+			expect(result.message).toContain("Missing GitHub authentication");
 		});
 
 		it("returns authenticated=false when token is empty string", async () => {
@@ -75,16 +93,10 @@ describe("AuthService", () => {
 	});
 
 	describe("login", () => {
-		it("throws an error indicating login is removed", async () => {
-			await expect(service.login()).rejects.toThrow(
-				"Login command has been removed",
-			);
-		});
-
-		it("includes guidance about setting the env var in the error", async () => {
-			await expect(service.login()).rejects.toThrow(
-				"GITHUB_PERSONAL_ACCESS_TOKEN",
-			);
+		it("returns authenticated=false with setup guidance", async () => {
+			const result = await service.login();
+			expect(result.authenticated).toBe(false);
+			expect(result.message).toContain("teamhero setup");
 		});
 	});
 });

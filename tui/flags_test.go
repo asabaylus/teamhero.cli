@@ -508,7 +508,7 @@ func TestApplyFlagsTo_Sources_GitOnly(t *testing.T) {
 func TestApplyFlagsTo_Sections(t *testing.T) {
 	oldSections := *flagSections
 	defer func() { *flagSections = oldSections }()
-	*flagSections = "individual,visible-wins,discrepancy-log,loc"
+	*flagSections = "individual,visible-wins,technical-wins,discrepancy-log,loc"
 
 	cfg := DefaultConfig()
 	wasSet := func(name string) bool { return name == "sections" }
@@ -519,6 +519,9 @@ func TestApplyFlagsTo_Sections(t *testing.T) {
 	}
 	if !cfg.Sections.ReportSections.VisibleWins {
 		t.Error("applyFlagsTo sections: VisibleWins should be true")
+	}
+	if !cfg.Sections.ReportSections.TechnicalFoundationalWins {
+		t.Error("applyFlagsTo sections: TechnicalFoundationalWins should be true")
 	}
 	if !cfg.Sections.ReportSections.DiscrepancyLog {
 		t.Error("applyFlagsTo sections: DiscrepancyLog should be true")

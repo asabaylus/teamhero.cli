@@ -876,6 +876,7 @@ describe("ReportService.generateReport", () => {
 					reportSections: {
 						visibleWins: false,
 						individualContributions: false,
+						technicalFoundationalWins: false,
 					},
 				},
 			}),

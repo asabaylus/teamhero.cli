@@ -18,7 +18,7 @@ import (
 type wizardMode int
 
 const (
-	wizardModeFull    wizardMode = iota
+	wizardModeFull wizardMode = iota
 	wizardModeExpress
 )
 
@@ -29,9 +29,9 @@ const (
 type wizardState int
 
 const (
-	wsReuse wizardState = iota // "Reuse previous config?" (conditional — skipped if no prev)
-	wsCacheFlush               // "Fresh data or use cache?" (conditional — skipped if no prev)
-	wsCacheFlushDate           // custom date input for selective flush
+	wsReuse          wizardState = iota // "Reuse previous config?" (conditional — skipped if no prev)
+	wsCacheFlush                        // "Fresh data or use cache?" (conditional — skipped if no prev)
+	wsCacheFlushDate                    // custom date input for selective flush
 
 	// Core config
 	wsOrg
@@ -114,13 +114,13 @@ type wizardModel struct {
 	highWater wizardState // farthest state reached (for summary display)
 
 	// Form value bindings — must live on the struct so huh can write to them.
-	reuse          bool
-	includePrivate bool
-	repoScope      string
-	memberScope    string
-	repoInput      string
-	teamInput      string
-	memberInput    string
+	reuse            bool
+	includePrivate   bool
+	repoScope        string
+	memberScope      string
+	repoInput        string
+	teamInput        string
+	memberInput      string
 	selectedRepos    []string
 	selectedMembers  []string
 	selectedTeam     string
@@ -530,6 +530,7 @@ func (m *wizardModel) readFormValues() {
 	case wsReportSections:
 		m.cfg.Sections.ReportSections.IndividualContributions = contains(m.selectedSections, "individual")
 		m.cfg.Sections.ReportSections.VisibleWins = contains(m.selectedSections, "visibleWins")
+		m.cfg.Sections.ReportSections.TechnicalFoundationalWins = contains(m.selectedSections, "technicalWins")
 		m.cfg.Sections.ReportSections.DiscrepancyLog = contains(m.selectedSections, "discrepancyLog")
 		m.cfg.Sections.ReportSections.Loc = contains(m.selectedSections, "loc")
 
@@ -960,6 +961,7 @@ func (m *wizardModel) buildForm() *huh.Form {
 				Options(
 					huh.NewOption("Individual Contributions", "individual").Selected(m.cfg.Sections.ReportSections.IndividualContributions),
 					huh.NewOption("Visible Wins", "visibleWins").Selected(m.cfg.Sections.ReportSections.VisibleWins),
+					huh.NewOption("Technical / Foundational Wins", "technicalWins").Selected(m.cfg.Sections.ReportSections.TechnicalFoundationalWins),
 					huh.NewOption("Lines of Code (LOC)", "loc").Selected(m.cfg.Sections.ReportSections.Loc),
 					huh.NewOption("Discrepancy Log", "discrepancyLog").Selected(m.cfg.Sections.ReportSections.DiscrepancyLog),
 				).
@@ -1079,6 +1081,9 @@ func renderConfirmModal(cfg *ReportConfig, confirmForm *huh.Form, width int) str
 	}
 	if cfg.Sections.ReportSections.VisibleWins {
 		sections = append(sections, "Wins")
+	}
+	if cfg.Sections.ReportSections.TechnicalFoundationalWins {
+		sections = append(sections, "Tech Wins")
 	}
 	if cfg.Sections.ReportSections.Loc {
 		sections = append(sections, "LOC")

@@ -50,6 +50,39 @@ export interface FinalReportContext {
 	onStatus?: (message: string) => void;
 }
 
+export type TechnicalWinsSubheadings = "auto" | string[];
+
+export interface TechnicalWinsContext {
+	windowStart: string;
+	windowEnd: string;
+	verbosity: "concise" | "standard" | "detailed";
+	/**
+	 * Either "auto" (let the AI infer 2–5 logical groupings) or an explicit
+	 * ordered list of subheadings (e.g. ["AI / Engineering", "IT / Centre"]).
+	 */
+	subheadings: TechnicalWinsSubheadings;
+	/** Short natural-language audience descriptor. */
+	audience?: string;
+	/** Raw bullets / notes from the current week's activity. */
+	currentWeekItems: string[];
+	/**
+	 * Prior-week wins used strictly for deduplication. Should be pre-flattened
+	 * into bullet strings by the caller.
+	 */
+	previousWeekItems?: string[];
+	/**
+	 * Rendered Visible Wins section text so the AI can cross-reference
+	 * and avoid duplicating detail already covered there.
+	 */
+	visibleWinsSummary?: string;
+	/**
+	 * Roadmap entries (initiative names + status) so the AI can anchor
+	 * wins to the strategic milestones the board cares about.
+	 */
+	roadmapContext?: string;
+	onStatus?: (message: string) => void;
+}
+
 export interface IndividualSummariesContext {
 	payloads: ContributorSummaryPayload[];
 	windowHuman: string;
@@ -236,6 +269,143 @@ export function buildIndividualSummariesPrompt(
 	);
 
 	return [...header, "", "Contributors:", ...blocks].join("\n");
+}
+
+export const TECHNICAL_WINS_SCHEMA = {
+	type: "json_schema" as const,
+	name: "technical_foundational_wins",
+	strict: true,
+	schema: {
+		type: "object" as const,
+		properties: {
+			categories: {
+				type: "array" as const,
+				items: {
+					type: "object" as const,
+					properties: {
+						category: { type: "string" as const },
+						wins: {
+							type: "array" as const,
+							items: { type: "string" as const },
+						},
+					},
+					required: ["category", "wins"] as const,
+					additionalProperties: false as const,
+				},
+			},
+		},
+		required: ["categories"] as const,
+		additionalProperties: false as const,
+	},
+} as const;
+
+const TECHNICAL_WINS_VERBOSITY_GUIDE: Record<
+	TechnicalWinsContext["verbosity"],
+	string
+> = {
+	concise: "Terse, outcome-only. No explanation or context.",
+	standard: "Include brief context (one short clause per bullet).",
+	detailed: "Include impact or rationale (one short sentence max per bullet).",
+};
+
+export function buildTechnicalWinsPrompt(
+	context: TechnicalWinsContext,
+): string {
+	const current = context.currentWeekItems
+		.filter((x) => x && x.trim().length > 0)
+		.map((x) => `- ${x}`)
+		.join("\n");
+
+	const subheadingsInstruction =
+		context.subheadings === "auto"
+			? "Infer 2-5 logical groupings based on themes (e.g. AI / Engineering, DevOps, IT / Centre, Product, Infrastructure). Group for readability, not strict taxonomy."
+			: `Use exactly these subheadings in this order: ${context.subheadings
+					.map((s) => `"${s}"`)
+					.join(
+						", ",
+					)}. If a subheading has no wins this week, include the category with a single bullet: "No material changes this week".`;
+
+	const audienceLine = context.audience
+		? `Audience: ${context.audience}. Adapt tone accordingly. Do NOT mention the audience explicitly.`
+		: "Audience: engineering leadership. Adapt tone accordingly. Do NOT mention the audience explicitly.";
+
+	const previousItems = (context.previousWeekItems ?? [])
+		.filter((x) => x && x.trim().length > 0)
+		.map((x) => `- ${x}`)
+		.join("\n");
+
+	const deduplicationSection = previousItems
+		? [
+				"",
+				"Deduplication rules:",
+				"- Do NOT repeat wins already present in the previous report below.",
+				"- If a win appears in both weeks, include it ONLY if there is meaningful progress or change.",
+				"- Prefer delta-oriented phrasing when overlap exists (e.g. 'Expanded X from 50 to 130 users' instead of 'Deployed X').",
+				"",
+				"Previous report wins (for deduplication only):",
+				previousItems,
+			]
+		: [];
+
+	const crossRefSection: string[] = [];
+	if (context.visibleWinsSummary) {
+		crossRefSection.push(
+			"",
+			"Visible Wins section (already shown to the reader — do NOT repeat detail from here; at most, consolidate into a single status signal like 'Costs on track with budget'):",
+			context.visibleWinsSummary,
+		);
+	}
+	if (context.roadmapContext) {
+		crossRefSection.push(
+			"",
+			"Quarterly Roadmap initiatives (anchor wins to these milestones when relevant):",
+			context.roadmapContext,
+		);
+	}
+
+	return [
+		"You are generating a 'This Week's Technical / Foundational Wins' section for an engineering status report.",
+		"",
+		"PURPOSE:",
+		"This section highlights wins in IT, DevOps, AI, and Engineering — the technical and foundational layer beneath the product work.",
+		"It is NOT about product milestones or business outcomes (those belong in the Visible Wins section).",
+		"Think: what did the engineering organization build, deploy, automate, standardize, or improve in its own infrastructure, tooling, processes, and platforms this week?",
+		"",
+		"CATEGORY DEFINITIONS (use only these, in this order, omitting any with no wins):",
+		"1. IT — Infrastructure, security, compliance, cost management, user tooling rollouts. Examples: 'Deployed ActivTrak to 130 users', 'SOC 2 handoff on track for Apr 13', 'Costs on track with budget'.",
+		"2. DevOps — CI/CD improvements, pipeline changes, test automation, deployment process improvements. Examples: 'Implemented end-to-end tests running in CI pipeline', 'Cut deployment cycle from 2 weeks to 3 days'.",
+		"3. AI — AI tooling, agent capabilities, model integrations, prompt engineering. Examples: 'Introduced 5 new Claude slash commands (push-to-verdict, release-notes, etc.)', 'Added CSV export for mail-api report output'.",
+		"4. Engineering — Code standardization, architecture improvements, tech debt reduction, developer experience. Examples: 'Standardized Apex trigger patterns across 4 repos', 'Corrected Salesforce page layout drift across operations flow'.",
+		"",
+		"HARD CONSTRAINTS ON OUTPUT SHAPE:",
+		"- Use 2–4 of the categories above. Never invent new categories.",
+		"- Each category should have 1–4 bullets.",
+		"- Total output should be 4–10 bullets across all categories.",
+		"- Omit a category entirely if the source data has nothing that fits it.",
+		"",
+		"WHAT TO EXCLUDE (strict rules):",
+		"- Product milestone progress (GCCW pilot status, RVM phases, messaging rollouts) — those belong in Visible Wins, not here.",
+		"- Incidents, outages, or failures — even if recovery was fast.",
+		"- Ownership assignments and staffing decisions.",
+		"- Items already described in the Visible Wins section — do not duplicate.",
+		"",
+		"BULLET STYLE:",
+		`- ${audienceLine}`,
+		`- Verbosity: ${context.verbosity}. ${TECHNICAL_WINS_VERBOSITY_GUIDE[context.verbosity]}`,
+		"- Keep each bullet to one concise sentence fragment, ideally 8–14 words, never more than 18 words.",
+		"- Use parallel phrasing across bullets.",
+		"- No duplication across categories.",
+		"",
+		`Grouping: ${subheadingsInstruction}`,
+		`Date window: ${context.windowStart} to ${context.windowEnd}.`,
+		...crossRefSection,
+		...deduplicationSection,
+		"",
+		"Current-week source items:",
+		current || "- (none)",
+		"",
+		"Return structured JSON matching the provided schema. Each category object has a 'category' string and a 'wins' array of strings.",
+	].join("\n");
 }
 
 function buildIndividualSummaryBlock(

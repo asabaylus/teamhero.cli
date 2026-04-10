@@ -5,6 +5,7 @@ import type {
 	PeriodDeltas,
 	ReportRenderer,
 	RoadmapEntry,
+	TechnicalFoundationalWinsResult,
 } from "../core/types.js";
 import type { ContributorSummaryRecord } from "../models/individual-summary.js";
 import type {
@@ -106,12 +107,18 @@ export interface ReportRenderInput {
 	roadmapTitle?: string;
 	/** AI-generated narrative summarizing period-over-period changes. */
 	deltaNarrative?: string;
+	/**
+	 * AI-authored structured output for this week's Technical / Foundational
+	 * Wins section. Grouped by subheading (category).
+	 */
+	technicalFoundationalWins?: TechnicalFoundationalWinsResult;
 }
 
 export interface ReportSections {
 	git: boolean;
 	taskTracker: boolean;
 	visibleWins?: boolean;
+	technicalFoundationalWins?: boolean;
 	individualContributions?: boolean;
 	discrepancyLog?: boolean;
 }
@@ -137,7 +144,11 @@ export function renderReport(input: ReportRenderInput): string {
 		(member) => !isAggregatedMember(member),
 	);
 	// Visible Wins section — rendered first, before metrics
-	if (input.visibleWins && input.visibleWins.length > 0) {
+	if (
+		input.sections.visibleWins !== false &&
+		input.visibleWins &&
+		input.visibleWins.length > 0
+	) {
 		parts.push("");
 		parts.push(
 			renderVisibleWinsSection(
@@ -147,18 +158,37 @@ export function renderReport(input: ReportRenderInput): string {
 		);
 		parts.push("");
 	}
+	// Technical / Foundational Wins — placed after Delivered Outcomes
+	// (i.e. visible wins) and before the Weekly Engineering Summary.
+	if (
+		input.sections.technicalFoundationalWins !== false &&
+		input.technicalFoundationalWins &&
+		input.technicalFoundationalWins.categories.length > 0
+	) {
+		parts.push(renderTechnicalWinsSection(input.technicalFoundationalWins));
+		parts.push("");
+	}
 
-	if (input.roadmapEntries && input.roadmapEntries.length > 0) {
+	if (
+		input.sections.visibleWins !== false &&
+		input.roadmapEntries &&
+		input.roadmapEntries.length > 0
+	) {
 		parts.push(renderRoadmapSection(input.roadmapEntries, input.roadmapTitle));
 		parts.push("");
 	}
 
-	parts.push(
-		`# Weekly Engineering Summary (${input.window.start} – ${input.window.end})`,
-	);
-	parts.push("");
-	parts.push(`${buildOverviewSentence(input)}  `);
-	parts.push("");
+	const showEngineeringSummary =
+		input.sections.individualContributions !== false;
+
+	if (showEngineeringSummary) {
+		parts.push(
+			`# Weekly Engineering Summary (${input.window.start} – ${input.window.end})`,
+		);
+		parts.push("");
+		parts.push(`${buildOverviewSentence(input)}  `);
+		parts.push("");
+	}
 
 	if (input.sections.individualContributions !== false) {
 		parts.push("---");
@@ -222,7 +252,7 @@ export function renderReport(input: ReportRenderInput): string {
 	}
 
 	// Period deltas summary (Story 5.3)
-	if (input.periodDeltas?.hasPreviousPeriod) {
+	if (showEngineeringSummary && input.periodDeltas?.hasPreviousPeriod) {
 		parts.push("---");
 		parts.push("");
 		parts.push("## **Velocity Trends (vs. Previous Period)**");
@@ -623,6 +653,33 @@ export function renderVisibleWinsSection(
 	}
 
 	return parts.join("\n");
+}
+
+/**
+ * Render the Technical / Foundational Wins section using the same plain-text
+ * project layout as Visible Wins: category heading followed by flat bullets.
+ */
+export function renderTechnicalWinsSection(
+	result: TechnicalFoundationalWinsResult,
+): string {
+	const parts: string[] = [];
+	parts.push("## **This Week's Technical / Foundational Wins**");
+	parts.push("");
+
+	let hasRenderedCategory = false;
+	for (const category of result.categories) {
+		if (!category.category) continue;
+		if (hasRenderedCategory) {
+			parts.push("");
+		}
+		parts.push(category.category);
+		for (const win of category.wins) {
+			parts.push(`* ${win}`);
+		}
+		hasRenderedCategory = true;
+	}
+
+	return parts.join("\n").trimEnd();
 }
 
 const ROADMAP_STATUS_EMOJI: Record<string, string> = {

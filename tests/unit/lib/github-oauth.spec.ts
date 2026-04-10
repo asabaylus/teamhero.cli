@@ -16,6 +16,8 @@ afterAll(() => {
 });
 
 import {
+	checkGitHubStatus,
+	getAuthMethod,
 	pollForToken,
 	requestDeviceCode,
 	validateGitHubToken,
@@ -56,14 +58,56 @@ describe("requestDeviceCode", () => {
 		expect(result.interval).toBe(5);
 	});
 
-	it("throws on non-OK response", async () => {
+	it("throws on 403 with OAuth app error", async () => {
 		globalThis.fetch = mock(
 			async () =>
 				new Response("Forbidden", { status: 403, statusText: "Forbidden" }),
 		) as typeof fetch;
 
 		await expect(requestDeviceCode()).rejects.toThrow(
-			"GitHub device code request failed: 403 Forbidden",
+			"GitHub OAuth app is not configured correctly",
+		);
+	});
+
+	it("throws on 401 with OAuth app error", async () => {
+		globalThis.fetch = mock(
+			async () =>
+				new Response("Unauthorized", {
+					status: 401,
+					statusText: "Unauthorized",
+				}),
+		) as typeof fetch;
+
+		await expect(requestDeviceCode()).rejects.toThrow(
+			"GitHub OAuth app is not configured correctly",
+		);
+	});
+
+	it("throws on 422 with device flow error", async () => {
+		globalThis.fetch = mock(
+			async () =>
+				new Response("Unprocessable", {
+					status: 422,
+					statusText: "Unprocessable Entity",
+				}),
+		) as typeof fetch;
+
+		await expect(requestDeviceCode()).rejects.toThrow(
+			"OAuth app may not have device flow enabled",
+		);
+	});
+
+	it("throws on other non-OK response with status", async () => {
+		globalThis.fetch = mock(
+			async () =>
+				new Response("Server Error", {
+					status: 500,
+					statusText: "Internal Server Error",
+				}),
+		) as typeof fetch;
+
+		await expect(requestDeviceCode()).rejects.toThrow(
+			"GitHub device code request failed: 500 Internal Server Error",
 		);
 	});
 
@@ -131,7 +175,7 @@ describe("pollForToken", () => {
 		) as typeof fetch;
 
 		await expect(pollForToken("dc_test", 0.01, 30)).rejects.toThrow(
-			"Authorization timed out. Please try again.",
+			"The sign-in code expired",
 		);
 	});
 
@@ -145,7 +189,21 @@ describe("pollForToken", () => {
 		) as typeof fetch;
 
 		await expect(pollForToken("dc_test", 0.01, 30)).rejects.toThrow(
-			"Authorization was denied by the user.",
+			"You denied the authorization request",
+		);
+	});
+
+	it("throws on incorrect_device_code error", async () => {
+		globalThis.fetch = mock(
+			async () =>
+				new Response(JSON.stringify({ error: "incorrect_device_code" }), {
+					status: 200,
+					headers: { "Content-Type": "application/json" },
+				}),
+		) as typeof fetch;
+
+		await expect(pollForToken("dc_test", 0.01, 30)).rejects.toThrow(
+			"Device code was invalid",
 		);
 	});
 
@@ -184,7 +242,7 @@ describe("pollForToken", () => {
 		expect(gap).toBeGreaterThanOrEqual(4500);
 	}, 15_000); // 15s timeout for the 5s slow_down wait
 
-	it("throws on unknown error", async () => {
+	it("throws on unknown error with fallback suggestion", async () => {
 		globalThis.fetch = mock(
 			async () =>
 				new Response(JSON.stringify({ error: "some_unknown_error" }), {
@@ -194,7 +252,7 @@ describe("pollForToken", () => {
 		) as typeof fetch;
 
 		await expect(pollForToken("dc_test", 0.01, 30)).rejects.toThrow(
-			"Unexpected error during authorization: some_unknown_error",
+			"GitHub authorization error: some_unknown_error. If this persists, try the Personal Access Token option instead.",
 		);
 	});
 
@@ -265,5 +323,85 @@ describe("validateGitHubToken", () => {
 		expect(capturedHeaders).not.toBeNull();
 		expect(capturedHeaders!.get("Authorization")).toBe("Bearer gho_mytoken");
 		expect(capturedHeaders!.get("User-Agent")).toBe("teamhero-cli");
+	});
+});
+
+describe("getAuthMethod", () => {
+	it("returns oauth for gho_ prefix", () => {
+		expect(getAuthMethod("gho_abc123")).toBe("oauth");
+	});
+
+	it("returns pat for github_pat_ prefix", () => {
+		expect(getAuthMethod("github_pat_abc123")).toBe("pat");
+	});
+
+	it("returns pat for ghp_ prefix", () => {
+		expect(getAuthMethod("ghp_abc123")).toBe("pat");
+	});
+
+	it("returns unknown for unrecognized prefix", () => {
+		expect(getAuthMethod("some_random_token")).toBe("unknown");
+	});
+
+	it("returns unknown for empty string", () => {
+		expect(getAuthMethod("")).toBe("unknown");
+	});
+});
+
+describe("checkGitHubStatus", () => {
+	it("returns valid status with login and scopes", async () => {
+		globalThis.fetch = mock(
+			async () =>
+				new Response(JSON.stringify({ login: "alice" }), {
+					status: 200,
+					headers: {
+						"Content-Type": "application/json",
+						"X-OAuth-Scopes": "repo, read:org",
+					},
+				}),
+		) as typeof fetch;
+
+		const result = await checkGitHubStatus("gho_testtoken");
+		expect(result.valid).toBe(true);
+		expect(result.login).toBe("alice");
+		expect(result.method).toBe("oauth");
+		expect(result.scopes).toEqual(["repo", "read:org"]);
+	});
+
+	it("returns valid status without scopes header", async () => {
+		globalThis.fetch = mock(
+			async () =>
+				new Response(JSON.stringify({ login: "bob" }), {
+					status: 200,
+					headers: { "Content-Type": "application/json" },
+				}),
+		) as typeof fetch;
+
+		const result = await checkGitHubStatus("github_pat_abc");
+		expect(result.valid).toBe(true);
+		expect(result.login).toBe("bob");
+		expect(result.method).toBe("pat");
+		expect(result.scopes).toBeUndefined();
+	});
+
+	it("returns invalid on 401", async () => {
+		globalThis.fetch = mock(
+			async () => new Response("Unauthorized", { status: 401 }),
+		) as typeof fetch;
+
+		const result = await checkGitHubStatus("gho_bad");
+		expect(result.valid).toBe(false);
+		expect(result.method).toBe("oauth");
+		expect(result.login).toBeUndefined();
+	});
+
+	it("returns invalid on network error", async () => {
+		globalThis.fetch = mock(async () => {
+			throw new Error("network error");
+		}) as typeof fetch;
+
+		const result = await checkGitHubStatus("gho_bad");
+		expect(result.valid).toBe(false);
+		expect(result.method).toBe("oauth");
 	});
 });

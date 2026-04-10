@@ -382,6 +382,53 @@ describe("renderReport — visible wins integration", () => {
 		const output = renderReport(makeInput());
 		expect(output).not.toContain("Visible Wins");
 	});
+
+	it("renders technical wins section after visible wins when enabled", () => {
+		const output = renderReport(
+			makeInput({
+				sections: {
+					git: true,
+					taskTracker: true,
+					technicalFoundationalWins: true,
+				},
+				visibleWins: [
+					{
+						projectName: "Dashboard",
+						projectGid: "gid-1",
+						bullets: [
+							{
+								text: "Dashboard redesign shipped to production",
+								subBullets: [],
+								sourceDates: [],
+								sourceFigures: [],
+								sourceNoteFile: "note.md",
+							},
+						],
+					},
+				],
+				visibleWinsProjects: [
+					{
+						name: "Dashboard",
+						gid: "gid-1",
+						customFields: {},
+						priorityScore: 1,
+					},
+				],
+				technicalFoundationalWins: {
+					categories: [
+						{
+							category: "AI / Engineering",
+							wins: ["Added Claude team access"],
+						},
+					],
+				},
+			}),
+		);
+		const winsIdx = output.indexOf("This Week's Visible Wins");
+		const techIdx = output.indexOf("This Week's Technical / Foundational Wins");
+		expect(winsIdx).toBeGreaterThan(-1);
+		expect(techIdx).toBeGreaterThan(winsIdx);
+	});
 });
 
 // ===================================================================
