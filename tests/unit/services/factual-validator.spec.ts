@@ -5,7 +5,10 @@ import type {
 	ProjectAccomplishment,
 	ProjectTask,
 } from "../../../src/models/visible-wins.js";
-import { validateFactualClaims } from "../../../src/services/factual-validator.js";
+
+const { validateFactualClaims } = await import(
+	new URL("../../../src/services/factual-validator.ts", import.meta.url).href
+);
 
 function makeNote(overrides: Partial<NormalizedNote> = {}): NormalizedNote {
 	return {

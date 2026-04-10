@@ -13,17 +13,9 @@ import { mocked } from "../../helpers/mocked.js";
 // ---------------------------------------------------------------------------
 
 import * as dotenvMod from "dotenv";
-import * as cachedLocMod from "../../../src/adapters/cache/cached-loc-collector.js";
-import * as cachedMetricsMod from "../../../src/adapters/cache/cached-metrics-provider.js";
-import * as cachedTaskTrackerMod from "../../../src/adapters/cache/cached-task-tracker.js";
 import * as envMod from "../../../src/lib/env.js";
 import * as octokitMod from "../../../src/lib/octokit.js";
-import * as pathsMod from "../../../src/lib/paths.js";
-import * as aiServiceMod from "../../../src/services/ai.service.js";
-import * as asanaServiceMod from "../../../src/services/asana.service.js";
 import * as metricsServiceMod from "../../../src/services/metrics.service.js";
-import * as reportServiceMod from "../../../src/services/report.service.js";
-import * as scopeServiceMod from "../../../src/services/scope.service.js";
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -39,63 +31,16 @@ mock.module("../../../src/lib/octokit.js", () => ({
 	loadOctokitFromEnv: mock().mockResolvedValue({}),
 }));
 
-mock.module("../../../src/lib/paths.js", () => ({
-	...pathsMod,
-	configDir: mock().mockReturnValue("/fake/config"),
-}));
-
 mock.module("../../../src/lib/env.js", () => ({
 	...envMod,
 	getEnv: mock().mockReturnValue(undefined),
 	loadDotenv: mock().mockReturnValue({}),
 }));
 
-mock.module("../../../src/services/scope.service.js", () => ({
-	...scopeServiceMod,
-	ScopeService: mock().mockImplementation(() => ({ _type: "ScopeService" })),
-}));
-
 mock.module("../../../src/services/metrics.service.js", () => ({
 	...metricsServiceMod,
 	MetricsService: mock().mockImplementation(() => ({
 		_type: "MetricsService",
-	})),
-}));
-
-mock.module("../../../src/services/ai.service.js", () => ({
-	...aiServiceMod,
-	AIService: mock().mockImplementation(() => ({ _type: "AIService" })),
-}));
-
-mock.module("../../../src/services/asana.service.js", () => ({
-	...asanaServiceMod,
-	AsanaService: mock().mockImplementation(() => ({ _type: "AsanaService" })),
-}));
-
-const mockReportServiceInstance = { _type: "ReportService" };
-mock.module("../../../src/services/report.service.js", () => ({
-	...reportServiceMod,
-	ReportService: mock().mockImplementation(() => mockReportServiceInstance),
-}));
-
-mock.module("../../../src/adapters/cache/cached-metrics-provider.js", () => ({
-	...cachedMetricsMod,
-	CachedMetricsProvider: mock().mockImplementation(() => ({
-		_type: "CachedMetricsProvider",
-	})),
-}));
-
-mock.module("../../../src/adapters/cache/cached-task-tracker.js", () => ({
-	...cachedTaskTrackerMod,
-	CachedTaskTrackerProvider: mock().mockImplementation(() => ({
-		_type: "CachedTaskTrackerProvider",
-	})),
-}));
-
-mock.module("../../../src/adapters/cache/cached-loc-collector.js", () => ({
-	...cachedLocMod,
-	CachedLocCollector: mock().mockImplementation(() => ({
-		_type: "CachedLocCollector",
 	})),
 }));
 
@@ -129,21 +74,14 @@ describe("createReportService", () => {
 	beforeEach(() => {
 		(loadOctokitFromEnv as any).mockClear();
 		(getEnv as any).mockClear();
-		(ScopeService as any).mockClear();
 		(MetricsService as any).mockClear();
-		(AIService as any).mockClear();
-		(AsanaService as any).mockClear();
-		(ReportService as any).mockClear();
-		(CachedMetricsProvider as any).mockClear();
-		(CachedTaskTrackerProvider as any).mockClear();
-		(CachedLocCollector as any).mockClear();
 		mocked(loadOctokitFromEnv).mockResolvedValue(mockOctokit);
 		mocked(getEnv).mockReturnValue(undefined);
 	});
 
 	it("returns a ReportService instance", async () => {
 		const result = await createReportService();
-		expect(result).toBe(mockReportServiceInstance);
+		expect(result).toBeInstanceOf(ReportService);
 	});
 
 	it("loads octokit from env", async () => {
@@ -152,8 +90,8 @@ describe("createReportService", () => {
 	});
 
 	it("creates a ScopeService with the octokit client", async () => {
-		await createReportService();
-		expect(ScopeService).toHaveBeenCalledWith(mockOctokit);
+		const result = await createReportService();
+		expect((result as any).deps.scope).toBeInstanceOf(ScopeService);
 	});
 
 	it("creates a MetricsService with the octokit client and logger", async () => {
@@ -164,54 +102,57 @@ describe("createReportService", () => {
 	});
 
 	it("creates an AIService", async () => {
-		await createReportService();
-		expect(AIService).toHaveBeenCalledOnce();
+		const result = await createReportService();
+		expect((result as any).deps.ai).toBeInstanceOf(AIService);
 	});
 
 	it("creates CachedMetricsProvider wrapping MetricsService", async () => {
-		await createReportService();
-		expect(CachedMetricsProvider).toHaveBeenCalledOnce();
+		const result = await createReportService();
+		expect((result as any).deps.metrics).toBeInstanceOf(CachedMetricsProvider);
 	});
 
 	it("creates CachedLocCollector", async () => {
-		await createReportService();
-		expect(CachedLocCollector).toHaveBeenCalledOnce();
+		const result = await createReportService();
+		expect((result as any).deps.locCollector).toBeInstanceOf(
+			CachedLocCollector,
+		);
 	});
 
 	it("does NOT create AsanaService when ASANA_API_TOKEN is absent", async () => {
 		mocked(getEnv).mockReturnValue(undefined);
-		await createReportService();
-		expect(AsanaService).not.toHaveBeenCalled();
-		expect(CachedTaskTrackerProvider).not.toHaveBeenCalled();
+		const result = await createReportService();
+		expect((result as any).deps.asanaService).toBeUndefined();
+		expect((result as any).deps.taskTracker).toBeUndefined();
 	});
 
 	it("creates AsanaService and CachedTaskTrackerProvider when ASANA_API_TOKEN is set", async () => {
 		mocked(getEnv).mockImplementation((key) =>
 			key === "ASANA_API_TOKEN" ? "fake-token" : undefined,
 		);
-		await createReportService();
-		expect(AsanaService).toHaveBeenCalledOnce();
-		expect(CachedTaskTrackerProvider).toHaveBeenCalledOnce();
+		const result = await createReportService();
+		expect((result as any).deps.asanaService).toBeInstanceOf(AsanaService);
+		expect((result as any).deps.taskTracker).toBeInstanceOf(
+			CachedTaskTrackerProvider,
+		);
 	});
 
 	it("passes cacheOptions through to CachedMetricsProvider", async () => {
 		const cacheOptions = { ttlSeconds: 999 };
-		await createReportService({ cacheOptions });
-		expect(CachedMetricsProvider).toHaveBeenCalledWith(
-			expect.anything(),
-			cacheOptions,
-		);
+		const result = await createReportService({ cacheOptions });
+		expect((result as any).deps.metrics.cacheOptions).toEqual(cacheOptions);
 	});
 
 	it("passes cacheOptions through to CachedLocCollector", async () => {
 		const cacheOptions = { ttlSeconds: 42 };
-		await createReportService({ cacheOptions });
-		expect(CachedLocCollector).toHaveBeenCalledWith(cacheOptions);
+		const result = await createReportService({ cacheOptions });
+		expect((result as any).deps.locCollector.cacheOptions).toEqual(
+			cacheOptions,
+		);
 	});
 
 	it("wires the ReportService with scope, metrics, ai, and locCollector", async () => {
-		await createReportService();
-		expect(ReportService).toHaveBeenCalledWith(
+		const result = await createReportService();
+		expect((result as any).deps).toEqual(
 			expect.objectContaining({
 				scope: expect.anything(),
 				metrics: expect.anything(),

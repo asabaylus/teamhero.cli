@@ -12,7 +12,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import * as envMod from "../../../src/lib/env.js";
-import * as pathsMod from "../../../src/lib/paths.js";
 
 // Mock env.ts for TEAMHERO_HISTORY_MAX_RUNS
 mock.module("../../../src/lib/env.js", () => ({
@@ -20,13 +19,7 @@ mock.module("../../../src/lib/env.js", () => ({
 	getEnv: mock(() => undefined),
 }));
 
-// Mock cacheDir() to use a temp directory
 let testCacheDir: string;
-
-mock.module("../../../src/lib/paths.js", () => ({
-	...pathsMod,
-	cacheDir: () => testCacheDir,
-}));
 
 afterAll(() => {
 	mock.restore();
@@ -39,11 +32,13 @@ describe("RunHistoryStore", () => {
 
 	beforeEach(async () => {
 		testCacheDir = await mkdtemp(join(tmpdir(), "teamhero-history-test-"));
+		process.env.XDG_CACHE_HOME = testCacheDir;
 		storeDir = join(testCacheDir, "snapshots");
 	});
 
 	afterEach(async () => {
 		await rm(testCacheDir, { recursive: true, force: true });
+		delete process.env.XDG_CACHE_HOME;
 	});
 
 	it("saves and retrieves a snapshot", async () => {

@@ -4,7 +4,9 @@
 
 import { describe, expect, it } from "bun:test";
 import type { ReportMemberMetrics } from "../../../src/lib/report-renderer.js";
-import {
+import type { PeriodSummary } from "../../../src/services/period-deltas.service.js";
+
+const {
 	buildPeriodDeltas,
 	buildVelocityContext,
 	computeMetricDelta,
@@ -12,8 +14,10 @@ import {
 	extractPeriodSummary,
 	extractPeriodSummaryFromSnapshot,
 	formatDelta,
-	type PeriodSummary,
-} from "../../../src/services/period-deltas.service.js";
+} = await import(
+	new URL("../../../src/services/period-deltas.service.ts", import.meta.url)
+		.href
+);
 
 describe("computePreviousPeriod", () => {
 	it("computes correct previous period for a 7-day window", () => {

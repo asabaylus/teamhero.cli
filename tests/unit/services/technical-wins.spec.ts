@@ -1,11 +1,16 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, spyOn } from "bun:test";
 import type { TechnicalFoundationalWinsResult } from "../../../src/core/types.js";
-import {
+import * as envMod from "../../../src/lib/env.js";
+
+const {
 	flattenTechnicalWinsForDedup,
 	hashTechnicalWinsInput,
 	normalizeTechnicalWinsResult,
 	resolveTechnicalWinsSubheadings,
-} from "../../../src/services/technical-wins.service.js";
+} = await import(
+	new URL("../../../src/services/technical-wins.service.ts", import.meta.url)
+		.href
+);
 
 // ---------------------------------------------------------------------------
 // resolveTechnicalWinsSubheadings
@@ -40,11 +45,11 @@ describe("resolveTechnicalWinsSubheadings", () => {
 	});
 
 	it("reads from TECHNICAL_WINS_SUBHEADINGS env when no argument is given", () => {
-		process.env.TECHNICAL_WINS_SUBHEADINGS = "AI, DevOps";
+		const getEnvSpy = spyOn(envMod, "getEnv").mockReturnValue("AI, DevOps");
 		try {
 			expect(resolveTechnicalWinsSubheadings()).toEqual(["AI", "DevOps"]);
 		} finally {
-			delete process.env.TECHNICAL_WINS_SUBHEADINGS;
+			getEnvSpy.mockRestore();
 		}
 	});
 });

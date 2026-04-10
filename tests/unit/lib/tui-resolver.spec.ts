@@ -6,48 +6,67 @@ import {
 	expect,
 	it,
 	mock,
+	spyOn,
 } from "bun:test";
-import { promisify } from "node:util";
 
-// We mock `node:fs/promises` access and `node:child_process` execFile at the
-// module level so they take effect before tui-resolver.ts is imported.
-// We import the real modules before mocking and spread their exports explicitly
-// to avoid require() inside the mock.module factory, which creates a circular
-// reference in Bun.
+// We spy on the real Node built-ins instead of using mock.module() because
+// Bun's built-in module replacement can become order-dependent once another
+// spec has already imported src/cli/index.js, which loads tui-resolver.ts.
 
 import * as childProcess from "node:child_process";
 import * as fsPromises from "node:fs/promises";
 
 const mockAccess = mock<(path: string, mode?: number) => Promise<void>>();
 
-// The promisified version that `which()` actually calls internally.
-// We expose this so each test can configure it.
+// We keep an async mock so each test can configure the "which" result, then
+// adapt it to the callback shape that node:util.promisify() expects.
 const mockExecFileAsync =
 	mock<
 		(cmd: string, args: string[]) => Promise<{ stdout: string; stderr: string }>
 	>();
 
-// Build a callback-style execFile that also has a custom promisify symbol
-// so that `promisify(execFile)` returns our async mock.
 function makeMockExecFile() {
-	const fn = mock();
-	(fn as any)[promisify.custom] = mockExecFileAsync;
-	return fn;
+	return mock(
+		(
+			command: string,
+			args: string[],
+			callback?: (error: Error | null, stdout: string, stderr: string) => void,
+		) => {
+			void mockExecFileAsync(command, args)
+				.then(({ stdout, stderr }) => {
+					callback?.(null, stdout, stderr);
+				})
+				.catch((error) => {
+					callback?.(
+						error instanceof Error ? error : new Error(String(error)),
+						"",
+						"",
+					);
+				});
+		},
+	);
 }
 
-mock.module("node:fs/promises", () => ({
-	...fsPromises,
-	access: (...args: Parameters<typeof fsPromises.access>) =>
+const accessSpy = spyOn(fsPromises, "access").mockImplementation(
+	(...args: Parameters<typeof fsPromises.access>) =>
 		mockAccess(args[0] as string, args[1] as number | undefined),
-}));
+);
+const execFileSpy = spyOn(childProcess, "execFile").mockImplementation(
+	makeMockExecFile() as any,
+);
 
-mock.module("node:child_process", () => ({
-	...childProcess,
-	execFile: makeMockExecFile(),
-}));
+let loadCount = 0;
 
-// Import after mocking
-const { resolveTuiBinary } = await import("../../../src/lib/tui-resolver.js");
+async function loadResolver() {
+	return import(
+		new URL(
+			`../../../src/lib/tui-resolver.ts?tui-resolver-spec=${++loadCount}`,
+			import.meta.url,
+		).href
+	);
+}
+
+let resolveTuiBinary: typeof import("../../../src/lib/tui-resolver.ts").resolveTuiBinary;
 
 afterAll(() => {
 	mock.restore();
@@ -57,10 +76,16 @@ afterAll(() => {
 const savedTuiPath = process.env.TEAMHERO_TUI_PATH;
 
 describe("resolveTuiBinary", () => {
-	beforeEach(() => {
+	beforeEach(async () => {
 		delete process.env.TEAMHERO_TUI_PATH;
 		mockAccess.mockReset();
 		mockExecFileAsync.mockReset();
+		accessSpy.mockImplementation(
+			(...args: Parameters<typeof fsPromises.access>) =>
+				mockAccess(args[0] as string, args[1] as number | undefined),
+		);
+		execFileSpy.mockImplementation(makeMockExecFile() as any);
+		({ resolveTuiBinary } = await loadResolver());
 	});
 
 	afterEach(() => {

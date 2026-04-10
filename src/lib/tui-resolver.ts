@@ -1,14 +1,11 @@
-import { execFile } from "node:child_process";
+import * as childProcess from "node:child_process";
 import { constants as fsConstants } from "node:fs";
-import { access } from "node:fs/promises";
+import * as fsPromises from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
-
-const execFileAsync = promisify(execFile);
 
 async function exists(path: string): Promise<boolean> {
 	try {
-		await access(path, fsConstants.X_OK);
+		await fsPromises.access(path, fsConstants.X_OK);
 		return true;
 	} catch {
 		return false;
@@ -17,7 +14,15 @@ async function exists(path: string): Promise<boolean> {
 
 async function which(command: string): Promise<string | null> {
 	try {
-		const { stdout } = await execFileAsync("which", [command]);
+		const stdout = await new Promise<string>((resolve, reject) => {
+			childProcess.execFile("which", [command], (error, resolvedStdout) => {
+				if (error) {
+					reject(error);
+					return;
+				}
+				resolve(resolvedStdout);
+			});
+		});
 		return stdout.trim() || null;
 	} catch {
 		return null;

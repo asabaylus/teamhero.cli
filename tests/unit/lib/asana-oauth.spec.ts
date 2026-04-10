@@ -1,29 +1,7 @@
-import {
-	afterAll,
-	afterEach,
-	beforeEach,
-	describe,
-	expect,
-	it,
-	mock,
-	spyOn,
-} from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import * as pathsMod from "../../../src/lib/paths.js";
-
-// Mock paths.ts to use a temp directory
-const mockConfigDir = mock();
-mock.module("../../../src/lib/paths.js", () => ({
-	...pathsMod,
-	configDir: () => mockConfigDir(),
-}));
-
-afterAll(() => {
-	mock.restore();
-});
 
 import {
 	type AsanaTokens,
@@ -38,12 +16,13 @@ let tempDir: string;
 
 beforeEach(async () => {
 	tempDir = await mkdtemp(join(tmpdir(), "asana-oauth-test-"));
-	mockConfigDir.mockReturnValue(tempDir);
+	process.env.XDG_CONFIG_HOME = tempDir;
+	await mkdir(join(tempDir, "teamhero"), { recursive: true });
 });
 
 afterEach(async () => {
 	await rm(tempDir, { recursive: true, force: true });
-	mockConfigDir.mockClear();
+	delete process.env.XDG_CONFIG_HOME;
 });
 
 describe("isAsanaAuthorized", () => {
@@ -53,7 +32,7 @@ describe("isAsanaAuthorized", () => {
 
 	it("returns true when token file has refresh_token", async () => {
 		await writeFile(
-			join(tempDir, "asana-tokens.json"),
+			join(tempDir, "teamhero", "asana-tokens.json"),
 			JSON.stringify({
 				access_token: "at-test",
 				refresh_token: "rt-test",
@@ -67,7 +46,7 @@ describe("isAsanaAuthorized", () => {
 
 	it("returns false when token file has no refresh_token", async () => {
 		await writeFile(
-			join(tempDir, "asana-tokens.json"),
+			join(tempDir, "teamhero", "asana-tokens.json"),
 			JSON.stringify({
 				access_token: "at-test",
 				expires_at: Date.now() + 3600 * 1000,
@@ -78,7 +57,7 @@ describe("isAsanaAuthorized", () => {
 	});
 
 	it("returns false when token file is invalid JSON", async () => {
-		await writeFile(join(tempDir, "asana-tokens.json"), "not json");
+		await writeFile(join(tempDir, "teamhero", "asana-tokens.json"), "not json");
 
 		expect(isAsanaAuthorized()).toBe(false);
 	});
@@ -86,7 +65,9 @@ describe("isAsanaAuthorized", () => {
 
 describe("tokenFilePath", () => {
 	it("returns path under config directory", () => {
-		expect(tokenFilePath()).toBe(join(tempDir, "asana-tokens.json"));
+		expect(tokenFilePath()).toBe(
+			join(tempDir, "teamhero", "asana-tokens.json"),
+		);
 	});
 });
 
@@ -99,7 +80,7 @@ describe("getValidAsanaToken", () => {
 
 	it("returns access_token when not expired", async () => {
 		await writeFile(
-			join(tempDir, "asana-tokens.json"),
+			join(tempDir, "teamhero", "asana-tokens.json"),
 			JSON.stringify({
 				access_token: "at-valid",
 				refresh_token: "rt-test",
@@ -114,7 +95,7 @@ describe("getValidAsanaToken", () => {
 
 	it("attempts refresh when token is expired", async () => {
 		await writeFile(
-			join(tempDir, "asana-tokens.json"),
+			join(tempDir, "teamhero", "asana-tokens.json"),
 			JSON.stringify({
 				access_token: "at-expired",
 				refresh_token: "rt-test-refresh",
@@ -141,7 +122,7 @@ describe("getValidAsanaToken", () => {
 
 		// Verify tokens were saved to disk
 		const saved = JSON.parse(
-			await readFile(join(tempDir, "asana-tokens.json"), "utf-8"),
+			await readFile(join(tempDir, "teamhero", "asana-tokens.json"), "utf-8"),
 		) as AsanaTokens;
 		expect(saved.access_token).toBe("at-refreshed");
 		expect(saved.refresh_token).toBe("rt-test-refresh");
@@ -151,7 +132,7 @@ describe("getValidAsanaToken", () => {
 
 	it("throws on invalid_grant with helpful message", async () => {
 		await writeFile(
-			join(tempDir, "asana-tokens.json"),
+			join(tempDir, "teamhero", "asana-tokens.json"),
 			JSON.stringify({
 				access_token: "at-expired",
 				refresh_token: "rt-bad",
@@ -171,7 +152,7 @@ describe("getValidAsanaToken", () => {
 
 	it("refreshes when within 5-minute buffer of expiry", async () => {
 		await writeFile(
-			join(tempDir, "asana-tokens.json"),
+			join(tempDir, "teamhero", "asana-tokens.json"),
 			JSON.stringify({
 				access_token: "at-near-expiry",
 				refresh_token: "rt-test",
@@ -201,7 +182,7 @@ describe("getValidAsanaToken", () => {
 
 describe("disconnectAsana", () => {
 	it("removes token file", async () => {
-		const tokenPath = join(tempDir, "asana-tokens.json");
+		const tokenPath = join(tempDir, "teamhero", "asana-tokens.json");
 		await writeFile(tokenPath, JSON.stringify({ refresh_token: "rt" }));
 
 		await disconnectAsana();
@@ -222,7 +203,7 @@ describe("getAsanaUserName", () => {
 
 	it("returns name from API when token is valid", async () => {
 		await writeFile(
-			join(tempDir, "asana-tokens.json"),
+			join(tempDir, "teamhero", "asana-tokens.json"),
 			JSON.stringify({
 				access_token: "at-valid",
 				refresh_token: "rt-test",
@@ -248,7 +229,7 @@ describe("getAsanaUserName", () => {
 
 	it("returns null when API call fails", async () => {
 		await writeFile(
-			join(tempDir, "asana-tokens.json"),
+			join(tempDir, "teamhero", "asana-tokens.json"),
 			JSON.stringify({
 				access_token: "at-bad",
 				refresh_token: "rt-test",

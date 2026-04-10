@@ -10,8 +10,6 @@ import {
 import * as fsPromisesMod from "node:fs/promises";
 import * as openaiMod from "openai";
 import * as envMod from "../../../src/lib/env.js";
-import * as reportRendererMod from "../../../src/lib/report-renderer.js";
-import * as aiPromptsMod from "../../../src/services/ai-prompts.js";
 import { mocked } from "../../helpers/mocked.js";
 
 mock.module("openai", () => {
@@ -26,33 +24,19 @@ mock.module("../../../src/lib/env.js", () => ({
 	getEnv: mock(() => undefined),
 }));
 
-mock.module("node:fs/promises", () => ({
-	...fsPromisesMod,
-	appendFile: mock().mockResolvedValue(undefined),
-	mkdir: mock().mockResolvedValue(undefined),
-}));
-
-mock.module("../../../src/services/ai-prompts.js", () => ({
-	...aiPromptsMod,
-	buildTeamPrompt: mock(() => "mocked team prompt"),
-	buildMemberHighlightsPrompt: mock(() => "mocked member highlights prompt"),
-	buildIndividualSummariesPrompt: mock(
-		() => "mocked individual summaries prompt",
-	),
-	buildVisibleWinsExtractionPrompt: mock(() => "mocked visible wins prompt"),
-	buildDiscrepancyAnalysisPrompt: mock(() => "mocked discrepancy prompt"),
-}));
-
-mock.module("../../../src/lib/report-renderer.js", () => ({
-	...reportRendererMod,
-	renderReport: mock(() => "## Report\n### Alice (@alice)\nSummary here"),
-}));
-
 afterAll(() => {
 	mock.restore();
 });
 
-const { AIService } = await import("../../../src/services/ai.service.js");
+spyOn(fsPromisesMod, "appendFile").mockResolvedValue(undefined as never);
+spyOn(fsPromisesMod, "mkdir").mockResolvedValue(undefined as never);
+
+const { AIService } = await import(
+	new URL(
+		"../../../src/services/ai.service.js?ai-service-spec",
+		import.meta.url,
+	).href
+);
 const { getEnv } = await import("../../../src/lib/env.js");
 
 function mockClient(outputText: string | null, usage?: Record<string, number>) {
@@ -62,6 +46,58 @@ function mockClient(outputText: string | null, usage?: Record<string, number>) {
 		usage: usage ?? { input_tokens: 100, output_tokens: 50 },
 	});
 	return { createFn, mockReturnValue: { responses: { create: createFn } } };
+}
+
+function makeTeamContext(
+	overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+	return {
+		organization: "acme",
+		windowHuman: "Feb 1-8",
+		windowStart: "2026-02-01",
+		windowEnd: "2026-02-08",
+		totals: {
+			prs: 3,
+			prsMerged: 2,
+			repoCount: 1,
+			contributorCount: 2,
+		},
+		highlights: [],
+		individualUpdates: [],
+		...overrides,
+	};
+}
+
+function makeMemberMetrics(
+	overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+	return {
+		login: "alice",
+		displayName: "Alice",
+		commits: 3,
+		prsOpened: 1,
+		prsClosed: 0,
+		prsMerged: 1,
+		linesAdded: 20,
+		linesDeleted: 5,
+		linesAddedInProgress: 0,
+		linesDeletedInProgress: 0,
+		reviews: 2,
+		approvals: 1,
+		changesRequested: 0,
+		commented: 1,
+		reviewComments: 1,
+		aiSummary: "",
+		highlights: [],
+		prHighlights: [],
+		commitHighlights: [],
+		taskTracker: {
+			status: "disabled",
+			tasks: [],
+			message: "Integration disabled.",
+		},
+		...overrides,
+	};
 }
 
 describe("AIService — constructor / enabled", () => {
@@ -154,11 +190,7 @@ describe("AIService.generateTeamHighlight", () => {
 	it("throws when disabled", async () => {
 		const service = new AIService({});
 		await expect(
-			service.generateTeamHighlight({
-				organization: "acme",
-				memberSummaries: [],
-				windowHuman: "Feb 1-8",
-			}),
+			service.generateTeamHighlight(makeTeamContext() as any),
 		).rejects.toThrow("AI service is required for team highlights");
 	});
 
@@ -169,11 +201,9 @@ describe("AIService.generateTeamHighlight", () => {
 		const service = new AIService({ apiKey: "sk-test" });
 		spyOn(service as any, "createClient").mockReturnValue(mockReturnValue);
 
-		const result = await service.generateTeamHighlight({
-			organization: "acme",
-			memberSummaries: [],
-			windowHuman: "Feb 1-8",
-		});
+		const result = await service.generateTeamHighlight(
+			makeTeamContext() as any,
+		);
 
 		expect(result).toBe("The team shipped 3 features this week.");
 		expect(createFn).toHaveBeenCalled();
@@ -185,11 +215,7 @@ describe("AIService.generateTeamHighlight", () => {
 		spyOn(service as any, "createClient").mockReturnValue(mockReturnValue);
 
 		await expect(
-			service.generateTeamHighlight({
-				organization: "acme",
-				memberSummaries: [],
-				windowHuman: "Feb 1-8",
-			}),
+			service.generateTeamHighlight(makeTeamContext() as any),
 		).rejects.toThrow("Empty AI response for team highlight");
 	});
 
@@ -204,11 +230,7 @@ describe("AIService.generateTeamHighlight", () => {
 		});
 
 		await expect(
-			service.generateTeamHighlight({
-				organization: "acme",
-				memberSummaries: [],
-				windowHuman: "Feb 1-8",
-			}),
+			service.generateTeamHighlight(makeTeamContext() as any),
 		).rejects.toThrow(/invalid API key/);
 	});
 
@@ -218,12 +240,11 @@ describe("AIService.generateTeamHighlight", () => {
 		spyOn(service as any, "createClient").mockReturnValue(mockReturnValue);
 
 		const statusMessages: string[] = [];
-		await service.generateTeamHighlight({
-			organization: "acme",
-			memberSummaries: [],
-			windowHuman: "Feb 1-8",
-			onStatus: (msg) => statusMessages.push(msg),
-		});
+		await service.generateTeamHighlight(
+			makeTeamContext({
+				onStatus: (msg: string) => statusMessages.push(msg),
+			}) as any,
+		);
 
 		expect(statusMessages.length).toBeGreaterThanOrEqual(2);
 		expect(statusMessages[0]).toContain("Sending");
@@ -236,9 +257,9 @@ describe("AIService.generateMemberHighlights", () => {
 		const service = new AIService({});
 		await expect(
 			service.generateMemberHighlights({
-				members: [{ login: "alice", displayName: "Alice", activityBlock: "" }],
+				members: [makeMemberMetrics()],
 				windowHuman: "Feb 1-8",
-			}),
+			} as any),
 		).rejects.toThrow("AI service is required for member highlights");
 	});
 
@@ -263,11 +284,11 @@ describe("AIService.generateMemberHighlights", () => {
 
 		const result = await service.generateMemberHighlights({
 			members: [
-				{ login: "alice", displayName: "Alice", activityBlock: "..." },
-				{ login: "bob", displayName: "Bob", activityBlock: "..." },
+				makeMemberMetrics(),
+				makeMemberMetrics({ login: "bob", displayName: "Bob" }),
 			],
 			windowHuman: "Feb 1-8",
-		});
+		} as any);
 
 		expect(result.get("alice")).toBe("Alice shipped the dashboard feature.");
 		expect(result.get("bob")).toBe("Bob reviewed 12 pull requests.");
@@ -281,9 +302,9 @@ describe("AIService.generateMemberHighlights", () => {
 		spyOn(service as any, "createClient").mockReturnValue(mockReturnValue);
 
 		const result = await service.generateMemberHighlights({
-			members: [{ login: "alice", displayName: "Alice", activityBlock: "..." }],
+			members: [makeMemberMetrics()],
 			windowHuman: "Feb 1-8",
-		});
+		} as any);
 
 		expect(result.get("alice")).toBe("Great work on the API.");
 	});
@@ -296,9 +317,9 @@ describe("AIService.generateMemberHighlights", () => {
 		spyOn(service as any, "createClient").mockReturnValue(mockReturnValue);
 
 		const result = await service.generateMemberHighlights({
-			members: [{ login: "alice", displayName: "Alice", activityBlock: "..." }],
+			members: [makeMemberMetrics()],
 			windowHuman: "Feb 1-8",
-		});
+		} as any);
 
 		expect(result.get("alice")).toBe("Fixed the bug.");
 	});
@@ -310,11 +331,9 @@ describe("AIService.generateMemberHighlights", () => {
 
 		await expect(
 			service.generateMemberHighlights({
-				members: [
-					{ login: "alice", displayName: "Alice", activityBlock: "..." },
-				],
+				members: [makeMemberMetrics()],
 				windowHuman: "Feb 1-8",
-			}),
+			} as any),
 		).rejects.toThrow("Empty AI response for member highlights");
 	});
 
@@ -325,11 +344,9 @@ describe("AIService.generateMemberHighlights", () => {
 
 		await expect(
 			service.generateMemberHighlights({
-				members: [
-					{ login: "alice", displayName: "Alice", activityBlock: "..." },
-				],
+				members: [makeMemberMetrics()],
 				windowHuman: "Feb 1-8",
-			}),
+			} as any),
 		).rejects.toThrow("Invalid AI response for member highlights");
 	});
 
@@ -340,11 +357,9 @@ describe("AIService.generateMemberHighlights", () => {
 
 		await expect(
 			service.generateMemberHighlights({
-				members: [
-					{ login: "alice", displayName: "Alice", activityBlock: "..." },
-				],
+				members: [makeMemberMetrics()],
 				windowHuman: "Feb 1-8",
-			}),
+			} as any),
 		).rejects.toThrow("Invalid AI response for member highlights");
 	});
 
@@ -355,11 +370,9 @@ describe("AIService.generateMemberHighlights", () => {
 
 		await expect(
 			service.generateMemberHighlights({
-				members: [
-					{ login: "alice", displayName: "Alice", activityBlock: "..." },
-				],
+				members: [makeMemberMetrics()],
 				windowHuman: "Feb 1-8",
-			}),
+			} as any),
 		).rejects.toThrow("Missing AI response for member highlight: Alice");
 	});
 
@@ -370,11 +383,9 @@ describe("AIService.generateMemberHighlights", () => {
 
 		await expect(
 			service.generateMemberHighlights({
-				members: [
-					{ login: "alice", displayName: "Alice", activityBlock: "..." },
-				],
+				members: [makeMemberMetrics()],
 				windowHuman: "Feb 1-8",
-			}),
+			} as any),
 		).rejects.toThrow("Missing AI response for member highlight: Alice");
 	});
 });
@@ -389,9 +400,9 @@ describe("AIService.generateMemberHighlight (single)", () => {
 		spyOn(service as any, "createClient").mockReturnValue(mockReturnValue);
 
 		const result = await service.generateMemberHighlight({
-			member: { login: "alice", displayName: "Alice", activityBlock: "..." },
+			member: makeMemberMetrics(),
 			windowHuman: "Feb 1-8",
-		});
+		} as any);
 
 		expect(result).toBe("Alice shipped a feature.");
 	});
@@ -540,6 +551,11 @@ describe("AIService.generateIndividualSummaries", () => {
 
 describe("AIService.generateFinalReport", () => {
 	it("returns rendered markdown", async () => {
+		const reportRenderer = await import("../../../src/lib/report-renderer.js");
+		spyOn(reportRenderer, "renderReport").mockReturnValue(
+			"## Report\n### Alice (@alice)\nSummary here",
+		);
+
 		const service = new AIService({ apiKey: "sk-test" });
 		const result = await service.generateFinalReport({
 			report: {
@@ -577,10 +593,10 @@ describe("AIService.generateFinalReport", () => {
 	});
 
 	it("throws when contributor section is missing from rendered report", async () => {
-		const { renderReport } = await import(
-			"../../../src/lib/report-renderer.js"
+		const reportRenderer = await import("../../../src/lib/report-renderer.js");
+		spyOn(reportRenderer, "renderReport").mockReturnValue(
+			"## Report\nNo individual sections",
 		);
-		mocked(renderReport).mockReturnValue("## Report\nNo individual sections");
 
 		const service = new AIService({ apiKey: "sk-test" });
 		await expect(
@@ -619,10 +635,10 @@ describe("AIService.generateFinalReport", () => {
 	});
 
 	it("skips contributor check when individualContributions is false", async () => {
-		const { renderReport } = await import(
-			"../../../src/lib/report-renderer.js"
+		const reportRenderer = await import("../../../src/lib/report-renderer.js");
+		spyOn(reportRenderer, "renderReport").mockReturnValue(
+			"## Report\nNo contributors listed",
 		);
-		mocked(renderReport).mockReturnValue("## Report\nNo contributors listed");
 
 		const service = new AIService({ apiKey: "sk-test" });
 		const result = await service.generateFinalReport({

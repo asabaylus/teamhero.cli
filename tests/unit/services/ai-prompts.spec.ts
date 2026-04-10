@@ -15,7 +15,8 @@ import type {
 	ProjectTask,
 } from "../../../src/models/visible-wins.js";
 import type { RoadmapSynthesisContext } from "../../../src/services/ai-prompts.js";
-import {
+
+const {
 	buildDiscrepancyAnalysisPrompt,
 	buildFinalReportPrompt,
 	buildIndividualSummariesPrompt,
@@ -24,7 +25,12 @@ import {
 	buildTeamPrompt,
 	buildVisibleWinsExtractionPrompt,
 	DISCREPANCY_ANALYSIS_SCHEMA,
-} from "../../../src/services/ai-prompts.js";
+} = await import(
+	new URL(
+		"../../../src/services/ai-prompts.js?ai-prompts-spec",
+		import.meta.url,
+	).href
+);
 
 // ---------------------------------------------------------------------------
 // Shared fixtures

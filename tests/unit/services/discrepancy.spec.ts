@@ -14,12 +14,18 @@ import type {
 	ReportMemberMetrics,
 	ReportRenderInput,
 } from "../../../src/lib/report-renderer.js";
-import {
+
+const {
 	buildSectionAuditContexts,
 	mapAuditResultToDiscrepancyReport,
 	normalizeRule,
 	verifyMetricCounts,
-} from "../../../src/services/contributor-discrepancy.service.js";
+} = await import(
+	new URL(
+		"../../../src/services/contributor-discrepancy.service.ts",
+		import.meta.url,
+	).href
+);
 
 // ---------------------------------------------------------------------------
 // Test helpers

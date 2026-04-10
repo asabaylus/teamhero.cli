@@ -213,7 +213,7 @@ describe("pollForToken", () => {
 
 		globalThis.fetch = mock(async () => {
 			callCount++;
-			callTimestamps.push(Date.now());
+			callTimestamps.push(performance.now());
 			if (callCount === 1) {
 				return new Response(JSON.stringify({ error: "slow_down" }), {
 					status: 200,
@@ -237,7 +237,8 @@ describe("pollForToken", () => {
 		expect(callCount).toBe(2);
 
 		// Verify the second call waited noticeably longer than the first
-		// slow_down adds 5000ms; allow generous slack for timer imprecision
+		// slow_down adds 5000ms; use a monotonic clock so concurrent tests that
+		// change Date.now() with setSystemTime() do not skew this assertion.
 		const gap = callTimestamps[1] - callTimestamps[0];
 		expect(gap).toBeGreaterThanOrEqual(4500);
 	}, 15_000); // 15s timeout for the 5s slow_down wait

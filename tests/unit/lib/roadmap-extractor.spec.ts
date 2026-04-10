@@ -1,5 +1,4 @@
-import { afterAll, describe, expect, it, mock } from "bun:test";
-import * as consolaMod from "consola";
+import { describe, expect, it } from "bun:test";
 import type { RoadmapSubtaskInfo } from "../../../src/core/types.js";
 import type { BoardConfig } from "../../../src/lib/boards-config-loader.js";
 import {
@@ -10,15 +9,6 @@ import {
 	mapStatusFromCustomFields,
 } from "../../../src/lib/roadmap-extractor.js";
 import type { ProjectTask } from "../../../src/models/visible-wins.js";
-
-mock.module("consola", () => ({
-	...consolaMod,
-	default: { warn: mock() },
-}));
-
-afterAll(() => {
-	mock.restore();
-});
 
 function makeProject(
 	gid: string,

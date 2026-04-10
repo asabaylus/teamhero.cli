@@ -1,7 +1,13 @@
 import { describe, expect, it, mock, spyOn } from "bun:test";
 import type { TechnicalFoundationalWinsResult } from "../../../src/core/types.js";
-import { AIService } from "../../../src/services/ai.service.js";
 import type { TechnicalWinsContext } from "../../../src/services/ai-prompts.js";
+
+const { AIService } = await import(
+	new URL(
+		"../../../src/services/ai.service.js?ai-service-technical-wins-spec",
+		import.meta.url,
+	).href
+);
 
 function makeContext(
 	overrides: Partial<TechnicalWinsContext> = {},

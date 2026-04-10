@@ -1,7 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import type { ReportRenderInput } from "../../../src/lib/report-renderer.js";
-import { renderReport } from "../../../src/lib/report-renderer.js";
 import type { ProjectAccomplishment } from "../../../src/models/visible-wins.js";
+
+const { renderReport } = await import(
+	new URL("../../../src/lib/report-renderer.ts", import.meta.url).href
+);
 
 function makeBaseInput(): ReportRenderInput {
 	return {

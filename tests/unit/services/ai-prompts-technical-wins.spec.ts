@@ -1,9 +1,12 @@
 import { describe, expect, it } from "bun:test";
-import {
-	buildTechnicalWinsPrompt,
-	TECHNICAL_WINS_SCHEMA,
-	type TechnicalWinsContext,
-} from "../../../src/services/ai-prompts.js";
+import type { TechnicalWinsContext } from "../../../src/services/ai-prompts.js";
+
+const { buildTechnicalWinsPrompt, TECHNICAL_WINS_SCHEMA } = await import(
+	new URL(
+		"../../../src/services/ai-prompts.js?ai-prompts-technical-wins-spec",
+		import.meta.url,
+	).href
+);
 
 // ---------------------------------------------------------------------------
 // TECHNICAL_WINS_SCHEMA
