@@ -11,6 +11,7 @@ import {
 } from "../lib/report-renderer.js";
 import type { ContributorSummaryPayload } from "../models/individual-summary.js";
 import type { ProjectAccomplishment } from "../models/visible-wins.js";
+import type { WeeklyWinsResult } from "../core/types.js";
 import {
 	buildDiscrepancyAnalysisPrompt,
 	buildIndividualSummariesPrompt,
@@ -18,6 +19,7 @@ import {
 	buildRoadmapSynthesisPrompt,
 	buildTeamPrompt,
 	buildVisibleWinsExtractionPrompt,
+	buildWeeklyWinsPrompt,
 	DISCREPANCY_ANALYSIS_SCHEMA,
 	type FinalReportContext,
 	type IndividualSummariesContext,
@@ -28,6 +30,8 @@ import {
 	type TeamHighlightContext,
 	VISIBLE_WINS_SCHEMA,
 	type VisibleWinsExtractionContext,
+	WEEKLY_WINS_SCHEMA,
+	type WeeklyWinsPromptContext,
 } from "./ai-prompts.js";
 import type { SummarizerDriverResult } from "./individual-summarizer.service.js";
 
@@ -1175,6 +1179,70 @@ export class AIService {
 		} catch (error) {
 			this.rethrowAsConnectionOrAuthError(
 				"Failed to synthesize roadmap table",
+				error,
+			);
+		}
+	}
+
+	async generateWeeklyWins(
+		context: WeeklyWinsPromptContext,
+	): Promise<WeeklyWinsResult> {
+		if (!this.enabled) {
+			throw new Error(
+				"AI service is required for weekly wins generation. Please configure OPENAI_API_KEY.",
+			);
+		}
+
+		try {
+			this.logEnabledNotice();
+			const client = this.createClient();
+			const model = this.visibleWinsModel;
+			const prompt = buildWeeklyWinsPrompt(context);
+
+			const batchHeader = [
+				`[${new Date().toISOString()}] weekly-wins`,
+				`model=${model}`,
+				`promptLength=${prompt.length}`,
+				`estimatedTokens=${Math.ceil(prompt.length / 3)}`,
+			].join(" | ");
+			await appendBatchLog(`${batchHeader}\n${prompt}\n\n`);
+
+			if (this.emitDebugLogs) {
+				this.logger.debug(
+					`Sending weekly wins request (model=${model}, promptLength=${prompt.length})`,
+				);
+			}
+
+			context.onStatus?.("Generating weekly wins via AI...");
+
+			const requestOptions: Record<string, unknown> = {
+				model,
+				input: prompt,
+				text: { format: WEEKLY_WINS_SCHEMA },
+			};
+
+			if (this.enableFlexProcessing) {
+				requestOptions.service_tier = "flex";
+			}
+
+			const response = await client.responses.create(
+				requestOptions as Parameters<typeof client.responses.create>[0],
+			);
+			const outputText = (response as Record<string, unknown>).output_text as
+				| string
+				| undefined;
+
+			if (!outputText) {
+				throw new Error("Empty AI response for weekly wins generation");
+			}
+
+			context.onStatus?.("Processing weekly wins response...");
+
+			const parsed = JSON.parse(outputText) as WeeklyWinsResult;
+			return parsed;
+		} catch (error) {
+			this.rethrowAsConnectionOrAuthError(
+				"Failed to generate weekly wins",
 				error,
 			);
 		}

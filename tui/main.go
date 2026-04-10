@@ -49,7 +49,7 @@ Flags:
   --team <list>           Comma-separated contributor identifiers
   --members <list>        Comma-separated member logins
   --sources <list>        Data sources to fetch: git,asana (omit for all)
-  --sections <list>       Report sections to render: loc,individual,visible-wins,discrepancy-log (omit for all)
+  --sections <list>       Report sections to render: loc,individual,visible-wins,discrepancy-log,weekly-wins (omit for all)
                           Note: "loc" (lines of code) is a section — GitHub is fetched automatically when included
   --since <date>          Start date, YYYY-MM-DD (default: 7 days ago)
   --until <date>          End date, YYYY-MM-DD (default: today)

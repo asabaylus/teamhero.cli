@@ -400,7 +400,36 @@ export type CacheSourceType =
 	| "loc"
 	| "member-highlights"
 	| "team-highlight"
-	| "audit";
+	| "audit"
+	| "weekly-wins";
+
+// ---------------------------------------------------------------------------
+// Weekly Wins section configuration
+// ---------------------------------------------------------------------------
+
+export type WeeklyWinsVerbosity = "low" | "medium" | "high";
+
+export interface WeeklyWinsConfig {
+	/** Explicit subheading names, or "auto" to let the AI infer groupings. */
+	subheadings: string[] | "auto";
+	/** Controls bullet detail level. */
+	verbosity: WeeklyWinsVerbosity;
+	/** Short description of the audience (e.g. "CTO and executive leadership"). */
+	audience: string;
+	/** Whether this section is enabled (default true). */
+	enabled: boolean;
+}
+
+/** A single grouped category of weekly wins. */
+export interface WeeklyWinsCategory {
+	category: string;
+	wins: string[];
+}
+
+/** Complete output from the weekly wins generator. */
+export interface WeeklyWinsResult {
+	categories: WeeklyWinsCategory[];
+}
 
 export interface CacheOptions {
 	/** When true, bypass cache reads entirely (force re-fetch). */

@@ -5,6 +5,8 @@ import type {
 	PeriodDeltas,
 	ReportRenderer,
 	RoadmapEntry,
+	WeeklyWinsConfig,
+	WeeklyWinsResult,
 } from "../core/types.js";
 import type { ContributorSummaryRecord } from "../models/individual-summary.js";
 import type {
@@ -106,6 +108,10 @@ export interface ReportRenderInput {
 	roadmapTitle?: string;
 	/** AI-generated narrative summarizing period-over-period changes. */
 	deltaNarrative?: string;
+	/** Weekly wins section output (grouped technical/foundational wins). */
+	weeklyWins?: WeeklyWinsResult;
+	/** Configuration for the weekly wins section. */
+	weeklyWinsConfig?: WeeklyWinsConfig;
 }
 
 export interface ReportSections {
@@ -114,6 +120,7 @@ export interface ReportSections {
 	visibleWins?: boolean;
 	individualContributions?: boolean;
 	discrepancyLog?: boolean;
+	weeklyWins?: boolean;
 }
 
 function sortMemberMetrics(
@@ -145,6 +152,16 @@ export function renderReport(input: ReportRenderInput): string {
 				input.visibleWinsProjects ?? [],
 			),
 		);
+		parts.push("");
+	}
+
+	// Weekly Wins section — placed after Delivered Outcomes
+	if (
+		input.sections.weeklyWins &&
+		input.weeklyWins &&
+		input.weeklyWins.categories.length > 0
+	) {
+		parts.push(renderWeeklyWinsSection(input.weeklyWins));
 		parts.push("");
 	}
 
@@ -623,6 +640,25 @@ export function renderVisibleWinsSection(
 	}
 
 	return parts.join("\n");
+}
+
+/**
+ * Render the Weekly Wins section using `* Category` / `** Win` format.
+ */
+export function renderWeeklyWinsSection(result: WeeklyWinsResult): string {
+	const parts: string[] = [];
+	parts.push("## **This Week's Technical / Foundational Wins**");
+	parts.push("");
+
+	for (const category of result.categories) {
+		parts.push(`* ${category.category}`);
+		for (const win of category.wins) {
+			parts.push(`** ${win}`);
+		}
+		parts.push("");
+	}
+
+	return parts.join("\n").trimEnd();
 }
 
 const ROADMAP_STATUS_EMOJI: Record<string, string> = {

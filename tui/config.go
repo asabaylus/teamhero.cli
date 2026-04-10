@@ -99,6 +99,7 @@ type ReportSectionsInner struct {
 	IndividualContributions bool `json:"individualContributions"`
 	DiscrepancyLog          bool `json:"discrepancyLog,omitempty"`
 	Loc                     bool `json:"loc,omitempty"`
+	WeeklyWins              bool `json:"weeklyWins,omitempty"`
 }
 
 // ReportCommandInput is the JSON payload sent to the TypeScript service runner via stdin.

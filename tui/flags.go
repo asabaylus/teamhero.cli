@@ -18,7 +18,7 @@ var (
 	flagMembers         = flag.String("members", "", "Comma-separated member logins")
 	flagRepos           = flag.String("repos", "", "Comma-separated repository names")
 	flagSources         = flag.String("sources", "", "Comma-separated data sources to fetch: git,asana (omit for all)")
-	flagSections        = flag.String("sections", "", "Comma-separated report sections to render: loc,individual,visible-wins,discrepancy-log (omit for all)")
+	flagSections        = flag.String("sections", "", "Comma-separated report sections to render: loc,individual,visible-wins,discrepancy-log,weekly-wins (omit for all)")
 	flagSince           = flag.String("since", "", "Start date (YYYY-MM-DD)")
 	flagUntil           = flag.String("until", "", "End date (YYYY-MM-DD)")
 	flagOutput          = flag.String("output", "", "Output file path (default: timestamped in current directory)")
@@ -138,6 +138,7 @@ func applyFlagsTo(cfg *ReportConfig, wasSet func(string) bool) {
 		cfg.Sections.ReportSections.VisibleWins = containsIgnoreCase(sections, "visible-wins") || containsIgnoreCase(sections, "visibleWins")
 		cfg.Sections.ReportSections.DiscrepancyLog = containsIgnoreCase(sections, "discrepancy-log") || containsIgnoreCase(sections, "discrepancyLog") || containsIgnoreCase(sections, "discrepancy")
 		cfg.Sections.ReportSections.Loc = containsIgnoreCase(sections, "loc")
+		cfg.Sections.ReportSections.WeeklyWins = containsIgnoreCase(sections, "weekly-wins") || containsIgnoreCase(sections, "weeklyWins")
 	}
 }
 

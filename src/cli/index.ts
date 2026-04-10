@@ -19,6 +19,7 @@ export interface ReportSectionsSelection {
 		individualContributions: boolean;
 		discrepancyLog?: boolean;
 		loc?: boolean;
+		weeklyWins?: boolean;
 	};
 }
 

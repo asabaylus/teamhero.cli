@@ -3,6 +3,7 @@ import type {
 	RoadmapSubtaskInfo,
 	SectionAuditContext,
 	VisibleWinsExtractionContext,
+	WeeklyWinsConfig,
 } from "../core/types.js";
 import type {
 	ReportMemberMetrics,
@@ -849,6 +850,92 @@ function buildConfiguredRoadmapPrompt(
 		...(noteBlocks.length > 0 ? noteBlocks : ["No meeting notes available."]),
 		"",
 		"Return structured JSON matching the provided schema.",
+	].join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// Weekly Wins section
+// ---------------------------------------------------------------------------
+
+export const WEEKLY_WINS_SCHEMA = {
+	type: "json_schema" as const,
+	name: "weekly_wins",
+	strict: true,
+	schema: {
+		type: "object" as const,
+		properties: {
+			categories: {
+				type: "array" as const,
+				items: {
+					type: "object" as const,
+					properties: {
+						category: { type: "string" as const },
+						wins: {
+							type: "array" as const,
+							items: { type: "string" as const },
+						},
+					},
+					required: ["category", "wins"] as const,
+					additionalProperties: false as const,
+				},
+			},
+		},
+		required: ["categories"] as const,
+		additionalProperties: false as const,
+	},
+} as const;
+
+export interface WeeklyWinsPromptContext {
+	currentWeekData: string;
+	previousReport?: string;
+	config: WeeklyWinsConfig;
+	onStatus?: (message: string) => void;
+}
+
+export function buildWeeklyWinsPrompt(context: WeeklyWinsPromptContext): string {
+	const { config, currentWeekData, previousReport } = context;
+
+	const verbosityGuide: Record<string, string> = {
+		low: "Terse, outcome-only. No explanation or context.",
+		medium: "Include brief context (one short clause per bullet).",
+		high: "Include impact or rationale (one short sentence max per bullet).",
+	};
+
+	const subheadingsInstruction =
+		config.subheadings === "auto"
+			? "Infer 2-5 logical groupings based on themes (e.g. AI, DevOps, IT, Product, Infrastructure). Group for readability, not strict taxonomy."
+			: `Use exactly these subheadings in this order: ${(config.subheadings as string[]).map((s) => `"${s}"`).join(", ")}. If a subheading has no wins this week, include the category with a single bullet: "No material changes this week".`;
+
+	const deduplicationSection = previousReport
+		? [
+				"",
+				"Deduplication rules:",
+				"- Do NOT repeat wins already present in the previous report below.",
+				"- If a win appears in both weeks, include it ONLY if there is meaningful progress or change.",
+				"- Prefer delta-oriented phrasing when overlap exists (e.g. 'Expanded X from 50 to 130 users' instead of 'Deployed X').",
+				"",
+				"Previous report (for deduplication only):",
+				previousReport,
+			]
+		: [];
+
+	return [
+		"You are generating a 'This Week's Technical / Foundational Wins' section for an engineering status report.",
+		"",
+		"Requirements:",
+		`1. Audience: ${config.audience}. Adapt tone accordingly. Do NOT mention the audience explicitly.`,
+		`2. Verbosity: ${config.verbosity}. ${verbosityGuide[config.verbosity]}`,
+		`3. Grouping: ${subheadingsInstruction}`,
+		"4. Avoid filler language. Prefer concrete actions over vague statements.",
+		"5. Use parallel phrasing across bullets. No duplication across categories.",
+		"6. Do not reference internal system details (TUI, pipelines, agents, etc.).",
+		"7. Each category must have at least one win bullet.",
+		...deduplicationSection,
+		"",
+		"Current week data:",
+		currentWeekData,
+		"",
+		"Return structured JSON matching the provided schema. Each category object has a 'category' string and a 'wins' array of strings.",
 	].join("\n");
 }
 

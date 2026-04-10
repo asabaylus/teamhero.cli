@@ -22,6 +22,8 @@ import type {
 	SectionDiscrepancy,
 	TaskTrackerProvider,
 	VisibleWinsProvider,
+	WeeklyWinsConfig,
+	WeeklyWinsResult,
 } from "../core/types.js";
 import {
 	formatDateUTC,
@@ -48,6 +50,11 @@ import { appendRunLogEntry } from "../lib/run-log.js";
 import { appendUnifiedLog } from "../lib/unified-log.js";
 import { enrichMemberDisplayNames } from "../lib/user-map.js";
 import { isVisibleWinsEnabled } from "../lib/visible-wins-config.js";
+import {
+	hashWeeklyWinsInput,
+	normalizeWeeklyWinsResult,
+	resolveWeeklyWinsConfig,
+} from "./weekly-wins.service.js";
 import type {
 	CollectLocInput,
 	ContributorLocMetrics,
@@ -1081,6 +1088,123 @@ export class ReportService {
 				}
 			}
 
+			// Weekly Wins section — runs after visible wins + member highlights
+			// so it can use accomplishments and individual summaries as input data.
+			let weeklyWinsResult: WeeklyWinsResult | undefined;
+			const includeWeeklyWins =
+				input.sections.reportSections.weeklyWins === true;
+			if (includeWeeklyWins) {
+				const wwStep = progress.start("Generating weekly wins section");
+				try {
+					const wwConfig = resolveWeeklyWinsConfig();
+
+					// Build current week data from available sources
+					const currentWeekParts: string[] = [];
+					if (visibleWinsAccomplishments) {
+						for (const acc of visibleWinsAccomplishments) {
+							if (acc.bullets.length > 0) {
+								currentWeekParts.push(`Project: ${acc.projectName}`);
+								for (const b of acc.bullets) {
+									currentWeekParts.push(`- ${b.text}`);
+								}
+							}
+						}
+					}
+					if (memberMetrics.length > 0) {
+						for (const member of memberMetrics) {
+							if (member.aiSummary?.trim()) {
+								currentWeekParts.push(
+									`${member.displayName}: ${member.aiSummary.trim()}`,
+								);
+							}
+						}
+					}
+					if (teamHighlight) {
+						currentWeekParts.push(`Team Summary: ${teamHighlight}`);
+					}
+
+					const currentWeekData = currentWeekParts.join("\n");
+					if (currentWeekData.trim().length === 0) {
+						wwStep.fail("Weekly wins skipped — no input data available");
+					} else {
+						// Content-addressed cache
+						const wwCacheOpts = this.deps.cacheOptions ?? {};
+						const wwSourceMatch =
+							wwCacheOpts.flush ||
+							wwCacheOpts.flushSources?.includes("weekly-wins");
+						const shouldFlushWw =
+							wwSourceMatch &&
+							(!wwCacheOpts.flushSince ||
+								window.startISO >= wwCacheOpts.flushSince);
+						const wwCache = new FileSystemCacheStore<WeeklyWinsResult>({
+							namespace: "weekly-wins",
+							defaultTtlSeconds: 0,
+						});
+						const isTestMode = !!getEnv("TEAMHERO_TEST_MODE");
+						const wwHash = hashWeeklyWinsInput(
+							currentWeekData,
+							undefined,
+							wwConfig,
+						);
+
+						let cached: WeeklyWinsResult | null = null;
+						if (!isTestMode && !shouldFlushWw) {
+							cached = await wwCache.get(wwHash, { permanent: true });
+							if (cached) {
+								await appendUnifiedLog({
+									timestamp: new Date().toISOString(),
+									runId: "",
+									category: "cache",
+									event: "cache-hit",
+									namespace: "weekly-wins",
+									inputHash: wwHash,
+									org: input.org,
+								});
+							}
+						}
+
+						if (cached) {
+							weeklyWinsResult = normalizeWeeklyWinsResult(cached);
+						} else {
+							const rawResult = await this.deps.ai.generateWeeklyWins({
+								currentWeekData,
+								config: wwConfig,
+								onStatus: (msg) => wwStep.update(msg),
+							});
+							weeklyWinsResult = normalizeWeeklyWinsResult(rawResult);
+							if (!isTestMode) {
+								await wwCache.set(wwHash, weeklyWinsResult);
+								await appendUnifiedLog({
+									timestamp: new Date().toISOString(),
+									runId: "",
+									category: "cache",
+									event: shouldFlushWw
+										? "cache-flush-and-set"
+										: "cache-miss-and-set",
+									namespace: "weekly-wins",
+									inputHash: wwHash,
+									org: input.org,
+								});
+							}
+						}
+
+						const catCount = weeklyWinsResult.categories.length;
+						const winCount = weeklyWinsResult.categories.reduce(
+							(sum, c) => sum + c.wins.length,
+							0,
+						);
+						wwStep.succeed(
+							`Weekly wins ready (${catCount} categories, ${winCount} wins)`,
+						);
+					}
+				} catch (error) {
+					const message =
+						error instanceof Error ? error.message : String(error);
+					this.logger.error(`Weekly wins pipeline failed: ${message}`);
+					wwStep.fail("Weekly wins section skipped due to error");
+				}
+			}
+
 			const archivedNote = this.buildArchivedNote(
 				repositories,
 				scopeOptions.includeArchived,
@@ -1119,6 +1243,7 @@ export class ReportService {
 					individualContributions:
 						input.sections.reportSections.individualContributions,
 					discrepancyLog: input.sections.reportSections.discrepancyLog,
+					weeklyWins: input.sections.reportSections.weeklyWins,
 				},
 				warnings: metricsResult?.warnings,
 				errors: [...(metricsResult?.errors ?? []), ...visibleWinsErrors],
@@ -1129,6 +1254,7 @@ export class ReportService {
 				discrepancyReport,
 				periodDeltas,
 				deltaNarrative,
+				weeklyWins: weeklyWinsResult,
 			} satisfies ReportRenderInput;
 
 			// AI audit — runs when the user selects the Discrepancy Log section.

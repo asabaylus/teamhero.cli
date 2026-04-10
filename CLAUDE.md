@@ -23,7 +23,7 @@ teamhero report --headless --foreground --flush-cache loc  # Force re-fetch LOC
 
 # Useful flags
 #   --sources git,asana            Limit DATA SOURCES (only "git" and "asana" are valid)
-#   --sections loc,individual,visible-wins,discrepancy-log  Limit REPORT SECTIONS
+#   --sections loc,individual,visible-wins,discrepancy-log,weekly-wins  Limit REPORT SECTIONS
 #   --flush-cache all|loc|metrics  Invalidate cache before run
 #   --since/--until YYYY-MM-DD    Date range
 #   --foreground                   Direct I/O (required for agents — no event piping)

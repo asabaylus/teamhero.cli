@@ -528,6 +528,37 @@ func TestApplyFlagsTo_Sections(t *testing.T) {
 	}
 }
 
+func TestApplyFlagsTo_Sections_WeeklyWins(t *testing.T) {
+	oldSections := *flagSections
+	defer func() { *flagSections = oldSections }()
+	*flagSections = "weekly-wins"
+
+	cfg := DefaultConfig()
+	wasSet := func(name string) bool { return name == "sections" }
+	applyFlagsTo(&cfg, wasSet)
+
+	if !cfg.Sections.ReportSections.WeeklyWins {
+		t.Error("applyFlagsTo sections: WeeklyWins should be true")
+	}
+	if cfg.Sections.ReportSections.IndividualContributions {
+		t.Error("applyFlagsTo sections: IndividualContributions should be false when only weekly-wins specified")
+	}
+}
+
+func TestApplyFlagsTo_Sections_WeeklyWinsCamelCase(t *testing.T) {
+	oldSections := *flagSections
+	defer func() { *flagSections = oldSections }()
+	*flagSections = "weeklyWins"
+
+	cfg := DefaultConfig()
+	wasSet := func(name string) bool { return name == "sections" }
+	applyFlagsTo(&cfg, wasSet)
+
+	if !cfg.Sections.ReportSections.WeeklyWins {
+		t.Error("applyFlagsTo sections: WeeklyWins should be true for camelCase alias")
+	}
+}
+
 func TestApplyFlagsTo_NoFlagsSet_NoCfgChanges(t *testing.T) {
 	cfg := DefaultConfig()
 	original := cfg
