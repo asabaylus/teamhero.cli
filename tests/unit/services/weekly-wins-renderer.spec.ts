@@ -95,7 +95,9 @@ describe("renderWeeklyWinsSection", () => {
 		};
 
 		const output = renderWeeklyWinsSection(result);
-		expect(output).toContain("## **This Week's Technical / Foundational Wins**");
+		expect(output).toContain(
+			"## **This Week's Technical / Foundational Wins**",
+		);
 		expect(output).toContain("* AI / Engineering");
 		expect(output).toContain("** Win A");
 		expect(output).toContain("** Win B");
@@ -121,7 +123,9 @@ describe("renderReport with weeklyWins", () => {
 		});
 
 		const output = renderReport(input);
-		expect(output).toContain("## **This Week's Technical / Foundational Wins**");
+		expect(output).toContain(
+			"## **This Week's Technical / Foundational Wins**",
+		);
 		expect(output).toContain("* Infrastructure");
 		expect(output).toContain("** Migrated to new CDN");
 	});
@@ -163,9 +167,7 @@ describe("renderReport with weeklyWins", () => {
 
 	it("places weekly wins after visible wins and before metrics", () => {
 		const weeklyWins: WeeklyWinsResult = {
-			categories: [
-				{ category: "Engineering", wins: ["Shipped feature X"] },
-			],
+			categories: [{ category: "Engineering", wins: ["Shipped feature X"] }],
 		};
 		const input = makeInput({
 			sections: { git: true, taskTracker: true, weeklyWins: true },
@@ -173,7 +175,9 @@ describe("renderReport with weeklyWins", () => {
 		});
 
 		const output = renderReport(input);
-		const weeklyWinsIdx = output.indexOf("This Week's Technical / Foundational Wins");
+		const weeklyWinsIdx = output.indexOf(
+			"This Week's Technical / Foundational Wins",
+		);
 		const metricsIdx = output.indexOf("Weekly Engineering Summary");
 		expect(weeklyWinsIdx).toBeGreaterThan(-1);
 		expect(metricsIdx).toBeGreaterThan(-1);

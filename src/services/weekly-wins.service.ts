@@ -60,9 +60,7 @@ export function hashWeeklyWinsInput(
  * Render weekly wins result into markdown format.
  * Returns the section as a string using `* Category` / `** Win` format.
  */
-export function renderWeeklyWinsMarkdown(
-	result: WeeklyWinsResult,
-): string {
+export function renderWeeklyWinsMarkdown(result: WeeklyWinsResult): string {
 	const parts: string[] = [];
 	parts.push("## This Week's Technical / Foundational Wins");
 	parts.push("");

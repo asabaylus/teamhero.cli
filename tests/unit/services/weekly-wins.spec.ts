@@ -125,9 +125,7 @@ describe("normalizeWeeklyWinsResult", () => {
 
 	it("filters empty win strings", () => {
 		const raw: WeeklyWinsResult = {
-			categories: [
-				{ category: "IT", wins: ["", "  ", "Real win"] },
-			],
+			categories: [{ category: "IT", wins: ["", "  ", "Real win"] }],
 		};
 		const result = normalizeWeeklyWinsResult(raw);
 		expect(result.categories[0].wins).toEqual(["Real win"]);
@@ -135,9 +133,7 @@ describe("normalizeWeeklyWinsResult", () => {
 
 	it("trims whitespace from wins and category names", () => {
 		const raw: WeeklyWinsResult = {
-			categories: [
-				{ category: "  AI / Engineering  ", wins: ["  Win one  "] },
-			],
+			categories: [{ category: "  AI / Engineering  ", wins: ["  Win one  "] }],
 		};
 		const result = normalizeWeeklyWinsResult(raw);
 		expect(result.categories[0].category).toBe("AI / Engineering");
@@ -146,9 +142,7 @@ describe("normalizeWeeklyWinsResult", () => {
 
 	it("preserves categories with empty wins but non-empty name", () => {
 		const raw: WeeklyWinsResult = {
-			categories: [
-				{ category: "DevOps", wins: [] },
-			],
+			categories: [{ category: "DevOps", wins: [] }],
 		};
 		const result = normalizeWeeklyWinsResult(raw);
 		expect(result.categories).toHaveLength(1);
@@ -184,9 +178,7 @@ describe("renderWeeklyWinsMarkdown", () => {
 
 		const md = renderWeeklyWinsMarkdown(result);
 
-		expect(md).toContain(
-			"## This Week's Technical / Foundational Wins",
-		);
+		expect(md).toContain("## This Week's Technical / Foundational Wins");
 		expect(md).toContain("* AI / Engineering");
 		expect(md).toContain("** Subscribed to Anthropic Team plan");
 		expect(md).toContain("** Provisioned Salesforce repo");
@@ -199,8 +191,6 @@ describe("renderWeeklyWinsMarkdown", () => {
 	it("handles empty categories gracefully", () => {
 		const result: WeeklyWinsResult = { categories: [] };
 		const md = renderWeeklyWinsMarkdown(result);
-		expect(md).toContain(
-			"## This Week's Technical / Foundational Wins",
-		);
+		expect(md).toContain("## This Week's Technical / Foundational Wins");
 	});
 });

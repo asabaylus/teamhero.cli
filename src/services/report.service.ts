@@ -22,7 +22,6 @@ import type {
 	SectionDiscrepancy,
 	TaskTrackerProvider,
 	VisibleWinsProvider,
-	WeeklyWinsConfig,
 	WeeklyWinsResult,
 } from "../core/types.js";
 import {
@@ -50,11 +49,6 @@ import { appendRunLogEntry } from "../lib/run-log.js";
 import { appendUnifiedLog } from "../lib/unified-log.js";
 import { enrichMemberDisplayNames } from "../lib/user-map.js";
 import { isVisibleWinsEnabled } from "../lib/visible-wins-config.js";
-import {
-	hashWeeklyWinsInput,
-	normalizeWeeklyWinsResult,
-	resolveWeeklyWinsConfig,
-} from "./weekly-wins.service.js";
 import type {
 	CollectLocInput,
 	ContributorLocMetrics,
@@ -87,6 +81,11 @@ import {
 	extractPeriodSummary,
 	extractPeriodSummaryFromSnapshot,
 } from "./period-deltas.service.js";
+import {
+	hashWeeklyWinsInput,
+	normalizeWeeklyWinsResult,
+	resolveWeeklyWinsConfig,
+} from "./weekly-wins.service.js";
 
 /**
  * Content-addressable hash for member highlight caching.

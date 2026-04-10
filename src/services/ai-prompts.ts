@@ -892,7 +892,9 @@ export interface WeeklyWinsPromptContext {
 	onStatus?: (message: string) => void;
 }
 
-export function buildWeeklyWinsPrompt(context: WeeklyWinsPromptContext): string {
+export function buildWeeklyWinsPrompt(
+	context: WeeklyWinsPromptContext,
+): string {
 	const { config, currentWeekData, previousReport } = context;
 
 	const verbosityGuide: Record<string, string> = {

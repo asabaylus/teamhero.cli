@@ -2,7 +2,11 @@ import { appendFile, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { type ConsolaInstance, consola } from "consola";
 import OpenAI from "openai";
-import type { SectionAuditContext, SectionDiscrepancy } from "../core/types.js";
+import type {
+	SectionAuditContext,
+	SectionDiscrepancy,
+	WeeklyWinsResult,
+} from "../core/types.js";
 import { getEnv } from "../lib/env.js";
 import { cacheDir } from "../lib/paths.js";
 import {
@@ -11,7 +15,6 @@ import {
 } from "../lib/report-renderer.js";
 import type { ContributorSummaryPayload } from "../models/individual-summary.js";
 import type { ProjectAccomplishment } from "../models/visible-wins.js";
-import type { WeeklyWinsResult } from "../core/types.js";
 import {
 	buildDiscrepancyAnalysisPrompt,
 	buildIndividualSummariesPrompt,
