@@ -106,12 +106,15 @@ export interface ReportRenderInput {
 	roadmapTitle?: string;
 	/** AI-generated narrative summarizing period-over-period changes. */
 	deltaNarrative?: string;
+	/** AI-authored section for this week's technical/foundational wins. */
+	technicalFoundationalWins?: string;
 }
 
 export interface ReportSections {
 	git: boolean;
 	taskTracker: boolean;
 	visibleWins?: boolean;
+	technicalFoundationalWins?: boolean;
 	individualContributions?: boolean;
 	discrepancyLog?: boolean;
 }
@@ -145,6 +148,13 @@ export function renderReport(input: ReportRenderInput): string {
 				input.visibleWinsProjects ?? [],
 			),
 		);
+		parts.push("");
+	}
+	if (
+		input.sections.technicalFoundationalWins !== false &&
+		input.technicalFoundationalWins
+	) {
+		parts.push(input.technicalFoundationalWins.trim());
 		parts.push("");
 	}
 

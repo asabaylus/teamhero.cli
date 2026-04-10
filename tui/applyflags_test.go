@@ -50,6 +50,9 @@ func TestApplyFlagsTo_SectionsFlag_IndividualOnly(t *testing.T) {
 	if cfg.Sections.ReportSections.VisibleWins {
 		t.Error("expected VisibleWins=false when not in sections flag")
 	}
+	if cfg.Sections.ReportSections.TechnicalFoundationalWins {
+		t.Error("expected TechnicalFoundationalWins=false when not in sections flag")
+	}
 	if cfg.Sections.ReportSections.DiscrepancyLog {
 		t.Error("expected DiscrepancyLog=false when not in sections flag")
 	}
@@ -78,6 +81,19 @@ func TestApplyFlagsTo_SectionsFlag_VisibleWinsAlias(t *testing.T) {
 
 	if !cfg.Sections.ReportSections.VisibleWins {
 		t.Error("expected VisibleWins=true for 'visibleWins' alias")
+	}
+}
+
+func TestApplyFlagsTo_SectionsFlag_TechnicalWinsAlias(t *testing.T) {
+	oldSections := *flagSections
+	defer func() { *flagSections = oldSections }()
+	*flagSections = "technicalWins"
+
+	cfg := DefaultConfig()
+	applyFlagsTo(&cfg, func(name string) bool { return name == "sections" })
+
+	if !cfg.Sections.ReportSections.TechnicalFoundationalWins {
+		t.Error("expected TechnicalFoundationalWins=true for 'technicalWins' alias")
 	}
 }
 

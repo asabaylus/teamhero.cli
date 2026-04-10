@@ -16,6 +16,7 @@ import {
 	buildIndividualSummariesPrompt,
 	buildMemberHighlightsPrompt,
 	buildRoadmapSynthesisPrompt,
+	buildTechnicalWinsPrompt,
 	buildTeamPrompt,
 	buildVisibleWinsExtractionPrompt,
 	DISCREPANCY_ANALYSIS_SCHEMA,
@@ -24,8 +25,10 @@ import {
 	type MemberHighlightContext,
 	type MemberHighlightsContext,
 	ROADMAP_SYNTHESIS_SCHEMA,
+	TECHNICAL_WINS_SCHEMA,
 	type RoadmapSynthesisContext,
 	type TeamHighlightContext,
+	type TechnicalWinsContext,
 	VISIBLE_WINS_SCHEMA,
 	type VisibleWinsExtractionContext,
 } from "./ai-prompts.js";
@@ -57,6 +60,7 @@ export interface AIServiceConfig {
 	memberHighlightsModel?: string;
 	individualSummariesModel?: string;
 	visibleWinsModel?: string;
+	technicalWinsModel?: string;
 	discrepancyAnalysisModel?: string;
 	apiKey?: string;
 	baseUrl?: string;
@@ -82,6 +86,7 @@ export class AIService {
 	private readonly memberHighlightsModel: string;
 	private readonly individualSummariesModel: string;
 	private readonly visibleWinsModel: string;
+	private readonly technicalWinsModel: string;
 	private readonly discrepancyAnalysisModel: string;
 	private readonly apiKey?: string;
 	private readonly baseUrl?: string;
@@ -119,6 +124,10 @@ export class AIService {
 		this.visibleWinsModel =
 			config.visibleWinsModel ??
 			getEnv("VISIBLE_WINS_AI_MODEL") ??
+			defaultModel;
+		this.technicalWinsModel =
+			config.technicalWinsModel ??
+			getEnv("AI_TECHNICAL_WINS_MODEL") ??
 			defaultModel;
 		this.discrepancyAnalysisModel =
 			config.discrepancyAnalysisModel ??
@@ -544,6 +553,32 @@ export class AIService {
 		} catch (error) {
 			this.rethrowAsConnectionOrAuthError(
 				"Failed to generate team highlight",
+				error,
+			);
+		}
+	}
+
+	async generateTechnicalWinsSection(
+		context: TechnicalWinsContext,
+	): Promise<string> {
+		if (!this.enabled) {
+			return "";
+		}
+		const client = this.createClient();
+		const prompt = buildTechnicalWinsPrompt(context);
+		try {
+			const response = await client.responses.create({
+				model: this.technicalWinsModel,
+				input: prompt,
+				text: { format: TECHNICAL_WINS_SCHEMA },
+			});
+			const parsed = (response as any).output_parsed as
+				| { sectionMarkdown?: string }
+				| undefined;
+			return parsed?.sectionMarkdown?.trim() ?? "";
+		} catch (error) {
+			this.rethrowAsConnectionOrAuthError(
+				"Failed to generate technical/foundational wins",
 				error,
 			);
 		}

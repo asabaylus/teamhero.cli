@@ -179,6 +179,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 					},
 					reportSections: {
 						visibleWins: true,
+						technicalFoundationalWins: true,
 						individualContributions: true,
 						discrepancyLog: false,
 						loc: true,

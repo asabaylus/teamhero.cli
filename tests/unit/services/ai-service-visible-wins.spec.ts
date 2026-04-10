@@ -142,15 +142,20 @@ describe("AIService.extractProjectAccomplishments", () => {
 		const service = new AIService({ apiKey: "test-key" });
 		spyOn(service as never, "createClient").mockReturnValue({
 			responses: {
-				create: mock().mockRejectedValue(
-					Object.assign(new Error("fetch failed"), { status: 502 }),
-				),
+				create: mock().mockImplementation(async () => {
+					throw Object.assign(new Error("fetch failed"), { status: 502 });
+				}),
 			},
 		} as never);
 
-		await expect(
-			service.extractProjectAccomplishments(makeContext()),
-		).rejects.toThrow(/Failed to extract project accomplishments|fetch failed/);
+		try {
+			await service.extractProjectAccomplishments(makeContext());
+			throw new Error("expected extractProjectAccomplishments to throw");
+		} catch (error) {
+			expect(String(error)).toMatch(
+				/Failed to extract project accomplishments|fetch failed/,
+			);
+		}
 	});
 
 	it("sends prompt built from context", async () => {
