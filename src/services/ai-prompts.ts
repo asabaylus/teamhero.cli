@@ -50,14 +50,27 @@ export interface FinalReportContext {
 	onStatus?: (message: string) => void;
 }
 
+export type TechnicalWinsSubheadings = "auto" | string[];
+
 export interface TechnicalWinsContext {
 	windowStart: string;
 	windowEnd: string;
 	verbosity: "concise" | "standard" | "detailed";
-	subheadingMode: string;
+	/**
+	 * Either "auto" (let the AI infer 2–5 logical groupings) or an explicit
+	 * ordered list of subheadings (e.g. ["AI / Engineering", "IT / Centre"]).
+	 */
+	subheadings: TechnicalWinsSubheadings;
+	/** Short natural-language audience descriptor. */
 	audience?: string;
+	/** Raw bullets / notes from the current week's activity. */
 	currentWeekItems: string[];
+	/**
+	 * Prior-week wins used strictly for deduplication. Should be pre-flattened
+	 * into bullet strings by the caller.
+	 */
 	previousWeekItems?: string[];
+	onStatus?: (message: string) => void;
 }
 
 export interface IndividualSummariesContext {
@@ -255,38 +268,94 @@ export const TECHNICAL_WINS_SCHEMA = {
 	schema: {
 		type: "object" as const,
 		properties: {
-			sectionMarkdown: { type: "string" as const },
+			categories: {
+				type: "array" as const,
+				items: {
+					type: "object" as const,
+					properties: {
+						category: { type: "string" as const },
+						wins: {
+							type: "array" as const,
+							items: { type: "string" as const },
+						},
+					},
+					required: ["category", "wins"] as const,
+					additionalProperties: false as const,
+				},
+			},
 		},
-		required: ["sectionMarkdown"] as const,
+		required: ["categories"] as const,
 		additionalProperties: false as const,
 	},
 } as const;
 
-export function buildTechnicalWinsPrompt(context: TechnicalWinsContext): string {
-	const current = context.currentWeekItems.map((x) => `- ${x}`).join("\n");
-	const previous = (context.previousWeekItems ?? []).map((x) => `- ${x}`).join(
-		"\n",
-	);
+const TECHNICAL_WINS_VERBOSITY_GUIDE: Record<
+	TechnicalWinsContext["verbosity"],
+	string
+> = {
+	concise: "Terse, outcome-only. No explanation or context.",
+	standard: "Include brief context (one short clause per bullet).",
+	detailed:
+		"Include impact or rationale (one short sentence max per bullet).",
+};
+
+export function buildTechnicalWinsPrompt(
+	context: TechnicalWinsContext,
+): string {
+	const current = context.currentWeekItems
+		.filter((x) => x && x.trim().length > 0)
+		.map((x) => `- ${x}`)
+		.join("\n");
+
+	const subheadingsInstruction =
+		context.subheadings === "auto"
+			? "Infer 2-5 logical groupings based on themes (e.g. AI / Engineering, DevOps, IT / Centre, Product, Infrastructure). Group for readability, not strict taxonomy."
+			: `Use exactly these subheadings in this order: ${context.subheadings
+					.map((s) => `"${s}"`)
+					.join(
+						", ",
+					)}. If a subheading has no wins this week, include the category with a single bullet: "No material changes this week".`;
+
 	const audienceLine = context.audience
-		? `Target audience: ${context.audience}`
-		: "Target audience: engineering leadership";
+		? `Audience: ${context.audience}. Adapt tone accordingly. Do NOT mention the audience explicitly.`
+		: "Audience: engineering leadership. Adapt tone accordingly. Do NOT mention the audience explicitly.";
+
+	const previousItems = (context.previousWeekItems ?? [])
+		.filter((x) => x && x.trim().length > 0)
+		.map((x) => `- ${x}`)
+		.join("\n");
+
+	const deduplicationSection = previousItems
+		? [
+				"",
+				"Deduplication rules:",
+				"- Do NOT repeat wins already present in the previous report below.",
+				"- If a win appears in both weeks, include it ONLY if there is meaningful progress or change.",
+				"- Prefer delta-oriented phrasing when overlap exists (e.g. 'Expanded X from 50 to 130 users' instead of 'Deployed X').",
+				"",
+				"Previous report wins (for deduplication only):",
+				previousItems,
+			]
+		: [];
+
 	return [
-		"You are writing one report section in markdown.",
-		"Write the section title exactly as: ## This Week’s Technical / Foundational Wins",
-		"Then output grouped bullet lists by subheading (### ...).",
-		"Include only key wins from the current week and do not repeat prior-week wins unless materially changed.",
-		`Verbosity: ${context.verbosity}.`,
-		`Subheading mode: ${context.subheadingMode}. If mode is 'auto' or 'duplicate', infer subheadings from content.`,
-		audienceLine,
-		`Date window: ${context.windowStart} to ${context.windowEnd}.`,
+		"You are generating a 'This Week's Technical / Foundational Wins' section for an engineering status report.",
+		"",
+		"Requirements:",
+		`1. ${audienceLine}`,
+		`2. Verbosity: ${context.verbosity}. ${TECHNICAL_WINS_VERBOSITY_GUIDE[context.verbosity]}`,
+		`3. Grouping: ${subheadingsInstruction}`,
+		"4. Avoid filler language. Prefer concrete actions over vague statements.",
+		"5. Use parallel phrasing across bullets. No duplication across categories.",
+		"6. Do not reference internal tooling details (TUI, pipelines, agents, cache layers, etc.).",
+		"7. Each category must have at least one win bullet.",
+		`8. Date window: ${context.windowStart} to ${context.windowEnd}.`,
+		...deduplicationSection,
 		"",
 		"Current-week source items:",
 		current || "- (none)",
 		"",
-		"Prior-week wins (avoid duplicates):",
-		previous || "- (none available)",
-		"",
-		"Return markdown only in sectionMarkdown.",
+		"Return structured JSON matching the provided schema. Each category object has a 'category' string and a 'wins' array of strings.",
 	].join("\n");
 }
 

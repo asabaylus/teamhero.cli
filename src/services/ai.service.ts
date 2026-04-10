@@ -2,7 +2,11 @@ import { appendFile, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { type ConsolaInstance, consola } from "consola";
 import OpenAI from "openai";
-import type { SectionAuditContext, SectionDiscrepancy } from "../core/types.js";
+import type {
+	SectionAuditContext,
+	SectionDiscrepancy,
+	TechnicalFoundationalWinsResult,
+} from "../core/types.js";
 import { getEnv } from "../lib/env.js";
 import { cacheDir } from "../lib/paths.js";
 import {
@@ -560,25 +564,79 @@ export class AIService {
 
 	async generateTechnicalWinsSection(
 		context: TechnicalWinsContext,
-	): Promise<string> {
+	): Promise<TechnicalFoundationalWinsResult> {
 		if (!this.enabled) {
-			return "";
+			throw new Error(
+				"AI service is required for Technical / Foundational Wins generation. Please configure OPENAI_API_KEY.",
+			);
 		}
-		const client = this.createClient();
-		const prompt = buildTechnicalWinsPrompt(context);
+
 		try {
-			const response = await client.responses.create({
-				model: this.technicalWinsModel,
+			this.logEnabledNotice();
+			const client = this.createClient();
+			const model = this.technicalWinsModel;
+			const prompt = buildTechnicalWinsPrompt(context);
+
+			const batchHeader = [
+				`[${new Date().toISOString()}] technical-wins`,
+				`model=${model}`,
+				`promptLength=${prompt.length}`,
+				`estimatedTokens=${Math.ceil(prompt.length / 3)}`,
+			].join(" | ");
+			await appendBatchLog(`${batchHeader}\n${prompt}\n\n`);
+
+			if (this.emitDebugLogs) {
+				this.logger.debug(
+					`Sending technical wins request (model=${model}, promptLength=${prompt.length})`,
+				);
+			}
+
+			context.onStatus?.(
+				"Generating Technical / Foundational Wins via AI...",
+			);
+
+			const requestOptions: Record<string, unknown> = {
+				model,
 				input: prompt,
 				text: { format: TECHNICAL_WINS_SCHEMA },
-			});
-			const parsed = (response as any).output_parsed as
-				| { sectionMarkdown?: string }
+			};
+
+			if (this.enableFlexProcessing) {
+				requestOptions.service_tier = "flex";
+			}
+
+			const response = await client.responses.create(
+				requestOptions as Parameters<typeof client.responses.create>[0],
+			);
+
+			const outputText = (response as Record<string, unknown>).output_text as
+				| string
 				| undefined;
-			return parsed?.sectionMarkdown?.trim() ?? "";
+
+			if (this.emitDebugLogs) {
+				const usage = (response as Record<string, unknown>).usage as
+					| Record<string, number>
+					| undefined;
+				const inputTokens = usage?.input_tokens ?? usage?.prompt_tokens;
+				const outputTokens = usage?.output_tokens ?? usage?.completion_tokens;
+				this.logger.debug(
+					`Received technical wins response (textLength=${outputText?.length ?? 0}, tokens=${inputTokens != null && outputTokens != null ? `${inputTokens}+${outputTokens}` : "unknown"})`,
+				);
+			}
+
+			if (!outputText) {
+				throw new Error(
+					"Empty AI response for Technical / Foundational Wins generation",
+				);
+			}
+
+			context.onStatus?.("Processing Technical / Foundational Wins response...");
+
+			const parsed = JSON.parse(outputText) as TechnicalFoundationalWinsResult;
+			return parsed;
 		} catch (error) {
 			this.rethrowAsConnectionOrAuthError(
-				"Failed to generate technical/foundational wins",
+				"Failed to generate Technical / Foundational Wins",
 				error,
 			);
 		}

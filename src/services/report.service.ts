@@ -21,6 +21,7 @@ import type {
 	ScopeProvider,
 	SectionDiscrepancy,
 	TaskTrackerProvider,
+	TechnicalFoundationalWinsResult,
 	VisibleWinsProvider,
 } from "../core/types.js";
 import {
@@ -84,6 +85,12 @@ import {
 	extractPeriodSummary,
 	extractPeriodSummaryFromSnapshot,
 } from "./period-deltas.service.js";
+import {
+	flattenTechnicalWinsForDedup,
+	hashTechnicalWinsInput,
+	normalizeTechnicalWinsResult,
+	resolveTechnicalWinsSubheadings,
+} from "./technical-wins.service.js";
 
 /**
  * Content-addressable hash for member highlight caching.
@@ -550,7 +557,7 @@ export class ReportService {
 			let visibleWinsAccomplishments: ProjectAccomplishment[] | undefined;
 			let visibleWinsProjects: ProjectTask[] | undefined;
 			const visibleWinsErrors: string[] = [];
-			let technicalFoundationalWins: string | undefined;
+			let technicalFoundationalWins: TechnicalFoundationalWinsResult | undefined;
 
 			const includeIndividualContributions =
 				input.sections.reportSections.individualContributions !== false;
@@ -787,13 +794,29 @@ export class ReportService {
 					"Generating Technical / Foundational Wins section",
 				);
 				try {
-					const currentWeekItems = [
-						...new Set(
-							(visibleWinsAccomplishments ?? [])
-								.flatMap((acc) => acc.bullets.map((b) => b.text.trim()))
-								.filter(Boolean),
-						),
-					];
+					// Build current-week input from visible-wins bullets, individual
+					// summaries, and the team highlight (if available).
+					const currentWeekSet = new Set<string>();
+					for (const acc of visibleWinsAccomplishments ?? []) {
+						for (const bullet of acc.bullets) {
+							const text = bullet.text.trim();
+							if (text) currentWeekSet.add(text);
+						}
+					}
+					for (const member of memberMetrics) {
+						const summary = member.aiSummary?.trim();
+						if (summary && summary.length > 0) {
+							currentWeekSet.add(`${member.displayName}: ${summary}`);
+						}
+					}
+					if (teamHighlight && teamHighlight.trim().length > 0) {
+						currentWeekSet.add(`Team Summary: ${teamHighlight.trim()}`);
+					}
+					const currentWeekItems = Array.from(currentWeekSet);
+
+					// Best-effort load of the previous run's Technical Wins result
+					// so the AI can skip duplicates. Supports both the new typed
+					// format and the legacy markdown-string snapshot format.
 					let previousWeekItems: string[] = [];
 					try {
 						const history = new RunHistoryStore();
@@ -803,36 +826,114 @@ export class ReportService {
 								organization.login,
 								recent[0].filename,
 							);
-							const prior =
-								typeof snapshot?.technicalFoundationalWins === "string"
-									? snapshot.technicalFoundationalWins
-									: "";
-							previousWeekItems = prior
-								.split("\n")
-								.map((x) => x.replace(/^[#*\-\s]+/, "").trim())
-								.filter((x) => x.length > 0);
+							const prior = snapshot?.technicalFoundationalWins as
+								| TechnicalFoundationalWinsResult
+								| string
+								| undefined;
+							previousWeekItems = flattenTechnicalWinsForDedup(prior);
 						}
 					} catch {
-						// best effort only
+						// best effort only — dedup is not required for correctness
 					}
-					technicalFoundationalWins =
-						await this.deps.ai.generateTechnicalWinsSection({
-							windowStart: window.startDate,
-							windowEnd: window.endDate,
-							verbosity: resolveSectionVerbosity(
-								"TECHNICAL_WINS_VERBOSITY",
-								"standard",
-							),
-							subheadingMode:
-								getEnv("TECHNICAL_WINS_SUBHEADINGS") ?? "auto",
-							audience: resolveSectionAudience("TECHNICAL_WINS_AUDIENCE"),
+
+					const verbosity = resolveSectionVerbosity(
+						"TECHNICAL_WINS_VERBOSITY",
+						"standard",
+					);
+					const subheadings = resolveTechnicalWinsSubheadings();
+					const audience = resolveSectionAudience("TECHNICAL_WINS_AUDIENCE");
+
+					if (currentWeekItems.length === 0) {
+						winsStep.fail(
+							"Technical / Foundational Wins skipped — no input data available",
+						);
+					} else {
+						// Content-addressed cache — mirrors the visible-wins pattern.
+						const twCacheOpts = this.deps.cacheOptions ?? {};
+						const twSourceMatch =
+							twCacheOpts.flush ||
+							twCacheOpts.flushSources?.includes("technical-wins");
+						const shouldFlushTw =
+							!!twSourceMatch &&
+							(!twCacheOpts.flushSince ||
+								window.startISO >= twCacheOpts.flushSince);
+						const twCache =
+							new FileSystemCacheStore<TechnicalFoundationalWinsResult>({
+								namespace: "technical-wins",
+								defaultTtlSeconds: 0,
+							});
+						const isTestMode = !!getEnv("TEAMHERO_TEST_MODE");
+						const twHash = hashTechnicalWinsInput({
 							currentWeekItems,
 							previousWeekItems,
+							verbosity,
+							subheadings,
+							audience,
+							windowStart: window.startDate,
+							windowEnd: window.endDate,
 						});
-					winsStep.succeed("Technical / Foundational Wins section ready");
+
+						let cached: TechnicalFoundationalWinsResult | null = null;
+						if (!isTestMode && !shouldFlushTw) {
+							cached = await twCache.get(twHash, { permanent: true });
+							if (cached) {
+								await appendUnifiedLog({
+									timestamp: new Date().toISOString(),
+									runId: "",
+									category: "cache",
+									event: "cache-hit",
+									namespace: "technical-wins",
+									inputHash: twHash,
+									org: input.org,
+								});
+							}
+						}
+
+						if (cached) {
+							technicalFoundationalWins =
+								normalizeTechnicalWinsResult(cached);
+						} else {
+							const raw = await this.deps.ai.generateTechnicalWinsSection({
+								windowStart: window.startDate,
+								windowEnd: window.endDate,
+								verbosity,
+								subheadings,
+								audience,
+								currentWeekItems,
+								previousWeekItems,
+								onStatus: (msg) => winsStep.update(msg),
+							});
+							technicalFoundationalWins = normalizeTechnicalWinsResult(raw);
+							if (!isTestMode) {
+								await twCache.set(twHash, technicalFoundationalWins);
+								await appendUnifiedLog({
+									timestamp: new Date().toISOString(),
+									runId: "",
+									category: "cache",
+									event: shouldFlushTw
+										? "cache-flush-and-set"
+										: "cache-miss-and-set",
+									namespace: "technical-wins",
+									inputHash: twHash,
+									org: input.org,
+								});
+							}
+						}
+
+						const catCount = technicalFoundationalWins.categories.length;
+						const winCount = technicalFoundationalWins.categories.reduce(
+							(sum, c) => sum + c.wins.length,
+							0,
+						);
+						winsStep.succeed(
+							`Technical / Foundational Wins ready (${catCount} categories, ${winCount} wins)`,
+						);
+					}
 				} catch (error) {
-					winsStep.fail("Technical / Foundational Wins skipped");
-					this.logger.warn(`Technical/foundational wins failed: ${error}`);
+					const message =
+						error instanceof Error ? error.message : String(error);
+					this.logger.warn(`Technical/foundational wins failed: ${message}`);
+					winsStep.fail("Technical / Foundational Wins skipped due to error");
 				}
 			}
 

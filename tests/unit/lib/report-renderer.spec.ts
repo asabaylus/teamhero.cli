@@ -407,14 +407,25 @@ describe("renderReport — visible wins integration", () => {
 					},
 				],
 				visibleWinsProjects: [
-					{ name: "Dashboard", gid: "gid-1", customFields: {}, priorityScore: 1 },
+					{
+						name: "Dashboard",
+						gid: "gid-1",
+						customFields: {},
+						priorityScore: 1,
+					},
 				],
-				technicalFoundationalWins:
-					"## This Week’s Technical / Foundational Wins\n\n### AI / Engineering\n* Added Claude team access",
+				technicalFoundationalWins: {
+					categories: [
+						{
+							category: "AI / Engineering",
+							wins: ["Added Claude team access"],
+						},
+					],
+				},
 			}),
 		);
 		const winsIdx = output.indexOf("This Week's Visible Wins");
-		const techIdx = output.indexOf("This Week’s Technical / Foundational Wins");
+		const techIdx = output.indexOf("This Week's Technical / Foundational Wins");
 		expect(winsIdx).toBeGreaterThan(-1);
 		expect(techIdx).toBeGreaterThan(winsIdx);
 	});

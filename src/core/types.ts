@@ -400,7 +400,25 @@ export type CacheSourceType =
 	| "loc"
 	| "member-highlights"
 	| "team-highlight"
-	| "audit";
+	| "audit"
+	| "technical-wins";
+
+// ---------------------------------------------------------------------------
+// Technical / Foundational Wins section
+// ---------------------------------------------------------------------------
+
+/** A single grouped category of technical/foundational wins. */
+export interface TechnicalFoundationalWinsCategory {
+	/** Subheading name (e.g. "AI / Engineering", "IT / Centre"). */
+	category: string;
+	/** Ordered list of win bullets for this category. */
+	wins: string[];
+}
+
+/** Structured AI output for the Technical / Foundational Wins section. */
+export interface TechnicalFoundationalWinsResult {
+	categories: TechnicalFoundationalWinsCategory[];
+}
 
 export interface CacheOptions {
 	/** When true, bypass cache reads entirely (force re-fetch). */

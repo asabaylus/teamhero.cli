@@ -5,6 +5,7 @@ import type {
 	PeriodDeltas,
 	ReportRenderer,
 	RoadmapEntry,
+	TechnicalFoundationalWinsResult,
 } from "../core/types.js";
 import type { ContributorSummaryRecord } from "../models/individual-summary.js";
 import type {
@@ -106,8 +107,11 @@ export interface ReportRenderInput {
 	roadmapTitle?: string;
 	/** AI-generated narrative summarizing period-over-period changes. */
 	deltaNarrative?: string;
-	/** AI-authored section for this week's technical/foundational wins. */
-	technicalFoundationalWins?: string;
+	/**
+	 * AI-authored structured output for this week's Technical / Foundational
+	 * Wins section. Grouped by subheading (category).
+	 */
+	technicalFoundationalWins?: TechnicalFoundationalWinsResult;
 }
 
 export interface ReportSections {
@@ -150,11 +154,14 @@ export function renderReport(input: ReportRenderInput): string {
 		);
 		parts.push("");
 	}
+	// Technical / Foundational Wins — placed after Delivered Outcomes
+	// (i.e. visible wins) and before the Weekly Engineering Summary.
 	if (
 		input.sections.technicalFoundationalWins !== false &&
-		input.technicalFoundationalWins
+		input.technicalFoundationalWins &&
+		input.technicalFoundationalWins.categories.length > 0
 	) {
-		parts.push(input.technicalFoundationalWins.trim());
+		parts.push(renderTechnicalWinsSection(input.technicalFoundationalWins));
 		parts.push("");
 	}
 
@@ -633,6 +640,29 @@ export function renderVisibleWinsSection(
 	}
 
 	return parts.join("\n");
+}
+
+/**
+ * Render the Technical / Foundational Wins section using the executive
+ * `* Category` / `** Win` format shown in the spec.
+ */
+export function renderTechnicalWinsSection(
+	result: TechnicalFoundationalWinsResult,
+): string {
+	const parts: string[] = [];
+	parts.push("## **This Week's Technical / Foundational Wins**");
+	parts.push("");
+
+	for (const category of result.categories) {
+		if (!category.category) continue;
+		parts.push(`* ${category.category}`);
+		for (const win of category.wins) {
+			parts.push(`** ${win}`);
+		}
+		parts.push("");
+	}
+
+	return parts.join("\n").trimEnd();
 }
 
 const ROADMAP_STATUS_EMOJI: Record<string, string> = {
