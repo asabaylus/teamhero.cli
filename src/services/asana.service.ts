@@ -141,6 +141,62 @@ export class AsanaService implements TaskTrackerProvider {
 	}
 
 	/**
+	 * Fetch a single task by GID with its notes and custom fields.
+	 * Used by the roadmap extractor to enrich rocks that live outside
+	 * a section-filtered project slice (e.g. roadmap boards that scope
+	 * Visible Wins fetches to one Asana section).
+	 */
+	async fetchTaskByGid(taskGid: string): Promise<{
+		gid: string;
+		name: string;
+		notes: string | null;
+		customFields: Record<string, string | number | null>;
+	} | null> {
+		const optFields =
+			"gid,name,notes,custom_fields,custom_fields.name,custom_fields.display_value,custom_fields.number_value,custom_fields.type";
+
+		interface TaskByGidResponse {
+			data: {
+				gid: string;
+				name: string;
+				notes?: string | null;
+				custom_fields?: Array<{
+					name: string;
+					display_value: string | null;
+					number_value?: number | null;
+					type: string;
+				}>;
+			};
+		}
+
+		try {
+			const response = await this.fetchFromPath<TaskByGidResponse>(
+				`/tasks/${taskGid}`,
+				{ opt_fields: optFields },
+			);
+			const task = response.data;
+			const customFields: Record<string, string | number | null> = {};
+			for (const field of task.custom_fields ?? []) {
+				customFields[field.name] =
+					field.type === "number"
+						? (field.number_value ?? field.display_value ?? null)
+						: field.display_value;
+			}
+			return {
+				gid: task.gid,
+				name: task.name,
+				notes: task.notes ?? null,
+				customFields,
+			};
+		} catch (err) {
+			this.logger.warn(
+				`[asana] fetchTaskByGid(${taskGid}) failed: ${(err as Error).message}`,
+			);
+			return null;
+		}
+	}
+
+	/**
 	 * Fetch subtasks for a task, recursively up to maxDepth levels.
 	 * Returns a tree of RoadmapSubtaskInfo nodes.
 	 */
@@ -149,7 +205,7 @@ export class AsanaService implements TaskTrackerProvider {
 		maxDepth = 2,
 	): Promise<RoadmapSubtaskInfo[]> {
 		const optFields =
-			"name,gid,due_on,completed,completed_at,custom_fields,custom_fields.name,custom_fields.display_value,custom_fields.type,assignee.name";
+			"name,gid,due_on,completed,completed_at,notes,custom_fields,custom_fields.name,custom_fields.display_value,custom_fields.type,assignee.name";
 
 		interface SubtaskResponse {
 			gid: string;
@@ -157,6 +213,7 @@ export class AsanaService implements TaskTrackerProvider {
 			completed: boolean;
 			completed_at?: string | null;
 			due_on?: string | null;
+			notes?: string | null;
 			assignee?: { name?: string } | null;
 			custom_fields?: Array<{
 				name: string;
@@ -194,6 +251,7 @@ export class AsanaService implements TaskTrackerProvider {
 				completedAt: st.completed_at ?? null,
 				dueOn: st.due_on ?? null,
 				status,
+				notes: st.notes ?? null,
 				assigneeName: st.assignee?.name ?? null,
 				children,
 			});

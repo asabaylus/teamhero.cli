@@ -384,6 +384,59 @@ describe("AsanaBoardAdapter", () => {
 		});
 	});
 
+	describe("task notes", () => {
+		it("requests notes in opt_fields and surfaces them on ProjectTask", async () => {
+			const mockService = createMockAsanaService();
+			mocked(mockService.fetchFromPathPaginated).mockResolvedValue([
+				{
+					gid: "2001",
+					name: "GCCW v1.x",
+					notes: "UAT complete; pilot release overdue. Rollout tracking for Apr 13.",
+					custom_fields: [],
+				},
+			]);
+
+			const adapter = new AsanaBoardAdapter({
+				asanaService: mockService,
+				projectGid: "proj-1",
+				sectionGid: "1002",
+			});
+
+			const projects = await adapter.fetchProjects();
+
+			expect(mockService.fetchFromPathPaginated).toHaveBeenCalledWith(
+				"/sections/1002/tasks",
+				expect.objectContaining({
+					opt_fields: expect.stringContaining("notes"),
+				}),
+			);
+			expect(projects).toHaveLength(1);
+			expect(projects[0].notes).toBe(
+				"UAT complete; pilot release overdue. Rollout tracking for Apr 13.",
+			);
+		});
+
+		it("returns null notes when Asana omits the field", async () => {
+			const mockService = createMockAsanaService();
+			mocked(mockService.fetchFromPathPaginated).mockResolvedValue([
+				{
+					gid: "2001",
+					name: "Quiet task",
+					custom_fields: [],
+				},
+			]);
+
+			const adapter = new AsanaBoardAdapter({
+				asanaService: mockService,
+				projectGid: "proj-1",
+				sectionGid: "1002",
+			});
+
+			const projects = await adapter.fetchProjects();
+			expect(projects[0].notes).toBeNull();
+		});
+	});
+
 	describe("error propagation", () => {
 		it("propagates auth error from AsanaService", async () => {
 			const mockService = createMockAsanaService();

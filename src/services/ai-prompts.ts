@@ -923,6 +923,13 @@ export interface RoadmapSynthesisContext {
 	mode: "configured" | "ai-derived";
 }
 
+function truncateNotes(raw: string | null | undefined, max: number): string {
+	if (!raw) return "";
+	const plain = raw.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+	if (plain.length <= max) return plain;
+	return `${plain.slice(0, max).trimEnd()}…`;
+}
+
 function serializeSubtaskTree(
 	subtasks: RoadmapSubtaskInfo[],
 	indent = "    ",
@@ -939,6 +946,10 @@ function serializeSubtaskTree(
 			? ` (completed ${st.completedAt.slice(0, 10)})`
 			: "";
 		lines.push(`${indent}- [${status}] ${st.name}${dueStr}${completedStr}`);
+		const notesSnippet = truncateNotes(st.notes, 300);
+		if (notesSnippet) {
+			lines.push(`${indent}    notes: ${notesSnippet}`);
+		}
 		if (st.children.length > 0) {
 			lines.push(serializeSubtaskTree(st.children, `${indent}  `));
 		}
@@ -968,6 +979,11 @@ function buildConfiguredRoadmapPrompt(
 			project?.customFields["Dev Done Target (Original)"];
 		const devDoneStr = devDone ? `  Dev Done Target: ${devDone}` : "";
 
+		const parentNotes = truncateNotes(project?.notes, 1500);
+		const parentNotesStr = parentNotes
+			? `  Parent Task Notes: ${parentNotes}`
+			: "";
+
 		const subtasks = context.subtasksByGid?.get(item.gid);
 		const subtaskStr =
 			subtasks && subtasks.length > 0
@@ -983,6 +999,7 @@ function buildConfiguredRoadmapPrompt(
 			`  Current Status: ${item.overallStatus}`,
 			milestoneStr,
 			devDoneStr,
+			parentNotesStr,
 			subtaskStr,
 			bullets
 				? `  This Week's Accomplishments:\n${bullets}`

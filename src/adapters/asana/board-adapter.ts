@@ -24,6 +24,7 @@ interface AsanaParentResponse {
 interface AsanaTaskResponse {
 	gid: string;
 	name: string;
+	notes?: string | null;
 	custom_fields?: AsanaCustomFieldResponse[];
 	parent?: AsanaParentResponse | null;
 }
@@ -70,7 +71,7 @@ export class AsanaBoardAdapter implements ProjectBoardProvider {
 		}
 
 		const optFields =
-			"name,gid,custom_fields,custom_fields.name,custom_fields.display_value,custom_fields.number_value,custom_fields.type,parent,parent.gid,parent.name";
+			"name,gid,notes,custom_fields,custom_fields.name,custom_fields.display_value,custom_fields.number_value,custom_fields.type,parent,parent.gid,parent.name";
 
 		let tasks: AsanaTaskResponse[];
 		if (this.sectionGid || this.sectionName) {
@@ -151,6 +152,7 @@ export class AsanaBoardAdapter implements ProjectBoardProvider {
 			gid: task.gid,
 			customFields,
 			priorityScore,
+			notes: task.notes ?? null,
 			...(alias ? { originalName: task.name } : {}),
 		};
 		if (task.parent?.gid && task.parent?.name) {

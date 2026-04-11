@@ -191,4 +191,126 @@ describe("AsanaService", () => {
 			expect(secondCallUrl.searchParams.get("offset")).toBe("page2");
 		});
 	});
+
+	describe("fetchSubtasks", () => {
+		it("requests notes in opt_fields and surfaces them on returned subtasks", async () => {
+			const service = new AsanaService({ token: "token" });
+			const paginate = spyOn(service as any, "paginate").mockResolvedValue([
+				{
+					gid: "sub1",
+					name: "Design review",
+					completed: false,
+					completed_at: null,
+					due_on: "2026-04-20",
+					notes: "Blocked on legal sign-off; Maria pinged 4/08",
+					assignee: { name: "Maria" },
+					custom_fields: [],
+				},
+			]);
+
+			const result = await service.fetchSubtasks("parent-gid", 1);
+
+			expect(paginate).toHaveBeenCalledTimes(1);
+			const [path, params] = paginate.mock.calls[0];
+			expect(path).toBe("/tasks/parent-gid/subtasks");
+			expect(params.opt_fields).toContain("notes");
+			expect(result).toHaveLength(1);
+			expect(result[0]).toMatchObject({
+				gid: "sub1",
+				name: "Design review",
+				notes: "Blocked on legal sign-off; Maria pinged 4/08",
+				assigneeName: "Maria",
+				dueOn: "2026-04-20",
+			});
+		});
+
+		it("returns null notes when Asana omits the field", async () => {
+			const service = new AsanaService({ token: "token" });
+			spyOn(service as any, "paginate").mockResolvedValue([
+				{
+					gid: "sub1",
+					name: "Silent subtask",
+					completed: true,
+					completed_at: "2026-04-01T10:00:00Z",
+					due_on: null,
+					assignee: null,
+					custom_fields: [],
+				},
+			]);
+
+			const result = await service.fetchSubtasks("parent-gid", 1);
+			expect(result[0].notes).toBeNull();
+		});
+	});
+
+	describe("fetchTaskByGid", () => {
+		it("requests notes in opt_fields and returns parsed task", async () => {
+			const service = new AsanaService({ token: "token" });
+			const fetchFromPath = spyOn(
+				service as any,
+				"fetchFromPath",
+			).mockResolvedValue({
+				data: {
+					gid: "task-1",
+					name: "GCCW v1.x",
+					notes: "UAT complete. Pilot release 4/13.",
+					custom_fields: [
+						{
+							name: "RICE Score",
+							display_value: "88",
+							number_value: 88,
+							type: "number",
+						},
+						{
+							name: "Status",
+							display_value: "On Track",
+							type: "enum",
+						},
+					],
+				},
+			});
+
+			const result = await service.fetchTaskByGid("task-1");
+
+			expect(fetchFromPath).toHaveBeenCalledTimes(1);
+			const [path, params] = fetchFromPath.mock.calls[0];
+			expect(path).toBe("/tasks/task-1");
+			expect(params.opt_fields).toContain("notes");
+			expect(result).toMatchObject({
+				gid: "task-1",
+				name: "GCCW v1.x",
+				notes: "UAT complete. Pilot release 4/13.",
+				customFields: {
+					"RICE Score": 88,
+					Status: "On Track",
+				},
+			});
+		});
+
+		it("returns null on fetch error without throwing", async () => {
+			const service = new AsanaService({ token: "token" });
+			spyOn(service as any, "fetchFromPath").mockRejectedValue(
+				new Error("404 Not Found"),
+			);
+
+			const result = await service.fetchTaskByGid("missing-gid");
+			expect(result).toBeNull();
+		});
+
+		it("handles task with no notes field", async () => {
+			const service = new AsanaService({ token: "token" });
+			spyOn(service as any, "fetchFromPath").mockResolvedValue({
+				data: {
+					gid: "task-1",
+					name: "Silent task",
+					custom_fields: [],
+				},
+			});
+
+			const result = await service.fetchTaskByGid("task-1");
+			expect(result).not.toBeNull();
+			expect(result!.notes).toBeNull();
+			expect(result!.customFields).toEqual({});
+		});
+	});
 });

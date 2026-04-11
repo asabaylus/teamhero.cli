@@ -234,6 +234,7 @@ export interface RoadmapSubtaskInfo {
 	completedAt?: string | null;
 	dueOn?: string | null;
 	status?: string | null;
+	notes?: string | null;
 	assigneeName?: string | null;
 	children: RoadmapSubtaskInfo[];
 }

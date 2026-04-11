@@ -1156,6 +1156,74 @@ describe("buildRoadmapSynthesisPrompt — configured mode", () => {
 		expect(prompt).toContain("Dev Done Target: 2026-03-15");
 	});
 
+	it("includes Parent Task Notes when project notes are present", () => {
+		const item = makeRoadmapEntry();
+		const project = makeProject({
+			notes:
+				"UAT complete as of 4/06. Pilot release overdue. Rolling out Apr 13.",
+		});
+		const prompt = buildRoadmapSynthesisPrompt(
+			makeRoadmapContext({
+				roadmapItems: [item],
+				projects: [project],
+			}),
+		);
+		expect(prompt).toContain(
+			"Parent Task Notes: UAT complete as of 4/06. Pilot release overdue. Rolling out Apr 13.",
+		);
+	});
+
+	it("omits Parent Task Notes line when project has no notes", () => {
+		const item = makeRoadmapEntry();
+		const project = makeProject({ notes: null });
+		const prompt = buildRoadmapSynthesisPrompt(
+			makeRoadmapContext({
+				roadmapItems: [item],
+				projects: [project],
+			}),
+		);
+		expect(prompt).not.toContain("Parent Task Notes:");
+	});
+
+	it("truncates long parent task notes and strips HTML tags", () => {
+		const item = makeRoadmapEntry();
+		const project = makeProject({
+			notes: `<body>${"x".repeat(2000)}</body>`,
+		});
+		const prompt = buildRoadmapSynthesisPrompt(
+			makeRoadmapContext({
+				roadmapItems: [item],
+				projects: [project],
+			}),
+		);
+		const match = prompt.match(/Parent Task Notes: (.*)/);
+		expect(match).not.toBeNull();
+		const notesLine = (match as RegExpMatchArray)[1];
+		expect(notesLine).not.toContain("<body>");
+		expect(notesLine.endsWith("…")).toBe(true);
+		expect(notesLine.length).toBeLessThanOrEqual(1501);
+	});
+
+	it("includes subtask notes snippet under each subtask line", () => {
+		const subtaskMap = new Map<string, RoadmapSubtaskInfo[]>();
+		subtaskMap.set("gid-1", [
+			makeSubtask({
+				name: "UAT cycle",
+				notes: "Finished 4/05, regression clean. Luciano signed off.",
+			}),
+		]);
+		const prompt = buildRoadmapSynthesisPrompt(
+			makeRoadmapContext({
+				roadmapItems: [makeRoadmapEntry()],
+				subtasksByGid: subtaskMap,
+			}),
+		);
+		expect(prompt).toContain("[TODO] UAT cycle");
+		expect(prompt).toContain(
+			"notes: Finished 4/05, regression clean. Luciano signed off.",
+		);
+	});
+
 	it("serializes subtask tree with TODO/DONE/OVERDUE status", () => {
 		const subtasks: RoadmapSubtaskInfo[] = [
 			makeSubtask({

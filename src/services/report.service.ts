@@ -1179,9 +1179,49 @@ export class ReportService {
 						(hasConfiguredSection || hasRoadmapItems) &&
 						visibleWinsProjects
 					) {
-						// Mode A: configured — items from designated section + subtask data
+						// Mode A: configured — items from designated section + subtask data.
+						//
+						// Enrich visibleWinsProjects with parent-task data for any declared
+						// rock GIDs that aren't already in the section-filtered slice.
+						// Without this, rocks outside the configured section land in the
+						// extractor as "not found" and are rendered with ⚪ unknown status
+						// and empty notes — even though Asana has the data.
+						const declaredRockGids = new Set<string>();
+						for (const board of this.deps.boardConfigs!) {
+							for (const rock of board.roadmapItems ?? board.rocks ?? []) {
+								declaredRockGids.add(rock.gid);
+							}
+						}
+						const enrichedProjects: ProjectTask[] = [...visibleWinsProjects];
+						if (this.deps.asanaService && declaredRockGids.size > 0) {
+							const existingGids = new Set(
+								enrichedProjects.map((p) => p.gid),
+							);
+							const missingGids = Array.from(declaredRockGids).filter(
+								(gid) => !existingGids.has(gid),
+							);
+							if (missingGids.length > 0) {
+								const fetched = await Promise.all(
+									missingGids.map((gid) =>
+										this.deps.asanaService!.fetchTaskByGid(gid),
+									),
+								);
+								for (const task of fetched) {
+									if (task) {
+										enrichedProjects.push({
+											gid: task.gid,
+											name: task.name,
+											customFields: task.customFields,
+											priorityScore: 0,
+											notes: task.notes,
+										});
+									}
+								}
+							}
+						}
+
 						const items = extractRoadmapItems(
-							visibleWinsProjects,
+							enrichedProjects,
 							this.deps.boardConfigs!,
 						);
 
@@ -1210,7 +1250,7 @@ export class ReportService {
 						if (subtasksByGid) {
 							for (const item of items) {
 								const subtasks = subtasksByGid.get(item.gid) ?? [];
-								const project = visibleWinsProjects.find(
+								const project = enrichedProjects.find(
 									(p) => p.gid === item.gid,
 								);
 								if (project) {
@@ -1228,7 +1268,7 @@ export class ReportService {
 								roadmapItems: items,
 								accomplishments: visibleWinsAccomplishments,
 								notes: vwRawNotes ?? [],
-								projects: visibleWinsProjects,
+								projects: enrichedProjects,
 								subtasksByGid,
 								mode: "configured",
 							});
