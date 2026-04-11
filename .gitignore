@@ -78,3 +78,7 @@ coverage.*
 
 # Maintenance results
 docs/maintenance_results.md
+
+# Local-only synthetic test data captured by scripts/capture-synthetic-runs.py.
+# Contains real cached runs and meeting transcripts; never commit.
+.local/
