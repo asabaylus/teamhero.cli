@@ -841,6 +841,8 @@ export function buildDiscrepancyAnalysisPrompt(
 			"The claims below are from a Visible Wins section describing project accomplishments. Audit dates, figures, and status assertions against the evidence (meeting notes and Asana project tasks).",
 		individualContribution:
 			"The claims below are from an Individual Contribution summary for a single team member. Audit assertions about their work output against the evidence (their PRs, commits, and task tracker data).",
+		roadmap:
+			"The claims below are rendered rows from the Progress on Quarterly Roadmap (Rocks) table. For each rock, compare the rendered status and milestone against the evidence (the rock's Asana task notes, the latest Asana project status update if any, and per-rock excerpts from meeting transcripts). Emit a discrepancy when: (a) the rendered milestone differs from what transcripts or status updates actually describe, (b) the rendered overallStatus differs from the latest canonical status update, or (c) the board shows no activity but transcripts describe completed work — i.e. stale Asana state. The discrepancy 'rule' should lead with 'Stale roadmap state — …' or 'Roadmap drift — …'. Set sourceA to 'Report: Roadmap (Rocks)' and sourceB to whichever source actually describes the correct state ('Asana board', 'Meeting transcript', or 'Asana status update').",
 	};
 
 	const framing =

@@ -396,6 +396,183 @@ describe("buildSectionAuditContexts", () => {
 		// Evidence should be truncated to MAX_EVIDENCE_CHARS (8000)
 		expect(ctx!.evidence.length).toBeLessThanOrEqual(8001);
 	});
+
+	// -----------------------------------------------------------------------
+	// Roadmap audit (phase 4) — roadmap entries → SectionAuditContext
+	// -----------------------------------------------------------------------
+
+	it("emits a roadmap audit context per rock when roadmapEntries are present", () => {
+		const data = makeReportData({
+			roadmapEntries: [
+				{
+					gid: "rock-1",
+					displayName: "GCCW v1.x",
+					overallStatus: "unknown",
+					nextMilestone: "",
+					keyNotes: "Pilot release overdue",
+				},
+				{
+					gid: "rock-2",
+					displayName: "SOC 2 Type 1",
+					overallStatus: "on-track",
+					nextMilestone: "Apr 18 - Audit kickoff",
+					keyNotes: "Manual testing docs still missing",
+				},
+			],
+		});
+		const contexts = buildSectionAuditContexts(data);
+		const roadmapCtxs = contexts.filter((c) => c.sectionName === "roadmap");
+		expect(roadmapCtxs).toHaveLength(2);
+		expect(roadmapCtxs[0].claims).toContain("Rock: GCCW v1.x");
+		expect(roadmapCtxs[0].claims).toContain("status=unknown");
+		expect(roadmapCtxs[1].claims).toContain("Rock: SOC 2 Type 1");
+		expect(roadmapCtxs[1].claims).toContain("milestone=Apr 18 - Audit kickoff");
+	});
+
+	it("includes latestStatusUpdate in roadmap evidence when present", () => {
+		const data = makeReportData({
+			roadmapEntries: [
+				{
+					gid: "rock-1",
+					displayName: "GCCW v1.x",
+					overallStatus: "on-track",
+					nextMilestone: "Apr 13 launch",
+					keyNotes: "",
+					latestStatusUpdate: {
+						title: "Weekly 4/08",
+						text: "UAT complete. Pilot Apr 13.",
+						color: "green",
+						createdAt: "2026-04-08T14:00:00Z",
+						createdBy: "Luciano",
+					},
+				},
+			],
+		});
+		const contexts = buildSectionAuditContexts(data);
+		const ctx = contexts.find((c) => c.sectionName === "roadmap");
+		expect(ctx).toBeDefined();
+		expect(ctx!.evidence).toContain("Latest Asana Project Status Update");
+		expect(ctx!.evidence).toContain("color: green");
+		expect(ctx!.evidence).toContain("UAT complete. Pilot Apr 13.");
+		expect(ctx!.evidence).toContain("Luciano");
+		expect(ctx!.evidence).toContain("2026-04-08");
+	});
+
+	it("includes per-rock transcript excerpts in roadmap evidence", () => {
+		const data = makeReportData({
+			roadmapEntries: [
+				{
+					gid: "rock-1",
+					displayName: "GCCW",
+					overallStatus: "unknown",
+					nextMilestone: "",
+					keyNotes: "",
+				},
+			],
+		});
+		const vwNotes = [
+			{
+				title: "Eng sync",
+				date: "2026-04-08",
+				attendees: ["Luciano"],
+				discussionItems: [
+					"GCCW pilot release is overdue.",
+					"Unrelated discussion about other things.",
+					"GCCW full rollout needs one more week.",
+				],
+				sourceFile: "eng-sync-2026-04-08.md",
+			},
+		];
+		const contexts = buildSectionAuditContexts(data, vwNotes);
+		const ctx = contexts.find((c) => c.sectionName === "roadmap");
+		expect(ctx).toBeDefined();
+		expect(ctx!.evidence).toContain("Meeting transcript excerpts");
+		expect(ctx!.evidence).toContain("GCCW pilot release is overdue");
+		expect(ctx!.evidence).toContain("GCCW full rollout needs one more week");
+		// The unrelated line should NOT appear because word-boundary match on "GCCW"
+		expect(ctx!.evidence).not.toContain("Unrelated discussion about");
+	});
+
+	it("notes when transcripts mention no matches for a rock", () => {
+		const data = makeReportData({
+			roadmapEntries: [
+				{
+					gid: "rock-1",
+					displayName: "GECO",
+					overallStatus: "unknown",
+					nextMilestone: "",
+					keyNotes: "",
+				},
+			],
+		});
+		const vwNotes = [
+			{
+				title: "Weekly",
+				date: "2026-04-08",
+				attendees: [],
+				discussionItems: ["GCCW update is the only topic."],
+				sourceFile: "standup.md",
+			},
+		];
+		const contexts = buildSectionAuditContexts(data, vwNotes);
+		const ctx = contexts.find((c) => c.sectionName === "roadmap");
+		expect(ctx!.evidence).toContain("no discussion items mention this rock");
+	});
+
+	it("includes citation info in claims when rock has an AI-overridden milestone", () => {
+		const data = makeReportData({
+			roadmapEntries: [
+				{
+					gid: "rock-1",
+					displayName: "GCCW",
+					overallStatus: "on-track",
+					nextMilestone: "Apr 13 - First Full Release",
+					keyNotes: "",
+					nextMilestoneSource: "meeting-note",
+					nextMilestoneCitation: "Eng sync 2026-04-08",
+				},
+			],
+		});
+		const contexts = buildSectionAuditContexts(data);
+		const ctx = contexts.find((c) => c.sectionName === "roadmap");
+		expect(ctx!.claims).toContain("milestoneCitation=Eng sync 2026-04-08");
+		expect(ctx!.claims).toContain("source=meeting-note");
+	});
+
+	it("skips all roadmap audit contexts when TEAMHERO_ROADMAP_AUDIT_ENABLED=0", () => {
+		const originalEnv = process.env.TEAMHERO_ROADMAP_AUDIT_ENABLED;
+		process.env.TEAMHERO_ROADMAP_AUDIT_ENABLED = "0";
+		try {
+			const data = makeReportData({
+				roadmapEntries: [
+					{
+						gid: "rock-1",
+						displayName: "GCCW",
+						overallStatus: "on-track",
+						nextMilestone: "Apr 13",
+						keyNotes: "",
+					},
+				],
+			});
+			const contexts = buildSectionAuditContexts(data);
+			expect(contexts.some((c) => c.sectionName === "roadmap")).toBe(false);
+		} finally {
+			if (originalEnv === undefined) {
+				delete process.env.TEAMHERO_ROADMAP_AUDIT_ENABLED;
+			} else {
+				process.env.TEAMHERO_ROADMAP_AUDIT_ENABLED = originalEnv;
+			}
+		}
+	});
+
+	it("produces no roadmap contexts when roadmapEntries is absent or empty", () => {
+		const contexts = buildSectionAuditContexts(
+			makeReportData({ roadmapEntries: [] }),
+		);
+		expect(contexts.some((c) => c.sectionName === "roadmap")).toBe(false);
+		const contexts2 = buildSectionAuditContexts(makeReportData({}));
+		expect(contexts2.some((c) => c.sectionName === "roadmap")).toBe(false);
+	});
 });
 
 // ---------------------------------------------------------------------------

@@ -411,7 +411,8 @@ export interface DiscrepancyReport {
 export type AuditSectionName =
 	| "teamHighlight"
 	| "visibleWins"
-	| "individualContribution";
+	| "individualContribution"
+	| "roadmap";
 
 /** A single report section's audit context for fact extraction. */
 export interface SectionAuditContext {
