@@ -1194,9 +1194,7 @@ export class ReportService {
 						}
 						const enrichedProjects: ProjectTask[] = [...visibleWinsProjects];
 						if (this.deps.asanaService && declaredRockGids.size > 0) {
-							const existingGids = new Set(
-								enrichedProjects.map((p) => p.gid),
-							);
+							const existingGids = new Set(enrichedProjects.map((p) => p.gid));
 							const missingGids = Array.from(declaredRockGids).filter(
 								(gid) => !existingGids.has(gid),
 							);

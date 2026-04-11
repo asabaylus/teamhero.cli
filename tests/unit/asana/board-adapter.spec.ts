@@ -391,7 +391,8 @@ describe("AsanaBoardAdapter", () => {
 				{
 					gid: "2001",
 					name: "GCCW v1.x",
-					notes: "UAT complete; pilot release overdue. Rollout tracking for Apr 13.",
+					notes:
+						"UAT complete; pilot release overdue. Rollout tracking for Apr 13.",
 					custom_fields: [],
 				},
 			]);

@@ -925,7 +925,10 @@ export interface RoadmapSynthesisContext {
 
 function truncateNotes(raw: string | null | undefined, max: number): string {
 	if (!raw) return "";
-	const plain = raw.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+	const plain = raw
+		.replace(/<[^>]+>/g, "")
+		.replace(/\s+/g, " ")
+		.trim();
 	if (plain.length <= max) return plain;
 	return `${plain.slice(0, max).trimEnd()}…`;
 }
