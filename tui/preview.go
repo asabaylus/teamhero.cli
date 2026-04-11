@@ -18,10 +18,10 @@ import (
 
 // Tab indices for the tabbed preview.
 const (
-	tabReport       = 0
-	tabDiscrepancy  = 1
-	tabJSON         = 2
-	tabCount        = 3
+	tabReport      = 0
+	tabDiscrepancy = 1
+	tabJSON        = 2
+	tabCount       = 3
 )
 
 var tabLabels = [tabCount]string{"Report", "Discrepancy Log", "JSON Data"}
@@ -55,6 +55,29 @@ type previewModel struct {
 
 	// Legacy single-viewport field kept for backward compatibility.
 	viewport viewport.Model
+}
+
+// glamourStyleOption returns a glamour style option that does NOT query
+// the terminal for its background color. The default `glamour.WithAutoStyle()`
+// calls `termenv.HasDarkBackground()` which writes an OSC 11 escape sequence
+// and reads the response from stdin. Inside a bubbletea program that owns
+// stdin via alt-screen mode, that read races with bubbletea's own input
+// reader — sometimes bubbletea consumes the terminal's cursor-position
+// response first and termenv blocks indefinitely waiting for bytes that
+// already went elsewhere. The user-visible symptom is a preview spinner
+// that spins forever and occasionally, usually after a keypress nudges
+// bubbletea to release its grip, finally renders the markdown.
+//
+// To sidestep the race, we honour `GLAMOUR_STYLE` if set (so users can
+// pick light/dark/pink/whatever) and default to "dark", which matches
+// most terminals and produces readable output on both dark and light
+// backgrounds. This is a compile-time selection — no OSC query, no
+// stdin read, no race.
+func glamourStyleOption() glamour.TermRendererOption {
+	if style := os.Getenv("GLAMOUR_STYLE"); style != "" {
+		return glamour.WithStylePath(style)
+	}
+	return glamour.WithStandardStyle("dark")
 }
 
 func newPreviewModel(path string) previewModel {
@@ -128,7 +151,7 @@ func (m previewModel) renderContentCmd() tea.Cmd {
 			rendered[tabReport] = md
 			wordWrap := max(20, width-2)
 			r, err := glamour.NewTermRenderer(
-				glamour.WithAutoStyle(),
+				glamourStyleOption(),
 				glamour.WithWordWrap(wordWrap),
 			)
 			if err == nil {
@@ -146,7 +169,7 @@ func (m previewModel) renderContentCmd() tea.Cmd {
 			md := buildDiscrepancyMarkdown(discrepancyData)
 			wordWrap := max(20, width-2)
 			r, err := glamour.NewTermRenderer(
-				glamour.WithAutoStyle(),
+				glamourStyleOption(),
 				glamour.WithWordWrap(wordWrap),
 			)
 			rendered[tabDiscrepancy] = md
@@ -375,7 +398,7 @@ func (m *previewModel) updateReportViewport() {
 	rendered := md
 	wordWrap := max(20, vp.Width-2)
 	r, err := glamour.NewTermRenderer(
-		glamour.WithAutoStyle(),
+		glamourStyleOption(),
 		glamour.WithWordWrap(wordWrap),
 	)
 	if err == nil {
@@ -401,7 +424,7 @@ func (m *previewModel) updateDiscrepancyViewport() {
 	md := buildDiscrepancyMarkdown(m.discrepancyData)
 	wordWrap := max(20, vp.Width-2)
 	r, err := glamour.NewTermRenderer(
-		glamour.WithAutoStyle(),
+		glamourStyleOption(),
 		glamour.WithWordWrap(wordWrap),
 	)
 	rendered := md
@@ -441,9 +464,9 @@ func (m *previewModel) updateJSONViewport() {
 
 // renderJSONContent formats JSON data for the viewport with color highlighting.
 func renderJSONContent(jsonStr string) string {
-	keyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("14"))  // cyan
-	strStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))  // green
-	numStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("11"))  // yellow
+	keyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("14"))    // cyan
+	strStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))    // green
+	numStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("11"))    // yellow
 	punctStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241")) // dim
 
 	var lines []string
