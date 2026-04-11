@@ -15,7 +15,8 @@
 			"!**/.mcp.json",
 			"!**/.claude-plugin",
 			"!**/site",
-			"!**/.cache"
+			"!**/.cache",
+			"!**/.local"
 		]
 	},
 	"linter": {
