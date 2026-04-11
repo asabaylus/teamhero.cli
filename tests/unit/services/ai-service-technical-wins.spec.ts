@@ -114,6 +114,68 @@ describe("AIService.generateTechnicalWinsSection", () => {
 		expect(callArgs.text.format.name).toBe("technical_foundational_wins");
 	});
 
+	it("forwards systemPrompts.technicalWins as the instructions parameter", async () => {
+		const mockResponse = {
+			output_text: JSON.stringify({ categories: [] }),
+		};
+		const createFn = mock().mockResolvedValue(mockResponse);
+
+		const service = new AIService({
+			apiKey: "test-key",
+			systemPrompts: {
+				technicalWins:
+					"Write in the voice of a pragmatic SRE. Favor bullet density.",
+			},
+		});
+		spyOn(service as never, "createClient").mockReturnValue({
+			responses: { create: createFn },
+		} as never);
+
+		await service.generateTechnicalWinsSection(makeContext());
+
+		const callArgs = createFn.mock.calls[0][0];
+		expect(callArgs.instructions).toBe(
+			"Write in the voice of a pragmatic SRE. Favor bullet density.",
+		);
+	});
+
+	it("falls back to systemPrompts.default when technicalWins is unset", async () => {
+		const mockResponse = {
+			output_text: JSON.stringify({ categories: [] }),
+		};
+		const createFn = mock().mockResolvedValue(mockResponse);
+
+		const service = new AIService({
+			apiKey: "test-key",
+			systemPrompts: { default: "Keep it tight." },
+		});
+		spyOn(service as never, "createClient").mockReturnValue({
+			responses: { create: createFn },
+		} as never);
+
+		await service.generateTechnicalWinsSection(makeContext());
+
+		const callArgs = createFn.mock.calls[0][0];
+		expect(callArgs.instructions).toBe("Keep it tight.");
+	});
+
+	it("omits instructions when no systemPrompts are configured", async () => {
+		const mockResponse = {
+			output_text: JSON.stringify({ categories: [] }),
+		};
+		const createFn = mock().mockResolvedValue(mockResponse);
+
+		const service = new AIService({ apiKey: "test-key" });
+		spyOn(service as never, "createClient").mockReturnValue({
+			responses: { create: createFn },
+		} as never);
+
+		await service.generateTechnicalWinsSection(makeContext());
+
+		const callArgs = createFn.mock.calls[0][0];
+		expect(callArgs.instructions).toBeUndefined();
+	});
+
 	it("throws on empty AI response", async () => {
 		const mockResponse = { output_text: null };
 

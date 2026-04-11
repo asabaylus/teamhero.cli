@@ -627,11 +627,17 @@ export class AIService {
 
 			context.onStatus?.("Generating Technical / Foundational Wins via AI...");
 
+			const instructions = this.getSystemPrompt("technicalWins");
+
 			const requestOptions: Record<string, unknown> = {
 				model,
 				input: prompt,
 				text: { format: TECHNICAL_WINS_SCHEMA },
 			};
+
+			if (instructions) {
+				requestOptions.instructions = instructions;
+			}
 
 			if (this.enableFlexProcessing) {
 				requestOptions.service_tier = "flex";
