@@ -19,7 +19,7 @@ What it does:
        week's cache files, the matching generated report markdown, and
        the meeting notes whose filename date lands in the window.
     3. Writes a MANIFEST.json per week describing what's in it.
-    4. Writes a top-level README.md summarising the capture.
+    4. Writes a top-level CAPTURE-INVENTORY.md summarising the capture.
 
 Usage:
     python3 scripts/capture-synthetic-runs.py                       # defaults
@@ -27,11 +27,17 @@ Usage:
     python3 scripts/capture-synthetic-runs.py --dry-run             # inventory only
 
 Output defaults to .local/synthetic-runs/ which is gitignored. Do NOT
-point this at a tracked path — the output contains real identities,
-real business prose, and real financial figures.
+point this at a tracked path in this repo — the output contains real
+identities, real business prose, and real financial figures.
 
-Re-run safety: idempotent. The output directory is wiped and rewritten
-on each run.
+Symlink pattern: .local/synthetic-runs/ may be a symlink to a separate
+private git repo (e.g. teamhero.synthetics) so captured data can live
+under version control without being in the public repo. The script
+preserves .git/, README.md, .gitignore, and other sibling files in the
+symlink target — only week-* subdirectories and CAPTURE-INVENTORY.md
+are wiped and rewritten on each run.
+
+Re-run safety: idempotent with respect to the week buckets.
 """
 
 from __future__ import annotations
@@ -357,23 +363,19 @@ def main() -> int:
         print(f"[error] --end must be YYYY-MM-DD, got {args.end!r}", file=sys.stderr)
         return 2
 
-    # Safety check: refuse to write anywhere other than .local/** or a
-    # path the user explicitly opted into on the command line. This is
-    # the belt-and-suspenders backup to the .gitignore entry.
-    output_abs = args.output.resolve()
-    repo_local = (REPO_ROOT / ".local").resolve()
-    if not args.dry_run and output_abs != args.output.resolve():
-        pass  # no-op, just a parity line
-    if (
-        not args.dry_run
-        and not str(output_abs).startswith(str(repo_local))
-        and args.output == DEFAULT_OUTPUT
-    ):
-        print(
-            f"[error] refusing to write to {output_abs} — must be under .local/",
-            file=sys.stderr,
-        )
-        return 2
+    # Safety check: if the user didn't pass --output, the default lives
+    # inside .local/. Refuse to write if that's somehow been moved.
+    # Explicit --output paths bypass this check — the user opted in.
+    # We compare the *unresolved* absolute path so symlinks pointing
+    # outside .local/ (e.g. to a companion private repo) are accepted.
+    if not args.dry_run and args.output == DEFAULT_OUTPUT:
+        expected = (REPO_ROOT / ".local" / "synthetic-runs").absolute()
+        if args.output.absolute() != expected:
+            print(
+                f"[error] default output must resolve to {expected}, got {args.output.absolute()}",
+                file=sys.stderr,
+            )
+            return 2
 
     buckets = derive_weeks(end_date, args.weeks)
     print(f"[info] Building {args.weeks} weekly buckets ending {end_date}:")
@@ -413,28 +415,27 @@ def main() -> int:
         print("\n[dry-run] No files written.")
         return 0
 
-    # Wipe + rewrite output dir
-    if args.output.exists():
-        print(f"\n[info] Wiping existing {args.output}")
-        shutil.rmtree(args.output)
-    args.output.mkdir(parents=True)
+    # Wipe just the week buckets and the auto-generated README so a
+    # companion git repo / symlink target survives regeneration. Do NOT
+    # rmtree the entire output dir — .git/, manually-curated README.md,
+    # .gitignore, and any other siblings must persist.
+    args.output.mkdir(parents=True, exist_ok=True)
+    for existing in args.output.iterdir():
+        if existing.is_symlink():
+            continue
+        if existing.name.startswith("week-") and existing.is_dir():
+            print(f"[info] Wiping existing {existing}")
+            shutil.rmtree(existing)
 
+    # Write a CAPTURE-INVENTORY.md rather than README.md so we don't
+    # clobber a manually-curated README in a companion git repo that
+    # may be symlinked at the output path.
     top_level_readme_lines: list[str] = [
-        "# Synthetic Runs — Local Capture of Real Teamhero Runs",
+        "# Capture Inventory",
         "",
-        f"Captured on {dt.datetime.now(dt.timezone.utc).isoformat()}Z by "
-        "`scripts/capture-synthetic-runs.py`.",
-        "",
-        "> **This directory is gitignored.** It contains real identities, "
-        "real business prose, and real financial figures from live teamhero "
-        "runs. Never commit it, never copy it elsewhere, never share it.",
-        "",
-        "## What's in here",
-        "",
-        "Four weeks of real teamhero pipeline runs, kept raw so they accurately "
-        "represent what the live pipeline produces. Use as a local reference "
-        "for future development — regression shapes, new-feature fixtures, "
-        "AI prompt experiments, and as evidence of real edge cases.",
+        f"Auto-generated on {dt.datetime.now(dt.timezone.utc).isoformat()}Z by "
+        "`scripts/capture-synthetic-runs.py`. This file is rewritten on every "
+        "run — do not edit by hand. See `README.md` for curated usage notes.",
         "",
         "Per-week contents:",
         "- `cache/<namespace>/*.json` — raw cache payloads (inputs + AI outputs)",
@@ -527,7 +528,9 @@ def main() -> int:
         ]
     )
 
-    (args.output / "README.md").write_text("\n".join(top_level_readme_lines))
+    (args.output / "CAPTURE-INVENTORY.md").write_text(
+        "\n".join(top_level_readme_lines)
+    )
 
     relative_output = (
         args.output.relative_to(REPO_ROOT)
