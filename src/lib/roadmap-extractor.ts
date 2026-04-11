@@ -2,10 +2,108 @@ import consola from "consola";
 import type {
 	LatestProjectStatus,
 	RoadmapEntry,
+	RoadmapFieldSource,
 	RoadmapSubtaskInfo,
 } from "../core/types.js";
 import type { ProjectTask } from "../models/visible-wins.js";
 import type { BoardConfig } from "./boards-config-loader.js";
+
+/**
+ * Payload returned by the AI for a single roadmap entry. Mirrors the
+ * strict JSON schema's required fields — citations and sources are always
+ * present as strings (empty string when not overridden).
+ */
+export interface RoadmapAiEntry {
+	gid: string;
+	displayName: string;
+	overallStatus: string;
+	nextMilestone: string;
+	keyNotes: string;
+	nextMilestoneSource?: string;
+	nextMilestoneCitation?: string;
+	overallStatusSource?: string;
+	overallStatusCitation?: string;
+}
+
+/**
+ * Outcome of applying a single AI synthesis entry to the corresponding
+ * pre-computed RoadmapEntry. Mutations are tracked so callers can log
+ * rejected overrides without re-implementing the logic.
+ */
+export interface ApplyRoadmapAiEntryResult {
+	milestoneOverridden: boolean;
+	milestoneRejected: boolean;
+	statusOverridden: boolean;
+	statusRejected: boolean;
+}
+
+const ALLOWED_OVERALL_STATUS: ReadonlySet<RoadmapEntry["overallStatus"]> =
+	new Set(["on-track", "at-risk", "off-track", "unknown"]);
+
+/**
+ * Merge an AI-synthesized entry into the pre-computed RoadmapEntry in place.
+ * Always copies keyNotes. Accepts nextMilestone / overallStatus overrides
+ * only when the AI provides a non-empty citation. Missing citations are
+ * silently rejected so the deterministic value survives — the caller can
+ * read the returned flags to decide whether to emit a warning.
+ *
+ * When `overrideEnabled` is false, all overrides are rejected (citation or
+ * not) so operators can disable the feature via TEAMHERO_ROADMAP_AI_OVERRIDE.
+ */
+export function applyRoadmapAiEntry(
+	item: RoadmapEntry,
+	entry: RoadmapAiEntry,
+	overrideEnabled: boolean,
+): ApplyRoadmapAiEntryResult {
+	const result: ApplyRoadmapAiEntryResult = {
+		milestoneOverridden: false,
+		milestoneRejected: false,
+		statusOverridden: false,
+		statusRejected: false,
+	};
+
+	item.keyNotes = entry.keyNotes;
+
+	if (!overrideEnabled) {
+		return result;
+	}
+
+	// Compare normalized strings so round-tripped whitespace (e.g. the AI
+	// trimming a trailing space) isn't misread as an override attempt.
+	const normalize = (s: string): string =>
+		(s ?? "").replace(/\s+/g, " ").trim();
+	const aiMilestone = entry.nextMilestone;
+	const preMilestone = item.nextMilestone;
+	if (aiMilestone && normalize(aiMilestone) !== normalize(preMilestone)) {
+		if (entry.nextMilestoneCitation?.trim()) {
+			item.nextMilestone = aiMilestone;
+			item.nextMilestoneSource =
+				(entry.nextMilestoneSource as RoadmapFieldSource) || "ai-inferred";
+			item.nextMilestoneCitation = entry.nextMilestoneCitation;
+			result.milestoneOverridden = true;
+		} else {
+			result.milestoneRejected = true;
+		}
+	}
+
+	if (entry.overallStatus && entry.overallStatus !== item.overallStatus) {
+		const hasCitation = Boolean(entry.overallStatusCitation?.trim());
+		const isAllowed = ALLOWED_OVERALL_STATUS.has(
+			entry.overallStatus as RoadmapEntry["overallStatus"],
+		);
+		if (hasCitation && isAllowed) {
+			item.overallStatus = entry.overallStatus as RoadmapEntry["overallStatus"];
+			item.overallStatusSource =
+				(entry.overallStatusSource as RoadmapFieldSource) || "ai-inferred";
+			item.overallStatusCitation = entry.overallStatusCitation;
+			result.statusOverridden = true;
+		} else if (!hasCitation) {
+			result.statusRejected = true;
+		}
+	}
+
+	return result;
+}
 
 /**
  * Map Asana's raw project-status color string to the roadmap's overallStatus union.

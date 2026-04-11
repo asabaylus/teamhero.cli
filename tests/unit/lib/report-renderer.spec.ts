@@ -3,6 +3,7 @@ import type {
 	DiscrepancyReport,
 	MetricDelta,
 	PeriodDeltas,
+	RoadmapEntry,
 } from "../../../src/core/types.js";
 import type {
 	ReportMemberMetrics,
@@ -17,6 +18,7 @@ import type {
  */
 import {
 	renderReport,
+	renderRoadmapSection,
 	renderVisibleWinsSection,
 } from "../../../src/lib/report-renderer.js";
 import type {
@@ -1097,5 +1099,85 @@ describe("renderReport — member details", () => {
 		);
 		expect(output).toContain("**Completed tasks**");
 		expect(output).toContain("None");
+	});
+});
+
+describe("renderRoadmapSection — phase 3 citations and phase 2 status colors", () => {
+	function makeEntry(overrides: Partial<RoadmapEntry> = {}): RoadmapEntry {
+		return {
+			gid: "gid-1",
+			displayName: "Auth Overhaul",
+			overallStatus: "on-track",
+			nextMilestone: "Beta launch Mar 15",
+			keyNotes: "Rolling out smoothly",
+			...overrides,
+		};
+	}
+
+	it("appends an italic citation suffix when nextMilestoneCitation is present", () => {
+		const out = renderRoadmapSection([
+			makeEntry({
+				nextMilestone: "Apr 13 - First Full Release",
+				nextMilestoneCitation: "Eng sync 2026-04-08",
+				nextMilestoneSource: "meeting-note",
+			}),
+		]);
+		expect(out).toContain(
+			"Apr 13 - First Full Release _(per Eng sync 2026-04-08)_",
+		);
+	});
+
+	it("leaves the milestone cell unchanged when there is no citation", () => {
+		const out = renderRoadmapSection([makeEntry()]);
+		expect(out).toContain("| Beta launch Mar 15 |");
+		expect(out).not.toContain("_(per");
+	});
+
+	it("ignores whitespace-only citations", () => {
+		const out = renderRoadmapSection([
+			makeEntry({ nextMilestoneCitation: "   " }),
+		]);
+		expect(out).not.toContain("_(per");
+	});
+
+	it("uses latestStatusUpdate.color for the status emoji when present", () => {
+		const out = renderRoadmapSection([
+			makeEntry({
+				overallStatus: "unknown",
+				latestStatusUpdate: {
+					title: "Weekly update",
+					text: "All good.",
+					color: "blue",
+					createdAt: "2026-04-08T14:00:00Z",
+				},
+			}),
+		]);
+		expect(out).toContain("🔵");
+		// Overall status is still 'unknown' at the union level but blue wins here
+		expect(out).not.toMatch(/ ⚪ /);
+	});
+
+	it("falls back to overallStatus emoji when latestStatusUpdate is missing", () => {
+		const out = renderRoadmapSection([
+			makeEntry({ overallStatus: "off-track" }),
+		]);
+		expect(out).toContain("🔴");
+	});
+
+	it("renders ⚪ when status is unknown and no latestStatusUpdate exists", () => {
+		const out = renderRoadmapSection([
+			makeEntry({ overallStatus: "unknown", latestStatusUpdate: undefined }),
+		]);
+		expect(out).toContain("⚪");
+	});
+
+	it("escapes pipe characters in citation text to avoid breaking the table", () => {
+		const out = renderRoadmapSection([
+			makeEntry({
+				nextMilestone: "Apr 20",
+				nextMilestoneCitation: "Retro|Note 2026-04-09",
+			}),
+		]);
+		expect(out).toContain("Retro\\|Note 2026-04-09");
 	});
 });

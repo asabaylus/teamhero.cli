@@ -898,6 +898,25 @@ export const ROADMAP_SYNTHESIS_SCHEMA = {
 						overallStatus: { type: "string" as const },
 						nextMilestone: { type: "string" as const },
 						keyNotes: { type: "string" as const },
+						/**
+						 * Source of the nextMilestone value:
+						 *   "asana-subtask"   → pre-computed from subtask due dates (default)
+						 *   "status-update"   → derived from latest Asana project status update
+						 *   "meeting-note"    → derived from a meeting transcript
+						 *   "ai-inferred"     → AI synthesized without a specific citable source
+						 * Empty string collapses to "asana-subtask".
+						 */
+						nextMilestoneSource: { type: "string" as const },
+						/**
+						 * Citation for any override of the pre-computed nextMilestone.
+						 * Format: meeting title + date, or "Status update YYYY-MM-DD", etc.
+						 * Empty string when the pre-computed value was kept as-is.
+						 */
+						nextMilestoneCitation: { type: "string" as const },
+						/** Same taxonomy as nextMilestoneSource. */
+						overallStatusSource: { type: "string" as const },
+						/** Same citation rules as nextMilestoneCitation. */
+						overallStatusCitation: { type: "string" as const },
 					},
 					required: [
 						"gid",
@@ -905,6 +924,10 @@ export const ROADMAP_SYNTHESIS_SCHEMA = {
 						"overallStatus",
 						"nextMilestone",
 						"keyNotes",
+						"nextMilestoneSource",
+						"nextMilestoneCitation",
+						"overallStatusSource",
+						"overallStatusCitation",
 					] as const,
 					additionalProperties: false as const,
 				},
@@ -1009,9 +1032,12 @@ function buildConfiguredRoadmapPrompt(
 				? `  Subtasks:\n${serializeSubtaskTree(subtasks)}`
 				: "  No subtasks available.";
 
+		// When the pre-computed milestone is empty, show it as empty (not "TBD")
+		// so the AI round-trips "" back. Otherwise a literal "TBD" return would
+		// be misread as an override attempt by the post-synthesis validator.
 		const milestoneStr = item.nextMilestone
 			? `  Next Milestone (pre-computed): ${item.nextMilestone}`
-			: "  Next Milestone (pre-computed): TBD";
+			: '  Next Milestone (pre-computed): ""  (return empty string exactly)';
 
 		return [
 			`Initiative: ${item.displayName} (GID: ${item.gid})`,
@@ -1037,13 +1063,34 @@ function buildConfiguredRoadmapPrompt(
 	return [
 		"You are synthesizing a roadmap progress table for a weekly engineering status report.",
 		"",
-		"For each initiative below, produce:",
-		"1. keyNotes: Brief context — blockers, key decisions, or progress notes. Under 20 words. Use empty string if nothing notable.",
-		"2. nextMilestone: Already computed — return the value exactly as provided in 'Next Milestone (pre-computed)'. Do NOT change it.",
-		"3. overallStatus: Use the status already provided — do not change it.",
-		"4. displayName: Use the display name already provided — do not change it.",
+		"For each initiative below, produce the following fields:",
 		"",
-		"Rules:",
+		"1. keyNotes — Brief context: blockers, key decisions, or progress notes. Under 20 words. Empty string if nothing notable.",
+		"",
+		"2. nextMilestone — The next concrete delivery milestone with a date.",
+		"   - DEFAULT: return the pre-computed value EXACTLY. When you do this, nextMilestoneSource MUST be 'asana-subtask' and nextMilestoneCitation MUST be empty string.",
+		"   - OVERRIDE: you MAY replace the pre-computed value when meeting notes or the latest Asana project status update clearly describe a more specific near-term milestone (e.g. transcripts say 'April 13th expansion start is the target' and the pre-computed value is blank or less precise).",
+		"   - OVERRIDE REQUIREMENTS (ALL MANDATORY — no exceptions):",
+		"     a. nextMilestoneSource MUST be set to exactly one of: 'meeting-note' | 'status-update'",
+		"     b. nextMilestoneCitation MUST be a non-empty concrete reference, e.g.:",
+		"        * 'Eng sync 2026-04-08' (the meeting title + date EXACTLY as it appears in the MEETING NOTES section below)",
+		"        * 'Status update 2026-04-08' (YYYY-MM-DD from a Latest Project Status Update block)",
+		"     c. If you cannot cite a specific source, you MUST NOT override — return the pre-computed value instead.",
+		"   - Override example (allowed):",
+		"        pre-computed: ''",
+		"        transcripts: 'Meeting: Eng sync (2026-04-08)\\n  - April 13th first full release still on track'",
+		"        → nextMilestone='Apr 13 - First Full Release', nextMilestoneSource='meeting-note', nextMilestoneCitation='Eng sync 2026-04-08'",
+		"   - Non-example (NOT allowed):",
+		"        pre-computed: ''",
+		"        → nextMilestone='Apr 13', nextMilestoneSource='', nextMilestoneCitation=''  ❌ override without citation — will be discarded",
+		"",
+		"3. overallStatus — The initiative's current health. Allowed values: 'on-track' | 'at-risk' | 'off-track' | 'unknown'.",
+		"   - DEFAULT: return the value from 'Current Status' EXACTLY. When you do this, overallStatusSource MUST be 'asana-subtask' and overallStatusCitation MUST be empty string.",
+		"   - OVERRIDE: same two-field requirement as nextMilestone (source + citation, both non-empty). An override without both fields will be discarded.",
+		"",
+		"4. displayName — Return the display name exactly as provided.",
+		"",
+		"General rules:",
 		"- Use ONLY information from the subtasks, accomplishments, meeting notes, and project status updates below. Do not invent information.",
 		"- When a 'Latest Project Status Update' block is present for an initiative, treat it as the most recent canonical status and summarize its substance in keyNotes (still under 20 words).",
 		"- Return items in the same order as provided.",

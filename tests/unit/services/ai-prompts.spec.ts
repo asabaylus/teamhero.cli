@@ -1272,6 +1272,45 @@ describe("buildRoadmapSynthesisPrompt — configured mode", () => {
 		expect(prompt).toContain("treat it as the most recent canonical status");
 	});
 
+	it("allows the AI to override nextMilestone when a citation is provided", () => {
+		const prompt = buildRoadmapSynthesisPrompt(makeRoadmapContext());
+		expect(prompt).toContain("you MAY replace");
+		expect(prompt).toContain("nextMilestoneCitation");
+		expect(prompt).toContain("meeting-note");
+		expect(prompt).toContain("status-update");
+	});
+
+	it("warns the AI that overrides without citation will be discarded", () => {
+		const prompt = buildRoadmapSynthesisPrompt(makeRoadmapContext());
+		expect(prompt).toContain("OVERRIDE REQUIREMENTS");
+		expect(prompt).toContain("MANDATORY");
+		expect(prompt).toContain("will be discarded");
+	});
+
+	it("schema requires the new citation fields and has additionalProperties:false", async () => {
+		const mod = await import(
+			new URL(
+				"../../../src/services/ai-prompts.js?roadmap-schema-spec",
+				import.meta.url,
+			).href
+		);
+		const schema = mod.ROADMAP_SYNTHESIS_SCHEMA;
+		expect(schema.strict).toBe(true);
+		const itemSchema = schema.schema.properties.items.items;
+		expect(itemSchema.additionalProperties).toBe(false);
+		expect(itemSchema.required).toEqual(
+			expect.arrayContaining([
+				"nextMilestoneSource",
+				"nextMilestoneCitation",
+				"overallStatusSource",
+				"overallStatusCitation",
+			]),
+		);
+		expect(itemSchema.properties.nextMilestoneCitation).toEqual({
+			type: "string",
+		});
+	});
+
 	it("serializes subtask tree with TODO/DONE/OVERDUE status", () => {
 		const subtasks: RoadmapSubtaskInfo[] = [
 			makeSubtask({
@@ -1337,14 +1376,19 @@ describe("buildRoadmapSynthesisPrompt — configured mode", () => {
 		expect(prompt).toContain("No subtasks available.");
 	});
 
-	it("shows TBD when nextMilestone is empty", () => {
+	it("shows empty string placeholder when nextMilestone is empty (phase 3: no more TBD)", () => {
 		const item = makeRoadmapEntry({ nextMilestone: "" });
 		const prompt = buildRoadmapSynthesisPrompt(
 			makeRoadmapContext({
 				roadmapItems: [item],
 			}),
 		);
-		expect(prompt).toContain("Next Milestone (pre-computed): TBD");
+		// TBD was causing the AI to echo "TBD" back, which the override
+		// validator misread as an attempted override. Use empty-string
+		// placeholder so the round-trip matches exactly.
+		expect(prompt).not.toContain("Next Milestone (pre-computed): TBD");
+		expect(prompt).toContain('Next Milestone (pre-computed): ""');
+		expect(prompt).toContain("return empty string exactly");
 	});
 
 	it("includes structured output instructions", () => {

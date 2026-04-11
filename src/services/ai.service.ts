@@ -1203,6 +1203,10 @@ export class AIService {
 			overallStatus: string;
 			nextMilestone: string;
 			keyNotes: string;
+			nextMilestoneSource?: string;
+			nextMilestoneCitation?: string;
+			overallStatusSource?: string;
+			overallStatusCitation?: string;
 		}[]
 	> {
 		if (!this.enabled) {
@@ -1261,6 +1265,10 @@ export class AIService {
 					overallStatus: string;
 					nextMilestone: string;
 					keyNotes: string;
+					nextMilestoneSource?: string;
+					nextMilestoneCitation?: string;
+					overallStatusSource?: string;
+					overallStatusCitation?: string;
 				}>;
 			};
 

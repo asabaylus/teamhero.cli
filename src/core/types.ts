@@ -231,6 +231,18 @@ export interface LatestProjectStatus {
 	createdBy?: string;
 }
 
+/**
+ * Source of the value in a roadmap entry's nextMilestone / overallStatus field.
+ * Used to determine whether the AI overrode the pre-computed value with a
+ * clearer signal from transcripts or project status updates (and therefore
+ * owes a citation), or kept the deterministic pre-computation as-is.
+ */
+export type RoadmapFieldSource =
+	| "asana-subtask"
+	| "status-update"
+	| "meeting-note"
+	| "ai-inferred";
+
 /** A roadmap initiative for the "Progress on Roadmap" table. */
 export interface RoadmapEntry {
 	gid: string;
@@ -244,6 +256,22 @@ export interface RoadmapEntry {
 	 * so 🔵 ("on hold") can surface without expanding the overallStatus union.
 	 */
 	latestStatusUpdate?: LatestProjectStatus;
+	/**
+	 * Provenance of nextMilestone. When "asana-subtask" the value is the
+	 * deterministic pre-computation; any other value indicates the AI overrode
+	 * the pre-computation based on transcripts or status updates and MUST be
+	 * accompanied by a nextMilestoneCitation.
+	 */
+	nextMilestoneSource?: RoadmapFieldSource;
+	/**
+	 * Citation for an overridden nextMilestone (e.g. "Eng sync 2026-04-08" or
+	 * "Status update 2026-04-08"). Empty when the pre-computed value was kept.
+	 */
+	nextMilestoneCitation?: string;
+	/** Provenance of overallStatus. Same taxonomy as nextMilestoneSource. */
+	overallStatusSource?: RoadmapFieldSource;
+	/** Citation for an overridden overallStatus. Same rules as nextMilestoneCitation. */
+	overallStatusCitation?: string;
 }
 
 /** Subtask info used for status derivation and milestone synthesis. */

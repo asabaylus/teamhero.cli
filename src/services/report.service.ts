@@ -41,6 +41,7 @@ import type {
 } from "../lib/report-renderer.js";
 import { serializeReportRenderInput } from "../lib/report-serializer.js";
 import {
+	applyRoadmapAiEntry,
 	deriveNextMilestone,
 	deriveRoadmapStatusWithLatest,
 	extractRoadmapItems,
@@ -1319,11 +1320,29 @@ export class ReportService {
 								statusByGid,
 								mode: "configured",
 							});
+							// Accept AI overrides for nextMilestone / overallStatus only
+							// when a citation is present. Missing citation = silently
+							// reject the override and keep the deterministic value.
+							// Gated by TEAMHERO_ROADMAP_AI_OVERRIDE (default "1").
+							const overrideEnabled =
+								getEnv("TEAMHERO_ROADMAP_AI_OVERRIDE") !== "0";
 							for (const entry of synthesized) {
 								const item = items.find((r) => r.gid === entry.gid);
-								if (item) {
-									// Only copy keyNotes — status and milestone are deterministic
-									item.keyNotes = entry.keyNotes;
+								if (!item) continue;
+								const outcome = applyRoadmapAiEntry(
+									item,
+									entry,
+									overrideEnabled,
+								);
+								if (outcome.milestoneRejected) {
+									this.logger.warn(
+										`[roadmap] AI changed nextMilestone for "${item.displayName}" without a citation — keeping pre-computed value`,
+									);
+								}
+								if (outcome.statusRejected) {
+									this.logger.warn(
+										`[roadmap] AI changed overallStatus for "${item.displayName}" without a citation — keeping pre-computed value`,
+									);
 								}
 							}
 							roadmapEntries = items;

@@ -1,10 +1,12 @@
 import { describe, expect, it } from "bun:test";
 import type {
 	LatestProjectStatus,
+	RoadmapEntry,
 	RoadmapSubtaskInfo,
 } from "../../../src/core/types.js";
 import type { BoardConfig } from "../../../src/lib/boards-config-loader.js";
 import {
+	applyRoadmapAiEntry,
 	deriveNextMilestone,
 	deriveRoadmapStatus,
 	deriveRoadmapStatusWithLatest,
@@ -12,6 +14,7 @@ import {
 	identifyRoadmapItems,
 	mapAsanaColorToStatus,
 	mapStatusFromCustomFields,
+	type RoadmapAiEntry,
 } from "../../../src/lib/roadmap-extractor.js";
 import type { ProjectTask } from "../../../src/models/visible-wins.js";
 
@@ -474,5 +477,188 @@ describe("deriveRoadmapStatusWithLatest", () => {
 		expect(deriveRoadmapStatusWithLatest([], customFields, latest)).toBe(
 			"on-track",
 		);
+	});
+});
+
+describe("applyRoadmapAiEntry", () => {
+	function makeItem(overrides: Partial<RoadmapEntry> = {}): RoadmapEntry {
+		return {
+			gid: "gid-1",
+			displayName: "GCCW v1.x",
+			overallStatus: "unknown",
+			nextMilestone: "",
+			keyNotes: "",
+			...overrides,
+		};
+	}
+
+	function makeAi(overrides: Partial<RoadmapAiEntry> = {}): RoadmapAiEntry {
+		return {
+			gid: "gid-1",
+			displayName: "GCCW v1.x",
+			overallStatus: "unknown",
+			nextMilestone: "",
+			keyNotes: "",
+			nextMilestoneSource: "",
+			nextMilestoneCitation: "",
+			overallStatusSource: "",
+			overallStatusCitation: "",
+			...overrides,
+		};
+	}
+
+	it("always copies keyNotes into the item", () => {
+		const item = makeItem();
+		applyRoadmapAiEntry(
+			item,
+			makeAi({ keyNotes: "Pilot release delayed; stability issues remain." }),
+			true,
+		);
+		expect(item.keyNotes).toBe(
+			"Pilot release delayed; stability issues remain.",
+		);
+	});
+
+	it("accepts a nextMilestone override when a non-empty citation is provided", () => {
+		const item = makeItem({ nextMilestone: "" });
+		const outcome = applyRoadmapAiEntry(
+			item,
+			makeAi({
+				nextMilestone: "Apr 13 - First Full Release",
+				nextMilestoneSource: "meeting-note",
+				nextMilestoneCitation: "Eng sync 2026-04-08",
+			}),
+			true,
+		);
+		expect(outcome.milestoneOverridden).toBe(true);
+		expect(outcome.milestoneRejected).toBe(false);
+		expect(item.nextMilestone).toBe("Apr 13 - First Full Release");
+		expect(item.nextMilestoneSource).toBe("meeting-note");
+		expect(item.nextMilestoneCitation).toBe("Eng sync 2026-04-08");
+	});
+
+	it("rejects a nextMilestone override when citation is missing", () => {
+		const item = makeItem({ nextMilestone: "Beta Mar 15" });
+		const outcome = applyRoadmapAiEntry(
+			item,
+			makeAi({
+				nextMilestone: "Apr 1 - Released",
+				nextMilestoneCitation: "",
+			}),
+			true,
+		);
+		expect(outcome.milestoneOverridden).toBe(false);
+		expect(outcome.milestoneRejected).toBe(true);
+		expect(item.nextMilestone).toBe("Beta Mar 15");
+		expect(item.nextMilestoneCitation).toBeUndefined();
+	});
+
+	it("rejects a nextMilestone override when citation is whitespace-only", () => {
+		const item = makeItem({ nextMilestone: "Beta Mar 15" });
+		const outcome = applyRoadmapAiEntry(
+			item,
+			makeAi({
+				nextMilestone: "Apr 1 - Released",
+				nextMilestoneCitation: "   ",
+			}),
+			true,
+		);
+		expect(outcome.milestoneRejected).toBe(true);
+		expect(item.nextMilestone).toBe("Beta Mar 15");
+	});
+
+	it("ignores milestone override when the pre-computed value matches the AI value", () => {
+		const item = makeItem({ nextMilestone: "Apr 13" });
+		const outcome = applyRoadmapAiEntry(
+			item,
+			makeAi({ nextMilestone: "Apr 13" }),
+			true,
+		);
+		expect(outcome.milestoneOverridden).toBe(false);
+		expect(outcome.milestoneRejected).toBe(false);
+	});
+
+	it("accepts an overallStatus override when citation is present and status is in the union", () => {
+		const item = makeItem({ overallStatus: "unknown" });
+		const outcome = applyRoadmapAiEntry(
+			item,
+			makeAi({
+				overallStatus: "off-track",
+				overallStatusSource: "meeting-note",
+				overallStatusCitation: "Daily standup 2026-04-09",
+			}),
+			true,
+		);
+		expect(outcome.statusOverridden).toBe(true);
+		expect(item.overallStatus).toBe("off-track");
+		expect(item.overallStatusCitation).toBe("Daily standup 2026-04-09");
+	});
+
+	it("rejects an overallStatus override when the value is not in the union even with a citation", () => {
+		const item = makeItem({ overallStatus: "on-track" });
+		const outcome = applyRoadmapAiEntry(
+			item,
+			makeAi({
+				overallStatus: "kinda-ok",
+				overallStatusCitation: "Some meeting",
+			}),
+			true,
+		);
+		expect(outcome.statusOverridden).toBe(false);
+		// Not flagged as "rejected" because the citation was present — the
+		// rejection reason is union membership. Silently ignored.
+		expect(outcome.statusRejected).toBe(false);
+		expect(item.overallStatus).toBe("on-track");
+	});
+
+	it("rejects overallStatus override when citation is missing", () => {
+		const item = makeItem({ overallStatus: "on-track" });
+		const outcome = applyRoadmapAiEntry(
+			item,
+			makeAi({ overallStatus: "at-risk", overallStatusCitation: "" }),
+			true,
+		);
+		expect(outcome.statusOverridden).toBe(false);
+		expect(outcome.statusRejected).toBe(true);
+		expect(item.overallStatus).toBe("on-track");
+	});
+
+	it("rejects ALL overrides when overrideEnabled is false, but still copies keyNotes", () => {
+		const item = makeItem({
+			overallStatus: "on-track",
+			nextMilestone: "Mar 15",
+		});
+		const outcome = applyRoadmapAiEntry(
+			item,
+			makeAi({
+				keyNotes: "Some notes",
+				nextMilestone: "Apr 13",
+				nextMilestoneCitation: "Eng sync 2026-04-08",
+				overallStatus: "off-track",
+				overallStatusCitation: "Standup 2026-04-09",
+			}),
+			false,
+		);
+		expect(outcome.milestoneOverridden).toBe(false);
+		expect(outcome.milestoneRejected).toBe(false);
+		expect(outcome.statusOverridden).toBe(false);
+		expect(outcome.statusRejected).toBe(false);
+		expect(item.keyNotes).toBe("Some notes");
+		expect(item.nextMilestone).toBe("Mar 15");
+		expect(item.overallStatus).toBe("on-track");
+	});
+
+	it("defaults nextMilestoneSource to 'ai-inferred' when the AI provides a citation but no source", () => {
+		const item = makeItem();
+		applyRoadmapAiEntry(
+			item,
+			makeAi({
+				nextMilestone: "Apr 20",
+				nextMilestoneCitation: "Retrospective 2026-04-10",
+				nextMilestoneSource: "",
+			}),
+			true,
+		);
+		expect(item.nextMilestoneSource).toBe("ai-inferred");
 	});
 });
