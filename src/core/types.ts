@@ -217,6 +217,20 @@ export interface VisibleWinsDataResult {
 	supplementaryNotes?: string;
 }
 
+/**
+ * Latest Asana project status update for a rock's sibling project.
+ * Populated via `GET /projects/{gid}/project_statuses` and passed to the
+ * roadmap extractor + synthesis prompt as a canonical status source.
+ */
+export interface LatestProjectStatus {
+	title: string;
+	text: string;
+	/** Raw Asana color string: "green" | "yellow" | "red" | "blue" | other. */
+	color: string;
+	createdAt: string;
+	createdBy?: string;
+}
+
 /** A roadmap initiative for the "Progress on Roadmap" table. */
 export interface RoadmapEntry {
 	gid: string;
@@ -224,6 +238,12 @@ export interface RoadmapEntry {
 	overallStatus: "on-track" | "at-risk" | "off-track" | "unknown";
 	nextMilestone: string;
 	keyNotes: string;
+	/**
+	 * Most recent Asana project status update for this rock's sibling project,
+	 * when one could be resolved. The renderer prefers this for color emoji
+	 * so 🔵 ("on hold") can surface without expanding the overallStatus union.
+	 */
+	latestStatusUpdate?: LatestProjectStatus;
 }
 
 /** Subtask info used for status derivation and milestone synthesis. */
@@ -402,7 +422,8 @@ export type CacheSourceType =
 	| "member-highlights"
 	| "team-highlight"
 	| "audit"
-	| "technical-wins";
+	| "technical-wins"
+	| "project-statuses";
 
 // ---------------------------------------------------------------------------
 // Technical / Foundational Wins section

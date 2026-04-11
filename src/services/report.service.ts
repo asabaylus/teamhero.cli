@@ -7,6 +7,7 @@ import type { ReportCommandInput, ReportResult } from "../cli/index.js";
 import type {
 	CacheOptions,
 	DiscrepancyReport,
+	LatestProjectStatus,
 	MemberTaskSummary,
 	MetricsCollectionResult,
 	MetricsProvider,
@@ -41,7 +42,7 @@ import type {
 import { serializeReportRenderInput } from "../lib/report-serializer.js";
 import {
 	deriveNextMilestone,
-	deriveRoadmapStatus,
+	deriveRoadmapStatusWithLatest,
 	extractRoadmapItems,
 } from "../lib/roadmap-extractor.js";
 import { RunHistoryStore } from "../lib/run-history.js";
@@ -202,6 +203,12 @@ export interface ReportServiceDependencies {
 	progressFactory?: ProgressReporterFactory;
 	/** Multi-board configuration (used for roadmap extraction). */
 	boardConfigs?: import("../lib/boards-config-loader.js").BoardConfig[];
+	/**
+	 * Map of rock task GID → Asana project GID, used by the roadmap section
+	 * to fetch project_statuses from the sibling project. Populated by
+	 * resolveRockProjectGidMap in boards-config-loader.
+	 */
+	rockProjectGidMap?: Record<string, string>;
 	/** Asana service for fetching subtasks (roadmap section). */
 	asanaService?: import("./asana.service.js").AsanaService;
 	/** Configurable title for the roadmap section. */
@@ -1244,6 +1251,42 @@ export class ReportService {
 							}
 						}
 
+						// Fetch latest Asana project status update for each rock that
+						// resolves to a sibling project GID. Rocks without a resolver
+						// entry degrade gracefully to custom-field + subtask derivation.
+						const statusByGid = new Map<string, LatestProjectStatus>();
+						const rockProjectGidMap = this.deps.rockProjectGidMap ?? {};
+						if (this.deps.asanaService && items.length > 0) {
+							const resolvedPairs = items
+								.map((item) => ({
+									gid: item.gid,
+									projectGid: rockProjectGidMap[item.gid],
+								}))
+								.filter((pair): pair is { gid: string; projectGid: string } =>
+									Boolean(pair.projectGid),
+								);
+
+							const fetched = await Promise.all(
+								resolvedPairs.map(async (pair) => {
+									const latest =
+										await this.deps.asanaService!.fetchLatestProjectStatus(
+											pair.projectGid,
+										);
+									return latest ? { gid: pair.gid, latest } : null;
+								}),
+							);
+							for (const entry of fetched) {
+								if (entry) {
+									statusByGid.set(entry.gid, entry.latest);
+								}
+							}
+							if (statusByGid.size > 0) {
+								roadmapStep.update(
+									`Fetched ${statusByGid.size} project status updates`,
+								);
+							}
+						}
+
 						// Re-derive status and milestone now that subtask data is available
 						if (subtasksByGid) {
 							for (const item of items) {
@@ -1251,11 +1294,16 @@ export class ReportService {
 								const project = enrichedProjects.find(
 									(p) => p.gid === item.gid,
 								);
+								const latest = statusByGid.get(item.gid);
 								if (project) {
-									item.overallStatus = deriveRoadmapStatus(
+									item.overallStatus = deriveRoadmapStatusWithLatest(
 										subtasks,
 										project.customFields,
+										latest,
 									);
+								}
+								if (latest) {
+									item.latestStatusUpdate = latest;
 								}
 								item.nextMilestone = deriveNextMilestone(subtasks);
 							}
@@ -1268,6 +1316,7 @@ export class ReportService {
 								notes: vwRawNotes ?? [],
 								projects: enrichedProjects,
 								subtasksByGid,
+								statusByGid,
 								mode: "configured",
 							});
 							for (const entry of synthesized) {

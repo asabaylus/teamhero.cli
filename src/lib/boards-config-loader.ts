@@ -21,9 +21,22 @@ export interface BoardConfig {
 	/** @deprecated Use isRoadmapBoard instead */
 	roadmapSection?: string;
 	/** Roadmap initiative display name overrides (GID + displayName). */
-	roadmapItems?: Array<{ gid: string; displayName: string }>;
+	roadmapItems?: Array<{
+		gid: string;
+		displayName: string;
+		/**
+		 * Explicit Asana project GID to pull project_statuses from for this rock.
+		 * Highest-priority input for the rock→project resolver; when set, auto-
+		 * resolution is skipped for this rock.
+		 */
+		statusProjectGid?: string;
+	}>;
 	/** @deprecated Use roadmapItems instead */
-	rocks?: Array<{ gid: string; displayName: string }>;
+	rocks?: Array<{
+		gid: string;
+		displayName: string;
+		statusProjectGid?: string;
+	}>;
 }
 
 export interface BoardsConfigResult {
@@ -31,6 +44,13 @@ export interface BoardsConfigResult {
 	roadmapTitle?: string;
 	/** When set, only projects whose name matches an entry appear in Visible Wins. */
 	includeInVisibleWins?: string[];
+	/**
+	 * Map of rock task GID → Asana project GID used for fetching project_statuses.
+	 * Built by resolveRockProjectGidMap in priority order: explicit statusProjectGid,
+	 * task-as-project probe (handled at fetch time), auto-resolve via projectAliases,
+	 * or skip. Rocks without an entry fall through to custom-field + subtask status.
+	 */
+	rockProjectGidMap?: Record<string, string>;
 }
 
 interface BoardsFileSchema {
@@ -157,5 +177,70 @@ export async function loadBoardsConfig(): Promise<BoardsConfigResult | null> {
 		boards: parsed.boards,
 		roadmapTitle: parsed.roadmapTitle,
 		includeInVisibleWins: parsed.includeInVisibleWins,
+		rockProjectGidMap: resolveRockProjectGidMap(parsed.boards),
 	};
+}
+
+/**
+ * Resolve rock task GIDs → Asana project GIDs for project_statuses fetching.
+ * Handles four org topologies in priority order:
+ *
+ *   1. Explicit `statusProjectGid` on the roadmapItems[] entry. Canonical.
+ *   2. (Task-as-project is handled at fetch time by the caller — omitted here
+ *      since it requires a live Asana probe, not a config-time inference.)
+ *   3. Auto-resolve: walk the roadmap board's `projectAliases` to find each
+ *      rock's display name, then locate a sibling `singleProject` board whose
+ *      `label` matches — that sibling's `projectGid` is the status source.
+ *      This is best-effort inference that lights up configs shaped like
+ *      Lumata's without requiring a rewrite.
+ *   4. Skip: no entry in the returned map. Caller degrades to Phase 1
+ *      enrichment (notes + custom fields) without color from status updates.
+ *
+ * Pure function — accepts boards array, returns map. Testable in isolation.
+ */
+export function resolveRockProjectGidMap(
+	boards: BoardConfig[],
+): Record<string, string> {
+	const map: Record<string, string> = {};
+
+	// Build a label → projectGid lookup for sibling `singleProject` boards.
+	// Used by the auto-resolve path below.
+	const labelToProjectGid = new Map<string, string>();
+	for (const board of boards) {
+		if (board.singleProject && board.label) {
+			labelToProjectGid.set(board.label.trim().toLowerCase(), board.projectGid);
+		}
+	}
+
+	for (const board of boards) {
+		const rocks = board.roadmapItems ?? board.rocks;
+		if (!rocks) continue;
+
+		for (const rock of rocks) {
+			if (map[rock.gid]) continue; // already resolved via earlier board
+
+			// Path 1: explicit declaration wins.
+			if (rock.statusProjectGid) {
+				map[rock.gid] = rock.statusProjectGid;
+				continue;
+			}
+
+			// Path 3: auto-resolve via projectAliases + sibling singleProject label.
+			// Look up the rock's display name (or its alias) in the sibling board
+			// labels. If the alias and label match, use the sibling's projectGid.
+			const aliasName = board.projectAliases?.[rock.gid];
+			const candidates = [aliasName, rock.displayName].filter(
+				(n): n is string => typeof n === "string" && n.length > 0,
+			);
+			for (const name of candidates) {
+				const projectGid = labelToProjectGid.get(name.trim().toLowerCase());
+				if (projectGid) {
+					map[rock.gid] = projectGid;
+					break;
+				}
+			}
+		}
+	}
+
+	return map;
 }

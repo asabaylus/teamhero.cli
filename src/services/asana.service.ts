@@ -2,6 +2,7 @@ import type { IncomingHttpHeaders } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { type ConsolaInstance, consola } from "consola";
 import type {
+	LatestProjectStatus,
 	MemberTaskSummary,
 	ReportingWindow,
 	RoadmapSubtaskInfo,
@@ -191,6 +192,56 @@ export class AsanaService implements TaskTrackerProvider {
 		} catch (err) {
 			this.logger.warn(
 				`[asana] fetchTaskByGid(${taskGid}) failed: ${(err as Error).message}`,
+			);
+			return null;
+		}
+	}
+
+	/**
+	 * Fetch the most recent Asana project status update for a project.
+	 * Canonical source for on-track / at-risk / off-track colors (which
+	 * teams actually post into Asana's native status-update UI instead of
+	 * populating a "Rock Status" custom field).
+	 *
+	 * Returns null on 404 (project has no status updates or does not exist
+	 * / is a task GID instead of a project GID). Callers should treat null
+	 * as "fall through to custom-field derivation".
+	 */
+	async fetchLatestProjectStatus(
+		projectGid: string,
+	): Promise<LatestProjectStatus | null> {
+		const optFields = "gid,title,text,color,created_at,created_by.name";
+
+		interface ProjectStatusResponse {
+			gid: string;
+			title?: string | null;
+			text?: string | null;
+			color?: string | null;
+			created_at: string;
+			created_by?: { name?: string | null } | null;
+		}
+
+		try {
+			const statuses = await this.paginate<ProjectStatusResponse>(
+				`/projects/${projectGid}/project_statuses`,
+				{ opt_fields: optFields },
+			);
+			if (statuses.length === 0) {
+				return null;
+			}
+			// API usually returns most-recent first, but sort defensively.
+			statuses.sort((a, b) => b.created_at.localeCompare(a.created_at));
+			const latest = statuses[0];
+			return {
+				title: latest.title ?? "",
+				text: latest.text ?? "",
+				color: latest.color ?? "",
+				createdAt: latest.created_at,
+				createdBy: latest.created_by?.name ?? undefined,
+			};
+		} catch (err) {
+			this.logger.warn(
+				`[asana] fetchLatestProjectStatus(${projectGid}) failed: ${(err as Error).message}`,
 			);
 			return null;
 		}

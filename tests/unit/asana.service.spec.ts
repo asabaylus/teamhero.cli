@@ -313,4 +313,101 @@ describe("AsanaService", () => {
 			expect(result!.customFields).toEqual({});
 		});
 	});
+
+	describe("fetchLatestProjectStatus", () => {
+		it("requests the project_statuses endpoint with the required opt_fields", async () => {
+			const service = new AsanaService({ token: "token" });
+			const paginate = spyOn(service as any, "paginate").mockResolvedValue([
+				{
+					gid: "status-1",
+					title: "Weekly update",
+					text: "UAT complete. Pilot Apr 13.",
+					color: "green",
+					created_at: "2026-04-08T14:00:00Z",
+					created_by: { name: "Luciano" },
+				},
+			]);
+
+			const result = await service.fetchLatestProjectStatus("proj-123");
+
+			expect(paginate).toHaveBeenCalledTimes(1);
+			const [path, params] = paginate.mock.calls[0];
+			expect(path).toBe("/projects/proj-123/project_statuses");
+			expect(params.opt_fields).toContain("color");
+			expect(params.opt_fields).toContain("created_at");
+			expect(result).toEqual({
+				title: "Weekly update",
+				text: "UAT complete. Pilot Apr 13.",
+				color: "green",
+				createdAt: "2026-04-08T14:00:00Z",
+				createdBy: "Luciano",
+			});
+		});
+
+		it("returns the most recent status when multiple are present", async () => {
+			const service = new AsanaService({ token: "token" });
+			spyOn(service as any, "paginate").mockResolvedValue([
+				{
+					gid: "old",
+					title: "Old",
+					text: "older",
+					color: "yellow",
+					created_at: "2026-03-15T10:00:00Z",
+				},
+				{
+					gid: "mid",
+					title: "Mid",
+					text: "middle",
+					color: "yellow",
+					created_at: "2026-04-01T10:00:00Z",
+				},
+				{
+					gid: "new",
+					title: "New",
+					text: "newest",
+					color: "green",
+					created_at: "2026-04-08T10:00:00Z",
+				},
+			]);
+
+			const result = await service.fetchLatestProjectStatus("proj-123");
+			expect(result?.title).toBe("New");
+			expect(result?.color).toBe("green");
+			expect(result?.text).toBe("newest");
+		});
+
+		it("returns null when the project has no status updates", async () => {
+			const service = new AsanaService({ token: "token" });
+			spyOn(service as any, "paginate").mockResolvedValue([]);
+			const result = await service.fetchLatestProjectStatus("proj-empty");
+			expect(result).toBeNull();
+		});
+
+		it("returns null on 404 (task GID instead of project GID) without throwing", async () => {
+			const service = new AsanaService({ token: "token" });
+			spyOn(service as any, "paginate").mockRejectedValue(
+				new Error("404 Not Found"),
+			);
+			const result = await service.fetchLatestProjectStatus("task-1");
+			expect(result).toBeNull();
+		});
+
+		it("handles missing optional fields gracefully", async () => {
+			const service = new AsanaService({ token: "token" });
+			spyOn(service as any, "paginate").mockResolvedValue([
+				{
+					gid: "status-1",
+					created_at: "2026-04-08T14:00:00Z",
+				},
+			]);
+			const result = await service.fetchLatestProjectStatus("proj-1");
+			expect(result).toEqual({
+				title: "",
+				text: "",
+				color: "",
+				createdAt: "2026-04-08T14:00:00Z",
+				createdBy: undefined,
+			});
+		});
+	});
 });

@@ -1,4 +1,5 @@
 import type {
+	LatestProjectStatus,
 	RoadmapEntry,
 	RoadmapSubtaskInfo,
 	SectionAuditContext,
@@ -920,6 +921,12 @@ export interface RoadmapSynthesisContext {
 	notes: NormalizedNote[];
 	projects: ProjectTask[];
 	subtasksByGid?: Map<string, RoadmapSubtaskInfo[]>;
+	/**
+	 * Latest Asana project status update per rock GID. Populated for rocks
+	 * whose task GID resolves to a sibling project via rockProjectGidMap.
+	 * When present, the prompt treats it as canonical for color/status.
+	 */
+	statusByGid?: Map<string, LatestProjectStatus>;
 	mode: "configured" | "ai-derived";
 }
 
@@ -987,6 +994,15 @@ function buildConfiguredRoadmapPrompt(
 			? `  Parent Task Notes: ${parentNotes}`
 			: "";
 
+		const latest = context.statusByGid?.get(item.gid);
+		const latestStatusStr = latest
+			? [
+					`  Latest Project Status Update: ${latest.color || "unknown"} — ${latest.title || "(no title)"}`,
+					`    ${truncateNotes(latest.text, 800)}`,
+					`    (by ${latest.createdBy ?? "unknown"} on ${latest.createdAt.slice(0, 10)})`,
+				].join("\n")
+			: "";
+
 		const subtasks = context.subtasksByGid?.get(item.gid);
 		const subtaskStr =
 			subtasks && subtasks.length > 0
@@ -1003,6 +1019,7 @@ function buildConfiguredRoadmapPrompt(
 			milestoneStr,
 			devDoneStr,
 			parentNotesStr,
+			latestStatusStr,
 			subtaskStr,
 			bullets
 				? `  This Week's Accomplishments:\n${bullets}`
@@ -1027,7 +1044,8 @@ function buildConfiguredRoadmapPrompt(
 		"4. displayName: Use the display name already provided — do not change it.",
 		"",
 		"Rules:",
-		"- Use ONLY information from the subtasks, accomplishments, and meeting notes below. Do not invent information.",
+		"- Use ONLY information from the subtasks, accomplishments, meeting notes, and project status updates below. Do not invent information.",
+		"- When a 'Latest Project Status Update' block is present for an initiative, treat it as the most recent canonical status and summarize its substance in keyNotes (still under 20 words).",
 		"- Return items in the same order as provided.",
 		"",
 		"=== ROADMAP INITIATIVES ===",

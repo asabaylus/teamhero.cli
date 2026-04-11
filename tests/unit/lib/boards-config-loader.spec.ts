@@ -349,3 +349,153 @@ describe("loadBoardsConfig", () => {
 		await expect(loadBoardsConfig()).rejects.toThrow();
 	});
 });
+
+describe("resolveRockProjectGidMap", () => {
+	it("explicit statusProjectGid wins over every other path", async () => {
+		const { resolveRockProjectGidMap } = await import(
+			"../../../src/lib/boards-config-loader.js"
+		);
+		const map = resolveRockProjectGidMap([
+			{
+				projectGid: "roadmap-board",
+				isRoadmapBoard: true,
+				projectAliases: { "rock-1": "GCCW" },
+				roadmapItems: [
+					{
+						gid: "rock-1",
+						displayName: "GCCW v1.x",
+						statusProjectGid: "explicit-project",
+					},
+				],
+			},
+			{
+				projectGid: "auto-would-win",
+				label: "GCCW",
+				singleProject: true,
+			},
+		]);
+		expect(map).toEqual({ "rock-1": "explicit-project" });
+	});
+
+	it("auto-resolves via projectAliases + sibling singleProject label (Lumata shape)", async () => {
+		const { resolveRockProjectGidMap } = await import(
+			"../../../src/lib/boards-config-loader.js"
+		);
+		const map = resolveRockProjectGidMap([
+			{
+				projectGid: "roadmap-board",
+				isRoadmapBoard: true,
+				projectAliases: {
+					"task-gccw": "GCCW",
+					"task-soc2": "SOC 2 [Rock]",
+				},
+				roadmapItems: [
+					{ gid: "task-gccw", displayName: "GCCW v1.x outbound care" },
+					{ gid: "task-soc2", displayName: "SOC 2 Type 1 audit" },
+				],
+			},
+			{
+				projectGid: "proj-gccw",
+				label: "GCCW",
+				singleProject: true,
+			},
+		]);
+		expect(map).toEqual({ "task-gccw": "proj-gccw" });
+		// SOC 2 has no sibling singleProject board → skipped, not in map
+		expect(map["task-soc2"]).toBeUndefined();
+	});
+
+	it("falls back to rock displayName when no projectAliases entry exists", async () => {
+		const { resolveRockProjectGidMap } = await import(
+			"../../../src/lib/boards-config-loader.js"
+		);
+		const map = resolveRockProjectGidMap([
+			{
+				projectGid: "roadmap-board",
+				isRoadmapBoard: true,
+				roadmapItems: [{ gid: "rock-1", displayName: "RVM" }],
+			},
+			{ projectGid: "proj-rvm", label: "RVM", singleProject: true },
+		]);
+		expect(map).toEqual({ "rock-1": "proj-rvm" });
+	});
+
+	it("label matching is case-insensitive and trims whitespace", async () => {
+		const { resolveRockProjectGidMap } = await import(
+			"../../../src/lib/boards-config-loader.js"
+		);
+		const map = resolveRockProjectGidMap([
+			{
+				projectGid: "roadmap-board",
+				isRoadmapBoard: true,
+				roadmapItems: [{ gid: "rock-1", displayName: "  GCCW  " }],
+			},
+			{ projectGid: "proj-gccw", label: "gccw", singleProject: true },
+		]);
+		expect(map).toEqual({ "rock-1": "proj-gccw" });
+	});
+
+	it("sparse config (no aliases, no siblings, no explicit) produces empty map", async () => {
+		const { resolveRockProjectGidMap } = await import(
+			"../../../src/lib/boards-config-loader.js"
+		);
+		const map = resolveRockProjectGidMap([
+			{
+				projectGid: "roadmap-board",
+				isRoadmapBoard: true,
+				roadmapItems: [
+					{ gid: "rock-1", displayName: "Unresolvable Rock" },
+					{ gid: "rock-2", displayName: "Another Unresolvable" },
+				],
+			},
+		]);
+		expect(map).toEqual({});
+	});
+
+	it("mixed config: some explicit, some auto-resolved, some skipped", async () => {
+		const { resolveRockProjectGidMap } = await import(
+			"../../../src/lib/boards-config-loader.js"
+		);
+		const map = resolveRockProjectGidMap([
+			{
+				projectGid: "roadmap-board",
+				isRoadmapBoard: true,
+				projectAliases: { "task-gccw": "GCCW" },
+				roadmapItems: [
+					{
+						gid: "rock-explicit",
+						displayName: "Explicit Rock",
+						statusProjectGid: "proj-explicit",
+					},
+					{ gid: "task-gccw", displayName: "GCCW v1.x" },
+					{ gid: "rock-skipped", displayName: "No Project Rock" },
+				],
+			},
+			{ projectGid: "proj-gccw", label: "GCCW", singleProject: true },
+		]);
+		expect(map).toEqual({
+			"rock-explicit": "proj-explicit",
+			"task-gccw": "proj-gccw",
+		});
+	});
+
+	it("honors deprecated rocks[] alias when roadmapItems[] is absent", async () => {
+		const { resolveRockProjectGidMap } = await import(
+			"../../../src/lib/boards-config-loader.js"
+		);
+		const map = resolveRockProjectGidMap([
+			{
+				projectGid: "roadmap-board",
+				isRoadmapBoard: true,
+				rocks: [
+					{
+						gid: "rock-1",
+						displayName: "Legacy Rock",
+						statusProjectGid: "proj-legacy",
+					},
+				],
+			},
+		]);
+		expect(map).toEqual({ "rock-1": "proj-legacy" });
+	});
+});

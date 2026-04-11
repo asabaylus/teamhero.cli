@@ -1,7 +1,31 @@
 import consola from "consola";
-import type { RoadmapEntry, RoadmapSubtaskInfo } from "../core/types.js";
+import type {
+	LatestProjectStatus,
+	RoadmapEntry,
+	RoadmapSubtaskInfo,
+} from "../core/types.js";
 import type { ProjectTask } from "../models/visible-wins.js";
 import type { BoardConfig } from "./boards-config-loader.js";
+
+/**
+ * Map Asana's raw project-status color string to the roadmap's overallStatus union.
+ * Blue ("on hold") has no union slot and collapses to "unknown"; the renderer
+ * still shows 🔵 from the raw color when a latestStatusUpdate is present.
+ */
+export function mapAsanaColorToStatus(
+	color: string | null | undefined,
+): RoadmapEntry["overallStatus"] {
+	switch ((color ?? "").toLowerCase()) {
+		case "green":
+			return "on-track";
+		case "yellow":
+			return "at-risk";
+		case "red":
+			return "off-track";
+		default:
+			return "unknown";
+	}
+}
 
 export function mapStatusFromCustomFields(
 	customFields: Record<string, string | number | null>,
@@ -18,6 +42,31 @@ export function mapStatusFromCustomFields(
 	if (rockStatus === "Off Track") return "off-track";
 
 	return "unknown";
+}
+
+/**
+ * Derive overall status for a roadmap item, prioritizing the most recent Asana
+ * project status update when one is available. Priority order:
+ *
+ *   1. Latest project status update color (green/yellow/red) — canonical signal
+ *      from Asana's native status-update UI.
+ *   2. Parent task's own "Rock Status" / "Project Status" custom field.
+ *   3. Bottom-up derivation from the subtask tree (due dates, subtask statuses).
+ *
+ * Blue status updates collapse to "unknown" at the union level, but the raw
+ * color is still available on `latestStatusUpdate.color` for the renderer to
+ * show 🔵 when desired.
+ */
+export function deriveRoadmapStatusWithLatest(
+	subtasks: RoadmapSubtaskInfo[],
+	parentCustomFields: Record<string, string | number | null>,
+	latest: LatestProjectStatus | null | undefined,
+): RoadmapEntry["overallStatus"] {
+	if (latest) {
+		const mapped = mapAsanaColorToStatus(latest.color);
+		if (mapped !== "unknown") return mapped;
+	}
+	return deriveRoadmapStatus(subtasks, parentCustomFields);
 }
 
 /**

@@ -1224,6 +1224,54 @@ describe("buildRoadmapSynthesisPrompt — configured mode", () => {
 		);
 	});
 
+	it("includes Latest Project Status Update block when statusByGid provides one", () => {
+		const item = makeRoadmapEntry();
+		const statusByGid = new Map();
+		statusByGid.set("gid-1", {
+			title: "Weekly status 4/08",
+			text: "UAT complete. Pilot Apr 13. No blockers.",
+			color: "green",
+			createdAt: "2026-04-08T14:00:00Z",
+			createdBy: "Luciano",
+		});
+		const prompt = buildRoadmapSynthesisPrompt(
+			makeRoadmapContext({
+				roadmapItems: [item],
+				statusByGid,
+			}),
+		);
+		expect(prompt).toContain(
+			"Latest Project Status Update: green — Weekly status 4/08",
+		);
+		expect(prompt).toContain("UAT complete. Pilot Apr 13. No blockers.");
+		expect(prompt).toContain("(by Luciano on 2026-04-08)");
+	});
+
+	it("omits Latest Project Status Update block when no entry exists for the rock", () => {
+		const item = makeRoadmapEntry();
+		const statusByGid = new Map();
+		// Entry exists for a different gid
+		statusByGid.set("gid-other", {
+			title: "Other",
+			text: "other",
+			color: "red",
+			createdAt: "2026-04-08T14:00:00Z",
+		});
+		const prompt = buildRoadmapSynthesisPrompt(
+			makeRoadmapContext({
+				roadmapItems: [item],
+				statusByGid,
+			}),
+		);
+		expect(prompt).not.toContain("Latest Project Status Update:");
+	});
+
+	it("instructs the AI to treat Latest Project Status Update as canonical", () => {
+		const prompt = buildRoadmapSynthesisPrompt(makeRoadmapContext());
+		expect(prompt).toContain("Latest Project Status Update");
+		expect(prompt).toContain("treat it as the most recent canonical status");
+	});
+
 	it("serializes subtask tree with TODO/DONE/OVERDUE status", () => {
 		const subtasks: RoadmapSubtaskInfo[] = [
 			makeSubtask({

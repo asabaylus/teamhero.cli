@@ -1,14 +1,32 @@
 import { describe, expect, it } from "bun:test";
-import type { RoadmapSubtaskInfo } from "../../../src/core/types.js";
+import type {
+	LatestProjectStatus,
+	RoadmapSubtaskInfo,
+} from "../../../src/core/types.js";
 import type { BoardConfig } from "../../../src/lib/boards-config-loader.js";
 import {
 	deriveNextMilestone,
 	deriveRoadmapStatus,
+	deriveRoadmapStatusWithLatest,
 	extractRoadmapItems,
 	identifyRoadmapItems,
+	mapAsanaColorToStatus,
 	mapStatusFromCustomFields,
 } from "../../../src/lib/roadmap-extractor.js";
 import type { ProjectTask } from "../../../src/models/visible-wins.js";
+
+function makeLatest(
+	color: string,
+	overrides: Partial<LatestProjectStatus> = {},
+): LatestProjectStatus {
+	return {
+		title: "Weekly Update",
+		text: "All clear.",
+		color,
+		createdAt: "2026-04-08T14:00:00Z",
+		...overrides,
+	};
+}
 
 function makeProject(
 	gid: string,
@@ -383,5 +401,78 @@ describe("extractRoadmapItems", () => {
 		const result = extractRoadmapItems(projects, boards);
 		expect(result).toHaveLength(1);
 		expect(result[0].displayName).toBe("GCCW via rocks");
+	});
+});
+
+describe("mapAsanaColorToStatus", () => {
+	it("maps green to on-track", () => {
+		expect(mapAsanaColorToStatus("green")).toBe("on-track");
+	});
+	it("maps yellow to at-risk", () => {
+		expect(mapAsanaColorToStatus("yellow")).toBe("at-risk");
+	});
+	it("maps red to off-track", () => {
+		expect(mapAsanaColorToStatus("red")).toBe("off-track");
+	});
+	it("collapses blue to unknown (renderer handles 🔵 from raw color field)", () => {
+		expect(mapAsanaColorToStatus("blue")).toBe("unknown");
+	});
+	it("returns unknown for unexpected color strings", () => {
+		expect(mapAsanaColorToStatus("purple")).toBe("unknown");
+	});
+	it("returns unknown for null / undefined / empty string", () => {
+		expect(mapAsanaColorToStatus(null)).toBe("unknown");
+		expect(mapAsanaColorToStatus(undefined)).toBe("unknown");
+		expect(mapAsanaColorToStatus("")).toBe("unknown");
+	});
+	it("is case-insensitive", () => {
+		expect(mapAsanaColorToStatus("GREEN")).toBe("on-track");
+		expect(mapAsanaColorToStatus("Red")).toBe("off-track");
+	});
+});
+
+describe("deriveRoadmapStatusWithLatest", () => {
+	it("uses the latest project status color when one is present", () => {
+		const subtasks: RoadmapSubtaskInfo[] = [];
+		const customFields = { "Project Status": "Off Track" };
+		const latest = makeLatest("green");
+		// Latest wins over stale custom field
+		expect(deriveRoadmapStatusWithLatest(subtasks, customFields, latest)).toBe(
+			"on-track",
+		);
+	});
+
+	it("falls through to custom-field derivation when latest color is blue", () => {
+		const subtasks: RoadmapSubtaskInfo[] = [];
+		const customFields = { "Rock Status": "At Risk" };
+		const latest = makeLatest("blue");
+		expect(deriveRoadmapStatusWithLatest(subtasks, customFields, latest)).toBe(
+			"at-risk",
+		);
+	});
+
+	it("falls through to subtask derivation when latest and custom fields are both missing", () => {
+		const subtasks: RoadmapSubtaskInfo[] = [
+			{
+				gid: "st-1",
+				name: "Overdue thing",
+				completed: false,
+				dueOn: "2020-01-01",
+				children: [],
+			},
+		];
+		expect(deriveRoadmapStatusWithLatest(subtasks, {}, null)).toBe("at-risk");
+	});
+
+	it("returns unknown when nothing resolvable is present", () => {
+		expect(deriveRoadmapStatusWithLatest([], {}, null)).toBe("unknown");
+	});
+
+	it("ignores an empty latest.color and falls through", () => {
+		const customFields = { "Rock Status": "On Track" };
+		const latest = makeLatest("");
+		expect(deriveRoadmapStatusWithLatest([], customFields, latest)).toBe(
+			"on-track",
+		);
 	});
 });
