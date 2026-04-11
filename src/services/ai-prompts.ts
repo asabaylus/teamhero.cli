@@ -1,4 +1,5 @@
 import type {
+	LatestProjectStatus,
 	RoadmapEntry,
 	RoadmapSubtaskInfo,
 	SectionAuditContext,
@@ -47,6 +48,39 @@ export interface MemberHighlightsContext {
 
 export interface FinalReportContext {
 	report: ReportRenderInput;
+	onStatus?: (message: string) => void;
+}
+
+export type TechnicalWinsSubheadings = "auto" | string[];
+
+export interface TechnicalWinsContext {
+	windowStart: string;
+	windowEnd: string;
+	verbosity: "concise" | "standard" | "detailed";
+	/**
+	 * Either "auto" (let the AI infer 2–5 logical groupings) or an explicit
+	 * ordered list of subheadings (e.g. ["AI / Engineering", "IT / Centre"]).
+	 */
+	subheadings: TechnicalWinsSubheadings;
+	/** Short natural-language audience descriptor. */
+	audience?: string;
+	/** Raw bullets / notes from the current week's activity. */
+	currentWeekItems: string[];
+	/**
+	 * Prior-week wins used strictly for deduplication. Should be pre-flattened
+	 * into bullet strings by the caller.
+	 */
+	previousWeekItems?: string[];
+	/**
+	 * Rendered Visible Wins section text so the AI can cross-reference
+	 * and avoid duplicating detail already covered there.
+	 */
+	visibleWinsSummary?: string;
+	/**
+	 * Roadmap entries (initiative names + status) so the AI can anchor
+	 * wins to the strategic milestones the board cares about.
+	 */
+	roadmapContext?: string;
 	onStatus?: (message: string) => void;
 }
 
@@ -236,6 +270,143 @@ export function buildIndividualSummariesPrompt(
 	);
 
 	return [...header, "", "Contributors:", ...blocks].join("\n");
+}
+
+export const TECHNICAL_WINS_SCHEMA = {
+	type: "json_schema" as const,
+	name: "technical_foundational_wins",
+	strict: true,
+	schema: {
+		type: "object" as const,
+		properties: {
+			categories: {
+				type: "array" as const,
+				items: {
+					type: "object" as const,
+					properties: {
+						category: { type: "string" as const },
+						wins: {
+							type: "array" as const,
+							items: { type: "string" as const },
+						},
+					},
+					required: ["category", "wins"] as const,
+					additionalProperties: false as const,
+				},
+			},
+		},
+		required: ["categories"] as const,
+		additionalProperties: false as const,
+	},
+} as const;
+
+const TECHNICAL_WINS_VERBOSITY_GUIDE: Record<
+	TechnicalWinsContext["verbosity"],
+	string
+> = {
+	concise: "Terse, outcome-only. No explanation or context.",
+	standard: "Include brief context (one short clause per bullet).",
+	detailed: "Include impact or rationale (one short sentence max per bullet).",
+};
+
+export function buildTechnicalWinsPrompt(
+	context: TechnicalWinsContext,
+): string {
+	const current = context.currentWeekItems
+		.filter((x) => x && x.trim().length > 0)
+		.map((x) => `- ${x}`)
+		.join("\n");
+
+	const subheadingsInstruction =
+		context.subheadings === "auto"
+			? "Infer 2-5 logical groupings based on themes (e.g. AI / Engineering, DevOps, IT / Centre, Product, Infrastructure). Group for readability, not strict taxonomy."
+			: `Use exactly these subheadings in this order: ${context.subheadings
+					.map((s) => `"${s}"`)
+					.join(
+						", ",
+					)}. If a subheading has no wins this week, include the category with a single bullet: "No material changes this week".`;
+
+	const audienceLine = context.audience
+		? `Audience: ${context.audience}. Adapt tone accordingly. Do NOT mention the audience explicitly.`
+		: "Audience: engineering leadership. Adapt tone accordingly. Do NOT mention the audience explicitly.";
+
+	const previousItems = (context.previousWeekItems ?? [])
+		.filter((x) => x && x.trim().length > 0)
+		.map((x) => `- ${x}`)
+		.join("\n");
+
+	const deduplicationSection = previousItems
+		? [
+				"",
+				"Deduplication rules:",
+				"- Do NOT repeat wins already present in the previous report below.",
+				"- If a win appears in both weeks, include it ONLY if there is meaningful progress or change.",
+				"- Prefer delta-oriented phrasing when overlap exists (e.g. 'Expanded X from 50 to 130 users' instead of 'Deployed X').",
+				"",
+				"Previous report wins (for deduplication only):",
+				previousItems,
+			]
+		: [];
+
+	const crossRefSection: string[] = [];
+	if (context.visibleWinsSummary) {
+		crossRefSection.push(
+			"",
+			"Visible Wins section (already shown to the reader — do NOT repeat detail from here; at most, consolidate into a single status signal like 'Costs on track with budget'):",
+			context.visibleWinsSummary,
+		);
+	}
+	if (context.roadmapContext) {
+		crossRefSection.push(
+			"",
+			"Quarterly Roadmap initiatives (anchor wins to these milestones when relevant):",
+			context.roadmapContext,
+		);
+	}
+
+	return [
+		"You are generating a 'This Week's Technical / Foundational Wins' section for an engineering status report.",
+		"",
+		"PURPOSE:",
+		"This section highlights wins in IT, DevOps, AI, and Engineering — the technical and foundational layer beneath the product work.",
+		"It is NOT about product milestones or business outcomes (those belong in the Visible Wins section).",
+		"Think: what did the engineering organization build, deploy, automate, standardize, or improve in its own infrastructure, tooling, processes, and platforms this week?",
+		"",
+		"CATEGORY DEFINITIONS (use only these, in this order, omitting any with no wins):",
+		"1. IT — Infrastructure, security, compliance, cost management, user tooling rollouts. Examples: 'Deployed ActivTrak to 130 users', 'SOC 2 handoff on track for Apr 13', 'Costs on track with budget'.",
+		"2. DevOps — CI/CD improvements, pipeline changes, test automation, deployment process improvements. Examples: 'Implemented end-to-end tests running in CI pipeline', 'Cut deployment cycle from 2 weeks to 3 days'.",
+		"3. AI — AI tooling, agent capabilities, model integrations, prompt engineering. Examples: 'Introduced 5 new Claude slash commands (push-to-verdict, release-notes, etc.)', 'Added CSV export for mail-api report output'.",
+		"4. Engineering — Code standardization, architecture improvements, tech debt reduction, developer experience. Examples: 'Standardized Apex trigger patterns across 4 repos', 'Corrected Salesforce page layout drift across operations flow'.",
+		"",
+		"HARD CONSTRAINTS ON OUTPUT SHAPE:",
+		"- Use 2–4 of the categories above. Never invent new categories.",
+		"- Each category should have 1–4 bullets.",
+		"- Total output should be 4–10 bullets across all categories.",
+		"- Omit a category entirely if the source data has nothing that fits it.",
+		"",
+		"WHAT TO EXCLUDE (strict rules):",
+		"- Product milestone progress (GCCW pilot status, RVM phases, messaging rollouts) — those belong in Visible Wins, not here.",
+		"- Incidents, outages, or failures — even if recovery was fast.",
+		"- Ownership assignments and staffing decisions.",
+		"- Items already described in the Visible Wins section — do not duplicate.",
+		"",
+		"BULLET STYLE:",
+		`- ${audienceLine}`,
+		`- Verbosity: ${context.verbosity}. ${TECHNICAL_WINS_VERBOSITY_GUIDE[context.verbosity]}`,
+		"- Keep each bullet to one concise sentence fragment, ideally 8–14 words, never more than 18 words.",
+		"- Use parallel phrasing across bullets.",
+		"- No duplication across categories.",
+		"",
+		`Grouping: ${subheadingsInstruction}`,
+		`Date window: ${context.windowStart} to ${context.windowEnd}.`,
+		...crossRefSection,
+		...deduplicationSection,
+		"",
+		"Current-week source items:",
+		current || "- (none)",
+		"",
+		"Return structured JSON matching the provided schema. Each category object has a 'category' string and a 'wins' array of strings.",
+	].join("\n");
 }
 
 function buildIndividualSummaryBlock(
@@ -670,6 +841,8 @@ export function buildDiscrepancyAnalysisPrompt(
 			"The claims below are from a Visible Wins section describing project accomplishments. Audit dates, figures, and status assertions against the evidence (meeting notes and Asana project tasks).",
 		individualContribution:
 			"The claims below are from an Individual Contribution summary for a single team member. Audit assertions about their work output against the evidence (their PRs, commits, and task tracker data).",
+		roadmap:
+			"The claims below are rendered rows from the Progress on Quarterly Roadmap (Rocks) table. For each rock, compare the rendered status and milestone against the evidence (the rock's Asana task notes, the latest Asana project status update if any, and per-rock excerpts from meeting transcripts). Emit a discrepancy when: (a) the rendered milestone differs from what transcripts or status updates actually describe, (b) the rendered overallStatus differs from the latest canonical status update, or (c) the board shows no activity but transcripts describe completed work — i.e. stale Asana state. The discrepancy 'rule' should lead with 'Stale roadmap state — …' or 'Roadmap drift — …'. Set sourceA to 'Report: Roadmap (Rocks)' and sourceB to whichever source actually describes the correct state ('Asana board', 'Meeting transcript', or 'Asana status update').",
 	};
 
 	const framing =
@@ -727,6 +900,25 @@ export const ROADMAP_SYNTHESIS_SCHEMA = {
 						overallStatus: { type: "string" as const },
 						nextMilestone: { type: "string" as const },
 						keyNotes: { type: "string" as const },
+						/**
+						 * Source of the nextMilestone value:
+						 *   "asana-subtask"   → pre-computed from subtask due dates (default)
+						 *   "status-update"   → derived from latest Asana project status update
+						 *   "meeting-note"    → derived from a meeting transcript
+						 *   "ai-inferred"     → AI synthesized without a specific citable source
+						 * Empty string collapses to "asana-subtask".
+						 */
+						nextMilestoneSource: { type: "string" as const },
+						/**
+						 * Citation for any override of the pre-computed nextMilestone.
+						 * Format: meeting title + date, or "Status update YYYY-MM-DD", etc.
+						 * Empty string when the pre-computed value was kept as-is.
+						 */
+						nextMilestoneCitation: { type: "string" as const },
+						/** Same taxonomy as nextMilestoneSource. */
+						overallStatusSource: { type: "string" as const },
+						/** Same citation rules as nextMilestoneCitation. */
+						overallStatusCitation: { type: "string" as const },
 					},
 					required: [
 						"gid",
@@ -734,6 +926,10 @@ export const ROADMAP_SYNTHESIS_SCHEMA = {
 						"overallStatus",
 						"nextMilestone",
 						"keyNotes",
+						"nextMilestoneSource",
+						"nextMilestoneCitation",
+						"overallStatusSource",
+						"overallStatusCitation",
 					] as const,
 					additionalProperties: false as const,
 				},
@@ -750,7 +946,23 @@ export interface RoadmapSynthesisContext {
 	notes: NormalizedNote[];
 	projects: ProjectTask[];
 	subtasksByGid?: Map<string, RoadmapSubtaskInfo[]>;
+	/**
+	 * Latest Asana project status update per rock GID. Populated for rocks
+	 * whose task GID resolves to a sibling project via rockProjectGidMap.
+	 * When present, the prompt treats it as canonical for color/status.
+	 */
+	statusByGid?: Map<string, LatestProjectStatus>;
 	mode: "configured" | "ai-derived";
+}
+
+function truncateNotes(raw: string | null | undefined, max: number): string {
+	if (!raw) return "";
+	const plain = raw
+		.replace(/<[^>]+>/g, "")
+		.replace(/\s+/g, " ")
+		.trim();
+	if (plain.length <= max) return plain;
+	return `${plain.slice(0, max).trimEnd()}…`;
 }
 
 function serializeSubtaskTree(
@@ -769,6 +981,10 @@ function serializeSubtaskTree(
 			? ` (completed ${st.completedAt.slice(0, 10)})`
 			: "";
 		lines.push(`${indent}- [${status}] ${st.name}${dueStr}${completedStr}`);
+		const notesSnippet = truncateNotes(st.notes, 300);
+		if (notesSnippet) {
+			lines.push(`${indent}    notes: ${notesSnippet}`);
+		}
 		if (st.children.length > 0) {
 			lines.push(serializeSubtaskTree(st.children, `${indent}  `));
 		}
@@ -798,21 +1014,40 @@ function buildConfiguredRoadmapPrompt(
 			project?.customFields["Dev Done Target (Original)"];
 		const devDoneStr = devDone ? `  Dev Done Target: ${devDone}` : "";
 
+		const parentNotes = truncateNotes(project?.notes, 1500);
+		const parentNotesStr = parentNotes
+			? `  Parent Task Notes: ${parentNotes}`
+			: "";
+
+		const latest = context.statusByGid?.get(item.gid);
+		const latestStatusStr = latest
+			? [
+					`  Latest Project Status Update: ${latest.color || "unknown"} — ${latest.title || "(no title)"}`,
+					`    ${truncateNotes(latest.text, 800)}`,
+					`    (by ${latest.createdBy ?? "unknown"} on ${latest.createdAt.slice(0, 10)})`,
+				].join("\n")
+			: "";
+
 		const subtasks = context.subtasksByGid?.get(item.gid);
 		const subtaskStr =
 			subtasks && subtasks.length > 0
 				? `  Subtasks:\n${serializeSubtaskTree(subtasks)}`
 				: "  No subtasks available.";
 
+		// When the pre-computed milestone is empty, show it as empty (not "TBD")
+		// so the AI round-trips "" back. Otherwise a literal "TBD" return would
+		// be misread as an override attempt by the post-synthesis validator.
 		const milestoneStr = item.nextMilestone
 			? `  Next Milestone (pre-computed): ${item.nextMilestone}`
-			: "  Next Milestone (pre-computed): TBD";
+			: '  Next Milestone (pre-computed): ""  (return empty string exactly)';
 
 		return [
 			`Initiative: ${item.displayName} (GID: ${item.gid})`,
 			`  Current Status: ${item.overallStatus}`,
 			milestoneStr,
 			devDoneStr,
+			parentNotesStr,
+			latestStatusStr,
 			subtaskStr,
 			bullets
 				? `  This Week's Accomplishments:\n${bullets}`
@@ -830,14 +1065,36 @@ function buildConfiguredRoadmapPrompt(
 	return [
 		"You are synthesizing a roadmap progress table for a weekly engineering status report.",
 		"",
-		"For each initiative below, produce:",
-		"1. keyNotes: Brief context — blockers, key decisions, or progress notes. Under 20 words. Use empty string if nothing notable.",
-		"2. nextMilestone: Already computed — return the value exactly as provided in 'Next Milestone (pre-computed)'. Do NOT change it.",
-		"3. overallStatus: Use the status already provided — do not change it.",
-		"4. displayName: Use the display name already provided — do not change it.",
+		"For each initiative below, produce the following fields:",
 		"",
-		"Rules:",
-		"- Use ONLY information from the subtasks, accomplishments, and meeting notes below. Do not invent information.",
+		"1. keyNotes — Brief context: blockers, key decisions, or progress notes. Under 20 words. Empty string if nothing notable.",
+		"",
+		"2. nextMilestone — The next concrete delivery milestone with a date.",
+		"   - DEFAULT: return the pre-computed value EXACTLY. When you do this, nextMilestoneSource MUST be 'asana-subtask' and nextMilestoneCitation MUST be empty string.",
+		"   - OVERRIDE: you MAY replace the pre-computed value when meeting notes or the latest Asana project status update clearly describe a more specific near-term milestone (e.g. transcripts say 'April 13th expansion start is the target' and the pre-computed value is blank or less precise).",
+		"   - OVERRIDE REQUIREMENTS (ALL MANDATORY — no exceptions):",
+		"     a. nextMilestoneSource MUST be set to exactly one of: 'meeting-note' | 'status-update'",
+		"     b. nextMilestoneCitation MUST be a non-empty concrete reference, e.g.:",
+		"        * 'Eng sync 2026-04-08' (the meeting title + date EXACTLY as it appears in the MEETING NOTES section below)",
+		"        * 'Status update 2026-04-08' (YYYY-MM-DD from a Latest Project Status Update block)",
+		"     c. If you cannot cite a specific source, you MUST NOT override — return the pre-computed value instead.",
+		"   - Override example (allowed):",
+		"        pre-computed: ''",
+		"        transcripts: 'Meeting: Eng sync (2026-04-08)\\n  - April 13th first full release still on track'",
+		"        → nextMilestone='Apr 13 - First Full Release', nextMilestoneSource='meeting-note', nextMilestoneCitation='Eng sync 2026-04-08'",
+		"   - Non-example (NOT allowed):",
+		"        pre-computed: ''",
+		"        → nextMilestone='Apr 13', nextMilestoneSource='', nextMilestoneCitation=''  ❌ override without citation — will be discarded",
+		"",
+		"3. overallStatus — The initiative's current health. Allowed values: 'on-track' | 'at-risk' | 'off-track' | 'unknown'.",
+		"   - DEFAULT: return the value from 'Current Status' EXACTLY. When you do this, overallStatusSource MUST be 'asana-subtask' and overallStatusCitation MUST be empty string.",
+		"   - OVERRIDE: same two-field requirement as nextMilestone (source + citation, both non-empty). An override without both fields will be discarded.",
+		"",
+		"4. displayName — Return the display name exactly as provided.",
+		"",
+		"General rules:",
+		"- Use ONLY information from the subtasks, accomplishments, meeting notes, and project status updates below. Do not invent information.",
+		"- When a 'Latest Project Status Update' block is present for an initiative, treat it as the most recent canonical status and summarize its substance in keyNotes (still under 20 words).",
 		"- Return items in the same order as provided.",
 		"",
 		"=== ROADMAP INITIATIVES ===",

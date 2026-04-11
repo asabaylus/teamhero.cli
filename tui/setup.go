@@ -20,6 +20,11 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// actionInlineGitHubAuth is returned by the inline settings editor when the user
+// presses Enter on the GitHub credential so setup can run promptGitHubAuth
+// outside the Bubble Tea session (OAuth device flow, PAT, or disconnect).
+const actionInlineGitHubAuth = "@@github-auth"
+
 // credential holds a single API credential with its validation state.
 type credential struct {
 	envKey   string
@@ -221,7 +226,7 @@ func runSetupHeadless() error {
 	existing := loadExistingCredentials(envPath)
 
 	creds := []credential{
-		{envKey: "GITHUB_PERSONAL_ACCESS_TOKEN", label: "GitHub Personal Access Token", optional: false},
+		{envKey: "GITHUB_PERSONAL_ACCESS_TOKEN", label: "GitHub (OAuth or token)", optional: false},
 		{envKey: "OPENAI_API_KEY", label: "OpenAI API Key", optional: false},
 		{envKey: "ASANA_API_TOKEN", label: "Asana API Token", optional: true},
 	}
@@ -291,7 +296,7 @@ func runSetupInteractive() error {
 	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))  // dim
 
 	creds := []credential{
-		{envKey: "GITHUB_PERSONAL_ACCESS_TOKEN", label: "GitHub Personal Access Token", optional: false},
+		{envKey: "GITHUB_PERSONAL_ACCESS_TOKEN", label: "GitHub (OAuth or token)", optional: false},
 		{envKey: "OPENAI_API_KEY", label: "OpenAI API Key", optional: false},
 		{envKey: "ASANA_API_TOKEN", label: "Asana API Token", optional: true},
 	}
@@ -354,6 +359,10 @@ func runSetupInteractive() error {
 				runGoogleDriveFromPicker()
 			case "@@boards":
 				runSetupBoards(checkBoardsConfig())
+			case actionInlineGitHubAuth:
+				if err := runGitHubAuthFromInlineEditor(creds, envPath); err != nil {
+					return err
+				}
 			}
 			// Reload state after sub-flow
 			existing = loadExistingCredentials(envPath)
@@ -498,7 +507,8 @@ var perSectionModelKeys = map[string]bool{
 // they still appear under [Other] if present in .env.
 var knownSettings = []settingDef{
 	// Core Credentials
-	{envKey: "GITHUB_PERSONAL_ACCESS_TOKEN", label: "GitHub Personal Access Token", category: "Creds", sensitive: true, required: true},
+	{envKey: "GITHUB_PERSONAL_ACCESS_TOKEN", label: "GitHub (OAuth or token)", category: "Creds", sensitive: true, required: true},
+	{envKey: "GITHUB_AUTH_METHOD", label: "GitHub Auth Method", category: "Creds", hidden: true},
 	{envKey: "OPENAI_API_KEY", label: "OpenAI API Key", category: "Creds", sensitive: true, required: true},
 	{envKey: "ASANA_API_TOKEN", label: "Asana API Token", category: "Creds", sensitive: true},
 	// Asana User Matching — how GitHub users are paired to Asana users
@@ -1287,6 +1297,51 @@ func runSetupUpdateSingle(creds []credential, envPath string) error {
 	}
 }
 
+// runGitHubAuthFromInlineEditor runs GitHub OAuth / PAT / disconnect after the
+// inline settings editor exits, then validates and writes the token to .env.
+func runGitHubAuthFromInlineEditor(creds []credential, envPath string) error {
+	passStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+	failStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+
+	allEntries := loadExistingCredentials(envPath)
+	for i := range creds {
+		if creds[i].envKey != "GITHUB_PERSONAL_ACCESS_TOKEN" {
+			continue
+		}
+		if v := allEntries["GITHUB_PERSONAL_ACCESS_TOKEN"]; v != "" {
+			creds[i].value = v
+		}
+		creds[i].status = ""
+		creds[i].detail = ""
+
+		if err := promptGitHubAuth(&creds[i]); err != nil {
+			return err
+		}
+
+		fmt.Fprintln(os.Stderr, "\n  Validating…")
+		validateCredentials(creds)
+
+		c := creds[i]
+		msg := c.label
+		if c.detail != "" {
+			msg += dimStyle.Render(": "+c.detail)
+		}
+		if c.status == "valid" {
+			fmt.Fprintf(os.Stderr, "  %s %s\n", passStyle.Render("✔"), msg)
+		} else {
+			fmt.Fprintf(os.Stderr, "  %s %s\n", failStyle.Render("✖"), msg)
+		}
+
+		if err := updateEnvKey(envPath, creds[i].envKey, creds[i].value); err != nil {
+			return fmt.Errorf("failed to update credential: %w", err)
+		}
+		fmt.Fprintln(os.Stderr, "\n  "+passStyle.Render("✔")+" Credential updated.")
+		return nil
+	}
+	return nil
+}
+
 // handleSettingUpdate handles updating a single setting — either an API credential
 // (with validation and masked input) or a plain setting.
 func handleSettingUpdate(envKey string, creds []credential, envPath string, allEntries map[string]string) error {
@@ -1297,10 +1352,15 @@ func handleSettingUpdate(envKey string, creds []credential, envPath string, allE
 	if apiCredentialKeys[envKey] {
 		for i := range creds {
 			if creds[i].envKey == envKey {
+				prevGitHub := ""
+				if envKey == "GITHUB_PERSONAL_ACCESS_TOKEN" {
+					prevGitHub = allEntries[envKey]
+				}
 				creds[i].value = ""
 				creds[i].status = ""
 				creds[i].detail = ""
 				if envKey == "GITHUB_PERSONAL_ACCESS_TOKEN" {
+					creds[i].value = prevGitHub
 					if err := promptGitHubAuth(&creds[i]); err != nil {
 						return err
 					}
@@ -1645,13 +1705,17 @@ func promptCredentialInput(c *credential) error {
 // to the standard promptCredentialInput text input.
 func promptGitHubAuth(c *credential) error {
 	var method string
+	options := []huh.Option[string]{
+		huh.NewOption("Quick Setup — sign in with GitHub (recommended)", "oauth"),
+		huh.NewOption("Advanced — paste a Personal Access Token", "pat"),
+	}
+	if c.value != "" {
+		options = append(options, huh.NewOption("Disconnect GitHub", "disconnect"))
+	}
 	form := huh.NewForm(huh.NewGroup(
 		huh.NewSelect[string]().
 			Title("How would you like to authenticate with GitHub?").
-			Options(
-				huh.NewOption("Sign in with browser (recommended)", "oauth"),
-				huh.NewOption("Paste a Personal Access Token", "pat"),
-			).
+			Options(options...).
 			Value(&method),
 	)).WithTheme(huh.ThemeCharm())
 
@@ -1663,6 +1727,17 @@ func promptGitHubAuth(c *credential) error {
 		return promptCredentialInput(c)
 	}
 
+	if method == "disconnect" {
+		envPath := filepath.Join(configDir(), ".env")
+		_ = updateEnvKey(envPath, "GITHUB_PERSONAL_ACCESS_TOKEN", "")
+		_ = updateEnvKey(envPath, "GITHUB_AUTH_METHOD", "")
+		c.value = ""
+		c.status = "skipped"
+		c.detail = "Disconnected"
+		fmt.Fprintln(os.Stderr, "  GitHub disconnected. You can reconnect anytime.")
+		return nil
+	}
+
 	// OAuth device flow
 	passStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
 
@@ -1671,8 +1746,17 @@ func promptGitHubAuth(c *credential) error {
 		"action": "device_flow",
 	})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "  GitHub OAuth failed: %s\n", err.Error())
-		fmt.Fprintln(os.Stderr, "  Falling back to manual token entry…")
+		errMsg := err.Error()
+		fmt.Fprintf(os.Stderr, "  GitHub sign-in failed: %s\n", errMsg)
+		if strings.Contains(errMsg, "expired") {
+			fmt.Fprintln(os.Stderr, "  The sign-in code expired. Let's try again or use a Personal Access Token.")
+		} else if strings.Contains(errMsg, "denied") {
+			fmt.Fprintln(os.Stderr, "  You can try again or paste a Personal Access Token instead.")
+		} else if strings.Contains(errMsg, "not configured") {
+			fmt.Fprintln(os.Stderr, "  GitHub sign-in is not available. Please use a Personal Access Token.")
+		} else {
+			fmt.Fprintln(os.Stderr, "  Falling back to manual token entry…")
+		}
 		return promptCredentialInput(c)
 	}
 
@@ -1682,22 +1766,33 @@ func promptGitHubAuth(c *credential) error {
 			c.status = "valid"
 			login, _ := result["login"].(string)
 			if login != "" {
-				c.detail = fmt.Sprintf("Connected as @%s", login)
+				c.detail = fmt.Sprintf("Connected as @%s via GitHub sign-in", login)
 				fmt.Fprintln(os.Stderr, "  "+passStyle.Render("✔")+" "+c.detail)
 			} else {
-				c.detail = "Authenticated via OAuth"
-				fmt.Fprintln(os.Stderr, "  "+passStyle.Render("✔")+" GitHub authenticated")
+				c.detail = "Connected via GitHub sign-in"
+				fmt.Fprintln(os.Stderr, "  "+passStyle.Render("✔")+" Connected via GitHub sign-in")
 			}
+			// Record auth method for downstream consumers
+			envPath := filepath.Join(configDir(), ".env")
+			_ = updateEnvKey(envPath, "GITHUB_AUTH_METHOD", detectAuthMethod(c.value))
 			return nil
 		}
 	}
 
 	// Device flow returned but without a token — fall back
 	if errMsg, ok := result["error"].(string); ok && errMsg != "" {
-		fmt.Fprintf(os.Stderr, "  GitHub OAuth failed: %s\n", errMsg)
+		fmt.Fprintf(os.Stderr, "  GitHub sign-in failed: %s\n", errMsg)
 	}
 	fmt.Fprintln(os.Stderr, "  Falling back to manual token entry…")
 	return promptCredentialInput(c)
+}
+
+// detectAuthMethod returns "oauth" or "pat" based on the token prefix.
+func detectAuthMethod(token string) string {
+	if strings.HasPrefix(token, "gho_") {
+		return "oauth"
+	}
+	return "pat"
 }
 
 // validateCredentials validates each credential against its API.
@@ -1751,7 +1846,11 @@ func validateGitHub(client HTTPDoer, c *credential) {
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&user); err == nil && user.Login != "" {
 		c.status = "valid"
-		c.detail = fmt.Sprintf("Connected as @%s", user.Login)
+		if strings.HasPrefix(c.value, "gho_") {
+			c.detail = fmt.Sprintf("Connected as @%s via GitHub sign-in", user.Login)
+		} else {
+			c.detail = fmt.Sprintf("Connected as @%s via Personal Access Token", user.Login)
+		}
 	} else {
 		c.status = "valid"
 		c.detail = "Authenticated"
@@ -2575,7 +2674,7 @@ func runExpressSetupPrompt() error {
 
 	envPath := filepath.Join(configDir(), ".env")
 	creds := []credential{
-		{envKey: "GITHUB_PERSONAL_ACCESS_TOKEN", label: "GitHub Personal Access Token", optional: false},
+		{envKey: "GITHUB_PERSONAL_ACCESS_TOKEN", label: "GitHub (OAuth or token)", optional: false},
 		{envKey: "OPENAI_API_KEY", label: "OpenAI API Key", optional: false},
 	}
 

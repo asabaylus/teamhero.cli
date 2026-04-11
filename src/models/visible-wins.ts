@@ -9,6 +9,8 @@ export interface ProjectTask {
 	parentGid?: string;
 	/** Name of parent task. Used for display when grouping. */
 	parentName?: string;
+	/** Asana task description text. Populated for roadmap context so the AI can see task notes. */
+	notes?: string | null;
 }
 
 export interface NormalizedNote {

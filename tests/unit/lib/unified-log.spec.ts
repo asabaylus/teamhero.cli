@@ -1,31 +1,10 @@
-import {
-	afterAll,
-	afterEach,
-	beforeEach,
-	describe,
-	expect,
-	it,
-	mock,
-} from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import * as pathsMod from "../../../src/lib/paths.js";
-
-// Mock cacheDir() to use a temp directory
 let testCacheDir: string;
 
-mock.module("../../../src/lib/paths.js", () => ({
-	...pathsMod,
-	cacheDir: () => testCacheDir,
-}));
-
-afterAll(() => {
-	mock.restore();
-});
-
-// Import after mocking
 const { appendUnifiedLog, appendAiDebugLog } = await import(
 	"../../../src/lib/unified-log.js"
 );
@@ -33,10 +12,12 @@ const { appendUnifiedLog, appendAiDebugLog } = await import(
 describe("appendUnifiedLog", () => {
 	beforeEach(async () => {
 		testCacheDir = await mkdtemp(join(tmpdir(), "teamhero-log-test-"));
+		process.env.XDG_CACHE_HOME = testCacheDir;
 	});
 
 	afterEach(async () => {
 		await rm(testCacheDir, { recursive: true, force: true });
+		delete process.env.XDG_CACHE_HOME;
 	});
 
 	it("writes to cacheDir/logs/teamhero.log", async () => {
@@ -48,7 +29,7 @@ describe("appendUnifiedLog", () => {
 			namespace: "metrics",
 		});
 
-		const logPath = join(testCacheDir, "logs", "teamhero.log");
+		const logPath = join(testCacheDir, "teamhero", "logs", "teamhero.log");
 		const content = await readFile(logPath, "utf8");
 		const parsed = JSON.parse(content.trim());
 		expect(parsed.category).toBe("cache");
@@ -70,7 +51,7 @@ describe("appendUnifiedLog", () => {
 			event: "success",
 		});
 
-		const logPath = join(testCacheDir, "logs", "teamhero.log");
+		const logPath = join(testCacheDir, "teamhero", "logs", "teamhero.log");
 		const content = await readFile(logPath, "utf8");
 		const lines = content.trim().split("\n");
 		expect(lines).toHaveLength(2);
@@ -87,7 +68,7 @@ describe("appendUnifiedLog", () => {
 		});
 
 		// Verify the log went to the cache dir, not cwd
-		const logPath = join(testCacheDir, "logs", "teamhero.log");
+		const logPath = join(testCacheDir, "teamhero", "logs", "teamhero.log");
 		const content = await readFile(logPath, "utf8");
 		expect(content).toContain('"event":"test"');
 	});
@@ -96,16 +77,18 @@ describe("appendUnifiedLog", () => {
 describe("appendAiDebugLog", () => {
 	beforeEach(async () => {
 		testCacheDir = await mkdtemp(join(tmpdir(), "teamhero-log-test-"));
+		process.env.XDG_CACHE_HOME = testCacheDir;
 	});
 
 	afterEach(async () => {
 		await rm(testCacheDir, { recursive: true, force: true });
+		delete process.env.XDG_CACHE_HOME;
 	});
 
 	it("writes to cacheDir/logs/ai-debug.log", async () => {
 		await appendAiDebugLog("test prompt content\n");
 
-		const logPath = join(testCacheDir, "logs", "ai-debug.log");
+		const logPath = join(testCacheDir, "teamhero", "logs", "ai-debug.log");
 		const content = await readFile(logPath, "utf8");
 		expect(content).toBe("test prompt content\n");
 	});

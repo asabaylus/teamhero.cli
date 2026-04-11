@@ -17,19 +17,38 @@ import * as serviceFactoryMod from "../../../src/lib/service-factory.js";
 // Mock the MCP SDK so no real server is instantiated
 // ---------------------------------------------------------------------------
 
-const capturedHandlers: Record<string, (...args: any[]) => any> = {};
+type CapturedHandlers = Record<string, (...args: any[]) => any>;
+
+const globalWithCapturedHandlers = globalThis as typeof globalThis & {
+	__teamheroMcpCapturedHandlers?: CapturedHandlers;
+};
+
+if (!globalWithCapturedHandlers.__teamheroMcpCapturedHandlers) {
+	globalWithCapturedHandlers.__teamheroMcpCapturedHandlers = {};
+}
+
+const capturedHandlers =
+	globalWithCapturedHandlers.__teamheroMcpCapturedHandlers;
 let mockListToolsSchema: object;
 let mockCallToolSchema: object;
+let loadCount = 0;
 
 mock.module("@modelcontextprotocol/sdk/server/index.js", () => {
 	class MockServer {
+		private handlerCount = 0;
+
 		setRequestHandler(schema: object, handler: (...args: any[]) => any) {
 			// Capture by schema reference identity
 			if (schema === mockListToolsSchema) {
 				capturedHandlers.ListTools = handler;
 			} else if (schema === mockCallToolSchema) {
 				capturedHandlers.CallTool = handler;
+			} else if (this.handlerCount === 0) {
+				capturedHandlers.ListTools = handler;
+			} else if (this.handlerCount === 1) {
+				capturedHandlers.CallTool = handler;
 			}
+			this.handlerCount += 1;
 		}
 		connect() {
 			return Promise.resolve();
@@ -79,7 +98,12 @@ afterAll(() => {
 // Dynamic import is deferred until inside tests so mocks are registered first.
 async function loadServer() {
 	// Reset module registry each time to ensure fresh handler capture
-	return import("../../../src/mcp/server.js");
+	return import(
+		new URL(
+			`../../../src/mcp/server.js?mcp-server-spec=${++loadCount}`,
+			import.meta.url,
+		).href
+	);
 }
 
 // ---------------------------------------------------------------------------

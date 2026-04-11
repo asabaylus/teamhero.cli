@@ -1,6 +1,9 @@
 import { describe, expect, it, mock } from "bun:test";
 import type { ScopeOptions } from "../../../src/core/types.js";
-import { ScopeService } from "../../../src/services/scope.service.js";
+
+const { ScopeService } = await import(
+	new URL("../../../src/services/scope.service.ts", import.meta.url).href
+);
 
 // ---------------------------------------------------------------------------
 // Helpers

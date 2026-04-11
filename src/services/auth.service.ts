@@ -5,10 +5,19 @@ export class AuthService implements AuthCoordinator {
 	async ensureAuthenticated(): Promise<LoginResult> {
 		const envToken = getEnv("GITHUB_PERSONAL_ACCESS_TOKEN")?.trim();
 		if (envToken) {
+			const method = getEnv("GITHUB_AUTH_METHOD");
+			const provider =
+				method === "oauth" ? "oauth" : method === "pat" ? "pat" : "token";
+			const label =
+				provider === "oauth"
+					? "Authenticated via GitHub sign-in"
+					: provider === "pat"
+						? "Authenticated via Personal Access Token"
+						: "Authenticated using GitHub token";
 			return {
 				authenticated: true,
-				provider: "token",
-				message: "Authenticated using GITHUB_PERSONAL_ACCESS_TOKEN",
+				provider,
+				message: label,
 			} satisfies LoginResult;
 		}
 
@@ -16,13 +25,15 @@ export class AuthService implements AuthCoordinator {
 			authenticated: false,
 			provider: "token",
 			message:
-				"Missing GITHUB_PERSONAL_ACCESS_TOKEN. Run `teamhero setup` or set the environment variable.",
+				"Missing GitHub authentication. Run `teamhero setup` to sign in.",
 		} satisfies LoginResult;
 	}
 
 	async login(): Promise<LoginResult> {
-		throw new Error(
-			"Login command has been removed. Set GITHUB_PERSONAL_ACCESS_TOKEN environment variable instead.",
-		);
+		return {
+			authenticated: false,
+			provider: "token",
+			message: "Run `teamhero setup` to authenticate.",
+		} satisfies LoginResult;
 	}
 }

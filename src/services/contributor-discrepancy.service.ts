@@ -8,14 +8,17 @@
  * - serializeDiscrepancyReport() — IPC serialization (unchanged)
  */
 
+import { associateNotesWithProjects } from "../adapters/meeting-notes/note-project-associator.js";
 import type {
 	ContributorDiscrepancy,
 	DiscrepancyReport,
+	RoadmapEntry,
 	SectionAuditContext,
 	SectionDiscrepancy,
 } from "../core/types.js";
+import { getEnv } from "../lib/env.js";
 import type { ReportRenderInput } from "../lib/report-renderer.js";
-import type { NormalizedNote } from "../models/visible-wins.js";
+import type { NormalizedNote, ProjectTask } from "../models/visible-wins.js";
 
 // ---------------------------------------------------------------------------
 // Evidence truncation helpers
@@ -110,6 +113,94 @@ export function buildSectionAuditContexts(
 			contexts.push({
 				sectionName: "visibleWins",
 				claims: projectClaims,
+				evidence: truncate(evidenceParts.join("\n"), MAX_EVIDENCE_CHARS),
+			});
+		}
+	}
+
+	// Roadmap (1 context per rock, auditing rendered row vs. transcripts + Asana state)
+	const roadmapAuditEnabled = getEnv("TEAMHERO_ROADMAP_AUDIT_ENABLED") !== "0";
+	if (
+		roadmapAuditEnabled &&
+		reportData.roadmapEntries &&
+		reportData.roadmapEntries.length > 0
+	) {
+		// Build pseudo ProjectTask[] from roadmap entries so we can reuse the
+		// existing per-project transcript associator for excerpt scoping.
+		const pseudoProjects: ProjectTask[] = reportData.roadmapEntries.map(
+			(r: RoadmapEntry) => ({
+				gid: r.gid,
+				name: r.displayName,
+				customFields: {},
+				priorityScore: 0,
+			}),
+		);
+		const associations = vwNotes
+			? associateNotesWithProjects(vwNotes, pseudoProjects)
+			: [];
+
+		for (const rock of reportData.roadmapEntries) {
+			const claimParts = [
+				`Rock: ${rock.displayName}`,
+				`  status=${rock.overallStatus}`,
+				`  milestone=${rock.nextMilestone || "(empty)"}`,
+				`  keyNotes=${rock.keyNotes || "(empty)"}`,
+			];
+			if (rock.nextMilestoneCitation?.trim()) {
+				claimParts.push(
+					`  milestoneCitation=${rock.nextMilestoneCitation} (source=${rock.nextMilestoneSource ?? "ai-inferred"})`,
+				);
+			}
+			if (rock.overallStatusCitation?.trim()) {
+				claimParts.push(
+					`  statusCitation=${rock.overallStatusCitation} (source=${rock.overallStatusSource ?? "ai-inferred"})`,
+				);
+			}
+			const claims = claimParts.join("\n");
+
+			const evidenceParts: string[] = [];
+
+			// (a) Latest Asana project status update (Phase 2 output)
+			if (rock.latestStatusUpdate) {
+				evidenceParts.push(
+					"Latest Asana Project Status Update:",
+					`  color: ${rock.latestStatusUpdate.color || "unknown"}`,
+					`  title: ${rock.latestStatusUpdate.title || "(no title)"}`,
+					`  text: ${truncate(rock.latestStatusUpdate.text || "", MAX_BODY_TEXT_CHARS * 2)}`,
+					`  posted by ${rock.latestStatusUpdate.createdBy ?? "unknown"} on ${rock.latestStatusUpdate.createdAt.slice(0, 10)}`,
+					"",
+				);
+			}
+
+			// (b) Per-rock transcript excerpts via the project-note associator
+			const association = associations.find((a) => a.projectGid === rock.gid);
+			if (association && association.relevantItems.length > 0) {
+				evidenceParts.push(
+					`Meeting transcript excerpts (${association.sourceNotes.length} source file(s)):`,
+				);
+				for (const item of association.relevantItems) {
+					evidenceParts.push(`  - ${truncate(item, MAX_BODY_TEXT_CHARS)}`);
+				}
+				evidenceParts.push("");
+			} else {
+				evidenceParts.push(
+					"Meeting transcripts: no discussion items mention this rock by name.",
+					"",
+				);
+			}
+
+			// (c) Asana board signal — what the board structurally contains.
+			// This is what produced the rendered claim; we include it so the
+			// AI can contrast "board says X" vs. "transcripts say Y".
+			evidenceParts.push(
+				"Asana board state (deterministic from task + subtasks):",
+				`  overallStatus (pre-synthesis): ${rock.overallStatusSource === "asana-subtask" || !rock.overallStatusSource ? rock.overallStatus : "(overridden by AI — see claims)"}`,
+				`  nextMilestone (pre-synthesis): ${rock.nextMilestoneSource === "asana-subtask" || !rock.nextMilestoneSource ? rock.nextMilestone || "(empty)" : "(overridden by AI — see claims)"}`,
+			);
+
+			contexts.push({
+				sectionName: "roadmap",
+				claims,
 				evidence: truncate(evidenceParts.join("\n"), MAX_EVIDENCE_CHARS),
 			});
 		}

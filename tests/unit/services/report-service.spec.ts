@@ -15,8 +15,10 @@ import {
 	it,
 	type Mock,
 	mock,
+	spyOn,
 } from "bun:test";
 import type { ConsolaInstance } from "consola";
+import { FileSystemCacheStore } from "../../../src/adapters/cache/fs-cache-store.js";
 import type { ReportCommandInput } from "../../../src/cli/index.js";
 import type {
 	MemberTaskSummary,
@@ -29,6 +31,7 @@ import type {
 	TaskTrackerProvider,
 	VisibleWinsProvider,
 } from "../../../src/core/types.js";
+import { IndividualSummaryCache } from "../../../src/lib/individual-cache.js";
 import type { ReportMemberMetrics } from "../../../src/lib/report-renderer.js";
 import type { Member } from "../../../src/models/member.js";
 import type { Organization } from "../../../src/models/organization.js";
@@ -40,30 +43,20 @@ import type { AIService } from "../../../src/services/ai.service.js";
 // ---------------------------------------------------------------------------
 
 import * as fsPromisesMod from "node:fs/promises";
-import * as fsCacheStoreMod from "../../../src/adapters/cache/fs-cache-store.js";
 import * as envMod from "../../../src/lib/env.js";
-import * as individualCacheMod from "../../../src/lib/individual-cache.js";
-import * as pathsMod from "../../../src/lib/paths.js";
 import * as reportSerializerMod from "../../../src/lib/report-serializer.js";
 import * as runHistoryMod from "../../../src/lib/run-history.js";
 import * as runLogMod from "../../../src/lib/run-log.js";
 import * as unifiedLogMod from "../../../src/lib/unified-log.js";
 import * as visibleWinsConfigMod from "../../../src/lib/visible-wins-config.js";
 import * as locRestMod from "../../../src/metrics/loc.rest.js";
-import * as contributorDiscrepancyMod from "../../../src/services/contributor-discrepancy.service.js";
 import * as deltaReportMod from "../../../src/services/delta-report.service.js";
-import * as discrepancyReviewerMod from "../../../src/services/discrepancy-reviewer.js";
-import * as factualValidatorMod from "../../../src/services/factual-validator.js";
-import * as periodDeltasMod from "../../../src/services/period-deltas.service.js";
 
 // ---------------------------------------------------------------------------
 // Module mocks — must be declared before importing the SUT
 // ---------------------------------------------------------------------------
 
-mock.module("node:fs/promises", () => ({
-	...fsPromisesMod,
-	writeFile: mock().mockResolvedValue(undefined),
-}));
+spyOn(fsPromisesMod, "writeFile").mockResolvedValue(undefined as never);
 
 mock.module("../../../src/lib/run-log.js", () => ({
 	...runLogMod,
@@ -85,77 +78,9 @@ mock.module("../../../src/lib/visible-wins-config.js", () => ({
 	isVisibleWinsEnabled: mock().mockReturnValue(false),
 }));
 
-mock.module("../../../src/adapters/cache/fs-cache-store.js", () => ({
-	...fsCacheStoreMod,
-	FileSystemCacheStore: mock().mockImplementation(() => ({
-		get: mock().mockResolvedValue(null),
-		set: mock().mockResolvedValue(undefined),
-	})),
-}));
-
-mock.module("../../../src/lib/individual-cache.js", () => ({
-	...individualCacheMod,
-	IndividualSummaryCache: mock().mockImplementation(() => ({
-		readAll: mock().mockResolvedValue(new Map()),
-		write: mock().mockResolvedValue(undefined),
-	})),
-}));
-
-mock.module("../../../src/lib/paths.js", () => ({
-	...pathsMod,
-	cacheDir: mock().mockReturnValue("/tmp/test-cache"),
-}));
-
-mock.module("../../../src/metrics/loc.rest.js", () => ({
-	...locRestMod,
-	collectLocMetricsRest: mock().mockResolvedValue([]),
-}));
-
-mock.module("../../../src/services/contributor-discrepancy.service.js", () => ({
-	...contributorDiscrepancyMod,
-	buildSectionAuditContexts: mock().mockReturnValue([]),
-	mapAuditResultToDiscrepancyReport: mock().mockReturnValue({
-		byContributor: new Map(),
-		unattributed: [],
-		totalRawCount: 0,
-		totalFilteredCount: 0,
-		allItems: [],
-	}),
-	serializeDiscrepancyReport: mock().mockReturnValue({
-		byContributor: {},
-		unattributed: [],
-		totalRawCount: 0,
-		totalFilteredCount: 0,
-		allItems: [],
-	}),
-	verifyMetricCounts: mock().mockReturnValue([]),
-}));
-
 mock.module("../../../src/lib/report-serializer.js", () => ({
 	...reportSerializerMod,
 	serializeReportRenderInput: mock().mockReturnValue({ mocked: true }),
-}));
-
-mock.module("../../../src/services/discrepancy-reviewer.js", () => ({
-	...discrepancyReviewerMod,
-	logDiscrepancies: mock().mockResolvedValue(undefined),
-}));
-
-mock.module("../../../src/services/factual-validator.js", () => ({
-	...factualValidatorMod,
-	validateFactualClaims: mock().mockReturnValue([]),
-}));
-
-mock.module("../../../src/services/period-deltas.service.js", () => ({
-	...periodDeltasMod,
-	buildPeriodDeltas: mock().mockReturnValue({ hasPreviousPeriod: false }),
-	buildVelocityContext: mock().mockReturnValue(""),
-	computePreviousPeriod: mock().mockReturnValue({
-		prevStartISO: "2026-01-01T00:00:00.000Z",
-		prevEndISO: "2026-01-08T00:00:00.000Z",
-	}),
-	extractPeriodSummary: mock().mockReturnValue({}),
-	extractPeriodSummaryFromSnapshot: mock().mockReturnValue(null),
 }));
 
 mock.module("../../../src/lib/run-history.js", () => ({
@@ -173,25 +98,35 @@ mock.module("../../../src/services/delta-report.service.js", () => ({
 
 // We need to import the mocked modules so we can adjust per-test
 import { writeFile } from "node:fs/promises";
-import { FileSystemCacheStore } from "../../../src/adapters/cache/fs-cache-store.js";
 import { getEnv } from "../../../src/lib/env.js";
 import { serializeReportRenderInput } from "../../../src/lib/report-serializer.js";
 import { appendRunLogEntry } from "../../../src/lib/run-log.js";
 import { appendUnifiedLog } from "../../../src/lib/unified-log.js";
 import { isVisibleWinsEnabled } from "../../../src/lib/visible-wins-config.js";
-import { collectLocMetricsRest } from "../../../src/metrics/loc.rest.js";
-import {
-	buildSectionAuditContexts,
-	mapAuditResultToDiscrepancyReport,
-	verifyMetricCounts,
-} from "../../../src/services/contributor-discrepancy.service.js";
-import {
-	buildPeriodDeltas,
-	extractPeriodSummary,
-} from "../../../src/services/period-deltas.service.js";
 
 // SUT — imported after mocks are in place
 import { ReportService } from "../../../src/services/report.service.js";
+
+const fileSystemCacheGetSpy = spyOn(
+	FileSystemCacheStore.prototype,
+	"get",
+).mockResolvedValue(null as never);
+const fileSystemCacheSetSpy = spyOn(
+	FileSystemCacheStore.prototype,
+	"set",
+).mockResolvedValue(undefined as never);
+const individualSummaryReadAllSpy = spyOn(
+	IndividualSummaryCache.prototype,
+	"readAll",
+).mockResolvedValue(new Map() as never);
+const individualSummaryWriteSpy = spyOn(
+	IndividualSummaryCache.prototype,
+	"write",
+).mockResolvedValue(undefined as never);
+const collectLocMetricsRestSpy = spyOn(
+	locRestMod,
+	"collectLocMetricsRest",
+).mockResolvedValue([] as never);
 
 // ---------------------------------------------------------------------------
 // Test helpers / factories
@@ -398,13 +333,12 @@ describe("hashMemberData (via named import trick)", () => {
 
 		// Track the FileSystemCacheStore.set calls
 		const setCalls: Array<[string, unknown]> = [];
-		(FileSystemCacheStore as unknown as Mock).mockImplementation(() => ({
-			get: mock().mockResolvedValue(null),
-			set: mock().mockImplementation((key: string, value: unknown) => {
+		fileSystemCacheGetSpy.mockResolvedValue(null as never);
+		fileSystemCacheSetSpy.mockImplementation(
+			async (key: string, value: unknown) => {
 				setCalls.push([key, value]);
-				return Promise.resolve();
-			}),
-		}));
+			},
+		);
 
 		const service = new ReportService({
 			scope,
@@ -429,13 +363,12 @@ describe("hashMemberData (via named import trick)", () => {
 		// We create two reports with different member data and verify
 		// different cache keys are produced
 		const setCalls: Array<[string, unknown]> = [];
-		(FileSystemCacheStore as unknown as Mock).mockImplementation(() => ({
-			get: mock().mockResolvedValue(null),
-			set: mock().mockImplementation((key: string, value: unknown) => {
+		fileSystemCacheGetSpy.mockResolvedValue(null as never);
+		fileSystemCacheSetSpy.mockImplementation(
+			async (key: string, value: unknown) => {
 				setCalls.push([key, value]);
-				return Promise.resolve();
-			}),
-		}));
+			},
+		);
 
 		const memberA = makeMember({ login: "alice", displayName: "Alice" });
 		const memberB = makeMember({ login: "bob", displayName: "Bob" });
@@ -494,19 +427,19 @@ describe("ReportService.generateReport", () => {
 		(appendRunLogEntry as Mock).mockClear();
 		(appendUnifiedLog as Mock).mockClear();
 		(serializeReportRenderInput as Mock).mockClear();
-		(collectLocMetricsRest as Mock).mockClear();
-		(buildSectionAuditContexts as Mock).mockClear();
-		(mapAuditResultToDiscrepancyReport as Mock).mockClear();
-		(verifyMetricCounts as Mock).mockClear();
-		(buildPeriodDeltas as Mock).mockClear();
-		(extractPeriodSummary as Mock).mockClear();
+		collectLocMetricsRestSpy.mockClear();
+		fileSystemCacheGetSpy.mockClear();
+		fileSystemCacheSetSpy.mockClear();
+		individualSummaryReadAllSpy.mockClear();
+		individualSummaryWriteSpy.mockClear();
 		// Reset writeFile to default resolved behavior
 		(writeFile as Mock).mockResolvedValue(undefined);
-		// Reset FileSystemCacheStore to default no-op
-		(FileSystemCacheStore as unknown as Mock).mockImplementation(() => ({
-			get: mock().mockResolvedValue(null),
-			set: mock().mockResolvedValue(undefined),
-		}));
+		// Reset caches to default no-op behavior
+		fileSystemCacheGetSpy.mockResolvedValue(null as never);
+		fileSystemCacheSetSpy.mockResolvedValue(undefined as never);
+		individualSummaryReadAllSpy.mockResolvedValue(new Map() as never);
+		individualSummaryWriteSpy.mockResolvedValue(undefined as never);
+		collectLocMetricsRestSpy.mockResolvedValue([] as never);
 		// Reset getEnv to return undefined by default
 		(getEnv as Mock).mockReturnValue(undefined);
 		// Reset isVisibleWinsEnabled to return false
@@ -730,7 +663,7 @@ describe("ReportService.generateReport", () => {
 			}),
 		);
 
-		expect(collectLocMetricsRest).not.toHaveBeenCalled();
+		expect(collectLocMetricsRestSpy).not.toHaveBeenCalled();
 	});
 
 	it("collects LOC metrics when loc section is enabled and token is available", async () => {
@@ -876,6 +809,7 @@ describe("ReportService.generateReport", () => {
 					reportSections: {
 						visibleWins: false,
 						individualContributions: false,
+						technicalFoundationalWins: false,
 					},
 				},
 			}),
@@ -1051,10 +985,10 @@ describe("ReportService.generateReport", () => {
 		const ai = makeMockAI();
 
 		// Make the cache return a hit for any key
-		(FileSystemCacheStore as unknown as Mock).mockImplementation(() => ({
-			get: mock().mockResolvedValue("Cached highlight for Jane."),
-			set: mock().mockResolvedValue(undefined),
-		}));
+		fileSystemCacheGetSpy.mockResolvedValue(
+			"Cached highlight for Jane." as never,
+		);
+		fileSystemCacheSetSpy.mockResolvedValue(undefined as never);
 
 		const service = new ReportService({
 			scope: makeMockScope(),
@@ -1085,10 +1019,8 @@ describe("ReportService.generateReport", () => {
 		const ai = makeMockAI();
 
 		// Return null from cache (miss)
-		(FileSystemCacheStore as unknown as Mock).mockImplementation(() => ({
-			get: mock().mockResolvedValue(null),
-			set: mock().mockResolvedValue(undefined),
-		}));
+		fileSystemCacheGetSpy.mockResolvedValue(null as never);
+		fileSystemCacheSetSpy.mockResolvedValue(undefined as never);
 
 		const service = new ReportService({
 			scope: makeMockScope(),
@@ -1709,6 +1641,25 @@ describe("ReportService.generateReport", () => {
 	// -----------------------------------------------------------------------
 
 	it("runs audit pipeline when discrepancyLog is enabled", async () => {
+		const discrepancyService = await import(
+			"../../../src/services/contributor-discrepancy.service.js"
+		);
+		const verifyMetricCountsSpy = spyOn(
+			discrepancyService,
+			"verifyMetricCounts",
+		);
+		verifyMetricCountsSpy.mockClear();
+		const buildSectionAuditContextsSpy = spyOn(
+			discrepancyService,
+			"buildSectionAuditContexts",
+		);
+		buildSectionAuditContextsSpy.mockClear();
+		const mapAuditResultToDiscrepancyReportSpy = spyOn(
+			discrepancyService,
+			"mapAuditResultToDiscrepancyReport",
+		);
+		mapAuditResultToDiscrepancyReportSpy.mockClear();
+
 		const ai = makeMockAI();
 		const service = new ReportService({
 			scope: makeMockScope(),
@@ -1732,12 +1683,21 @@ describe("ReportService.generateReport", () => {
 			}),
 		);
 
-		expect(verifyMetricCounts).toHaveBeenCalled();
-		expect(buildSectionAuditContexts).toHaveBeenCalled();
-		expect(mapAuditResultToDiscrepancyReport).toHaveBeenCalled();
+		expect(verifyMetricCountsSpy).toHaveBeenCalled();
+		expect(buildSectionAuditContextsSpy).toHaveBeenCalled();
+		expect(mapAuditResultToDiscrepancyReportSpy).toHaveBeenCalled();
 	});
 
 	it("skips audit when TEAMHERO_DISABLE_AI_AUDIT=1", async () => {
+		const discrepancyService = await import(
+			"../../../src/services/contributor-discrepancy.service.js"
+		);
+		const verifyMetricCountsSpy = spyOn(
+			discrepancyService,
+			"verifyMetricCounts",
+		);
+		verifyMetricCountsSpy.mockClear();
+
 		(getEnv as Mock).mockImplementation((key: string) => {
 			if (key === "TEAMHERO_DISABLE_AI_AUDIT") return "1";
 			return undefined;
@@ -1766,11 +1726,19 @@ describe("ReportService.generateReport", () => {
 			}),
 		);
 
-		// verifyMetricCounts should NOT be called when audit is disabled
-		expect(verifyMetricCounts).not.toHaveBeenCalled();
+		expect(verifyMetricCountsSpy).not.toHaveBeenCalled();
 	});
 
 	it("skips audit when discrepancyLog is not enabled", async () => {
+		const discrepancyService = await import(
+			"../../../src/services/contributor-discrepancy.service.js"
+		);
+		const verifyMetricCountsSpy = spyOn(
+			discrepancyService,
+			"verifyMetricCounts",
+		);
+		verifyMetricCountsSpy.mockClear();
+
 		const service = new ReportService({
 			scope: makeMockScope(),
 			metrics: makeMockMetrics(),
@@ -1793,7 +1761,7 @@ describe("ReportService.generateReport", () => {
 			}),
 		);
 
-		expect(verifyMetricCounts).not.toHaveBeenCalled();
+		expect(verifyMetricCountsSpy).not.toHaveBeenCalled();
 	});
 
 	// -----------------------------------------------------------------------
@@ -1974,6 +1942,20 @@ describe("ReportService.generateReport", () => {
 	// -----------------------------------------------------------------------
 
 	it("computes period deltas when git is enabled and metrics are available", async () => {
+		const periodDeltasService = await import(
+			"../../../src/services/period-deltas.service.js"
+		);
+		const extractPeriodSummarySpy = spyOn(
+			periodDeltasService,
+			"extractPeriodSummary",
+		);
+		extractPeriodSummarySpy.mockClear();
+		const buildPeriodDeltasSpy = spyOn(
+			periodDeltasService,
+			"buildPeriodDeltas",
+		);
+		buildPeriodDeltasSpy.mockClear();
+
 		const service = new ReportService({
 			scope: makeMockScope(),
 			metrics: makeMockMetrics(),
@@ -1985,8 +1967,8 @@ describe("ReportService.generateReport", () => {
 
 		await service.generateReport(makeInput());
 
-		expect(extractPeriodSummary).toHaveBeenCalled();
-		expect(buildPeriodDeltas).toHaveBeenCalled();
+		expect(extractPeriodSummarySpy).toHaveBeenCalled();
+		expect(buildPeriodDeltasSpy).toHaveBeenCalled();
 	});
 
 	// -----------------------------------------------------------------------
@@ -2101,10 +2083,8 @@ describe("ReportService.generateReport", () => {
 
 		const cacheGet = mock().mockResolvedValue("Should not be used");
 		const cacheSet = mock().mockResolvedValue(undefined);
-		(FileSystemCacheStore as unknown as Mock).mockImplementation(() => ({
-			get: cacheGet,
-			set: cacheSet,
-		}));
+		fileSystemCacheGetSpy.mockImplementation(cacheGet as any);
+		fileSystemCacheSetSpy.mockImplementation(cacheSet as any);
 
 		const ai = makeMockAI();
 		const service = new ReportService({
@@ -2136,10 +2116,8 @@ describe("ReportService.generateReport", () => {
 	it("flushes highlight cache when cacheOptions.flush is true", async () => {
 		const cacheGet = mock().mockResolvedValue(null);
 		const cacheSet = mock().mockResolvedValue(undefined);
-		(FileSystemCacheStore as unknown as Mock).mockImplementation(() => ({
-			get: cacheGet,
-			set: cacheSet,
-		}));
+		fileSystemCacheGetSpy.mockImplementation(cacheGet as any);
+		fileSystemCacheSetSpy.mockImplementation(cacheSet as any);
 
 		const ai = makeMockAI();
 		const service = new ReportService({
@@ -2412,7 +2390,10 @@ describe("ReportService.generateReport", () => {
 	// -----------------------------------------------------------------------
 
 	it("renders report without discrepancies when audit pipeline fails", async () => {
-		(verifyMetricCounts as Mock).mockImplementation(() => {
+		const discrepancyService = await import(
+			"../../../src/services/contributor-discrepancy.service.js"
+		);
+		spyOn(discrepancyService, "verifyMetricCounts").mockImplementation(() => {
 			throw new Error("Audit crash");
 		});
 

@@ -332,6 +332,7 @@ async function main(): Promise<void> {
 			cacheOptions,
 			progressFactory: { create: (_opts) => progressReporter },
 			boardConfigs: boards ?? undefined,
+			rockProjectGidMap: boardsResult?.rockProjectGidMap,
 			asanaService: asana,
 			roadmapTitle: boardsResult?.roadmapTitle,
 			userMap,

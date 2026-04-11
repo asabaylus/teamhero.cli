@@ -277,12 +277,16 @@ describe("renderReport", () => {
 	it("hides At-a-Glance and Individual Updates when individualContributions is false", () => {
 		const output = renderReport({
 			...baseInput,
-			sections: { git: true, asana: true, individualContributions: false },
+			sections: {
+				git: true,
+				taskTracker: true,
+				individualContributions: false,
+			},
 		});
 
 		expect(output).not.toContain("At-a-Glance Summary");
 		expect(output).not.toContain("Individual Updates");
-		expect(output).toContain("Weekly Engineering Summary");
+		expect(output).not.toContain("Weekly Engineering Summary");
 	});
 
 	it("shows At-a-Glance and Individual Updates by default (individualContributions undefined)", () => {

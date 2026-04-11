@@ -2,7 +2,11 @@ import { appendFile, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { type ConsolaInstance, consola } from "consola";
 import OpenAI from "openai";
-import type { SectionAuditContext, SectionDiscrepancy } from "../core/types.js";
+import type {
+	SectionAuditContext,
+	SectionDiscrepancy,
+	TechnicalFoundationalWinsResult,
+} from "../core/types.js";
 import { getEnv } from "../lib/env.js";
 import { cacheDir } from "../lib/paths.js";
 import {
@@ -17,6 +21,7 @@ import {
 	buildMemberHighlightsPrompt,
 	buildRoadmapSynthesisPrompt,
 	buildTeamPrompt,
+	buildTechnicalWinsPrompt,
 	buildVisibleWinsExtractionPrompt,
 	DISCREPANCY_ANALYSIS_SCHEMA,
 	type FinalReportContext,
@@ -25,7 +30,9 @@ import {
 	type MemberHighlightsContext,
 	ROADMAP_SYNTHESIS_SCHEMA,
 	type RoadmapSynthesisContext,
+	TECHNICAL_WINS_SCHEMA,
 	type TeamHighlightContext,
+	type TechnicalWinsContext,
 	VISIBLE_WINS_SCHEMA,
 	type VisibleWinsExtractionContext,
 } from "./ai-prompts.js";
@@ -57,6 +64,7 @@ export interface AIServiceConfig {
 	memberHighlightsModel?: string;
 	individualSummariesModel?: string;
 	visibleWinsModel?: string;
+	technicalWinsModel?: string;
 	discrepancyAnalysisModel?: string;
 	apiKey?: string;
 	baseUrl?: string;
@@ -84,6 +92,7 @@ export class AIService {
 	private readonly memberHighlightsModel: string;
 	private readonly individualSummariesModel: string;
 	private readonly visibleWinsModel: string;
+	private readonly technicalWinsModel: string;
 	private readonly discrepancyAnalysisModel: string;
 	private readonly apiKey?: string;
 	private readonly baseUrl?: string;
@@ -122,6 +131,10 @@ export class AIService {
 		this.visibleWinsModel =
 			config.visibleWinsModel ??
 			getEnv("VISIBLE_WINS_AI_MODEL") ??
+			defaultModel;
+		this.technicalWinsModel =
+			config.technicalWinsModel ??
+			getEnv("AI_TECHNICAL_WINS_MODEL") ??
 			defaultModel;
 		this.discrepancyAnalysisModel =
 			config.discrepancyAnalysisModel ??
@@ -578,6 +591,86 @@ export class AIService {
 		} catch (error) {
 			this.rethrowAsConnectionOrAuthError(
 				"Failed to generate team highlight",
+				error,
+			);
+		}
+	}
+
+	async generateTechnicalWinsSection(
+		context: TechnicalWinsContext,
+	): Promise<TechnicalFoundationalWinsResult> {
+		if (!this.enabled) {
+			throw new Error(
+				"AI service is required for Technical / Foundational Wins generation. Please configure OPENAI_API_KEY.",
+			);
+		}
+
+		try {
+			this.logEnabledNotice();
+			const client = this.createClient();
+			const model = this.technicalWinsModel;
+			const prompt = buildTechnicalWinsPrompt(context);
+
+			const batchHeader = [
+				`[${new Date().toISOString()}] technical-wins`,
+				`model=${model}`,
+				`promptLength=${prompt.length}`,
+				`estimatedTokens=${Math.ceil(prompt.length / 3)}`,
+			].join(" | ");
+			await appendBatchLog(`${batchHeader}\n${prompt}\n\n`);
+
+			if (this.emitDebugLogs) {
+				this.logger.debug(
+					`Sending technical wins request (model=${model}, promptLength=${prompt.length})`,
+				);
+			}
+
+			context.onStatus?.("Generating Technical / Foundational Wins via AI...");
+
+			const requestOptions: Record<string, unknown> = {
+				model,
+				input: prompt,
+				text: { format: TECHNICAL_WINS_SCHEMA },
+			};
+
+			if (this.enableFlexProcessing) {
+				requestOptions.service_tier = "flex";
+			}
+
+			const response = await client.responses.create(
+				requestOptions as Parameters<typeof client.responses.create>[0],
+			);
+
+			const outputText = (response as Record<string, unknown>).output_text as
+				| string
+				| undefined;
+
+			if (this.emitDebugLogs) {
+				const usage = (response as Record<string, unknown>).usage as
+					| Record<string, number>
+					| undefined;
+				const inputTokens = usage?.input_tokens ?? usage?.prompt_tokens;
+				const outputTokens = usage?.output_tokens ?? usage?.completion_tokens;
+				this.logger.debug(
+					`Received technical wins response (textLength=${outputText?.length ?? 0}, tokens=${inputTokens != null && outputTokens != null ? `${inputTokens}+${outputTokens}` : "unknown"})`,
+				);
+			}
+
+			if (!outputText) {
+				throw new Error(
+					"Empty AI response for Technical / Foundational Wins generation",
+				);
+			}
+
+			context.onStatus?.(
+				"Processing Technical / Foundational Wins response...",
+			);
+
+			const parsed = JSON.parse(outputText) as TechnicalFoundationalWinsResult;
+			return parsed;
+		} catch (error) {
+			this.rethrowAsConnectionOrAuthError(
+				"Failed to generate Technical / Foundational Wins",
 				error,
 			);
 		}
@@ -1172,6 +1265,10 @@ export class AIService {
 			overallStatus: string;
 			nextMilestone: string;
 			keyNotes: string;
+			nextMilestoneSource?: string;
+			nextMilestoneCitation?: string;
+			overallStatusSource?: string;
+			overallStatusCitation?: string;
 		}[]
 	> {
 		if (!this.enabled) {
@@ -1235,6 +1332,10 @@ export class AIService {
 					overallStatus: string;
 					nextMilestone: string;
 					keyNotes: string;
+					nextMilestoneSource?: string;
+					nextMilestoneCitation?: string;
+					overallStatusSource?: string;
+					overallStatusCitation?: string;
 				}>;
 			};
 

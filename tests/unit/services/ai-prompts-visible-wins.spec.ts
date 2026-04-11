@@ -6,11 +6,14 @@ import type {
 	ProjectAccomplishment,
 	ProjectTask,
 } from "../../../src/models/visible-wins.js";
-import {
-	buildVisibleWinsExtractionPrompt,
-	VISIBLE_WINS_SCHEMA,
-	type VisibleWinsExtractionContext,
-} from "../../../src/services/ai-prompts.js";
+import type { VisibleWinsExtractionContext } from "../../../src/services/ai-prompts.js";
+
+const { buildVisibleWinsExtractionPrompt, VISIBLE_WINS_SCHEMA } = await import(
+	new URL(
+		"../../../src/services/ai-prompts.js?ai-prompts-visible-wins-spec",
+		import.meta.url,
+	).href
+);
 
 function makeProject(
 	name: string,

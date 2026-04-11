@@ -15,7 +15,8 @@ import type {
 	ProjectTask,
 } from "../../../src/models/visible-wins.js";
 import type { RoadmapSynthesisContext } from "../../../src/services/ai-prompts.js";
-import {
+
+const {
 	buildDiscrepancyAnalysisPrompt,
 	buildFinalReportPrompt,
 	buildIndividualSummariesPrompt,
@@ -24,7 +25,12 @@ import {
 	buildTeamPrompt,
 	buildVisibleWinsExtractionPrompt,
 	DISCREPANCY_ANALYSIS_SCHEMA,
-} from "../../../src/services/ai-prompts.js";
+} = await import(
+	new URL(
+		"../../../src/services/ai-prompts.js?ai-prompts-spec",
+		import.meta.url,
+	).href
+);
 
 // ---------------------------------------------------------------------------
 // Shared fixtures
@@ -1150,6 +1156,161 @@ describe("buildRoadmapSynthesisPrompt — configured mode", () => {
 		expect(prompt).toContain("Dev Done Target: 2026-03-15");
 	});
 
+	it("includes Parent Task Notes when project notes are present", () => {
+		const item = makeRoadmapEntry();
+		const project = makeProject({
+			notes:
+				"UAT complete as of 4/06. Pilot release overdue. Rolling out Apr 13.",
+		});
+		const prompt = buildRoadmapSynthesisPrompt(
+			makeRoadmapContext({
+				roadmapItems: [item],
+				projects: [project],
+			}),
+		);
+		expect(prompt).toContain(
+			"Parent Task Notes: UAT complete as of 4/06. Pilot release overdue. Rolling out Apr 13.",
+		);
+	});
+
+	it("omits Parent Task Notes line when project has no notes", () => {
+		const item = makeRoadmapEntry();
+		const project = makeProject({ notes: null });
+		const prompt = buildRoadmapSynthesisPrompt(
+			makeRoadmapContext({
+				roadmapItems: [item],
+				projects: [project],
+			}),
+		);
+		expect(prompt).not.toContain("Parent Task Notes:");
+	});
+
+	it("truncates long parent task notes and strips HTML tags", () => {
+		const item = makeRoadmapEntry();
+		const project = makeProject({
+			notes: `<body>${"x".repeat(2000)}</body>`,
+		});
+		const prompt = buildRoadmapSynthesisPrompt(
+			makeRoadmapContext({
+				roadmapItems: [item],
+				projects: [project],
+			}),
+		);
+		const match = prompt.match(/Parent Task Notes: (.*)/);
+		expect(match).not.toBeNull();
+		const notesLine = (match as RegExpMatchArray)[1];
+		expect(notesLine).not.toContain("<body>");
+		expect(notesLine.endsWith("…")).toBe(true);
+		expect(notesLine.length).toBeLessThanOrEqual(1501);
+	});
+
+	it("includes subtask notes snippet under each subtask line", () => {
+		const subtaskMap = new Map<string, RoadmapSubtaskInfo[]>();
+		subtaskMap.set("gid-1", [
+			makeSubtask({
+				name: "UAT cycle",
+				notes: "Finished 4/05, regression clean. Luciano signed off.",
+			}),
+		]);
+		const prompt = buildRoadmapSynthesisPrompt(
+			makeRoadmapContext({
+				roadmapItems: [makeRoadmapEntry()],
+				subtasksByGid: subtaskMap,
+			}),
+		);
+		expect(prompt).toContain("[TODO] UAT cycle");
+		expect(prompt).toContain(
+			"notes: Finished 4/05, regression clean. Luciano signed off.",
+		);
+	});
+
+	it("includes Latest Project Status Update block when statusByGid provides one", () => {
+		const item = makeRoadmapEntry();
+		const statusByGid = new Map();
+		statusByGid.set("gid-1", {
+			title: "Weekly status 4/08",
+			text: "UAT complete. Pilot Apr 13. No blockers.",
+			color: "green",
+			createdAt: "2026-04-08T14:00:00Z",
+			createdBy: "Luciano",
+		});
+		const prompt = buildRoadmapSynthesisPrompt(
+			makeRoadmapContext({
+				roadmapItems: [item],
+				statusByGid,
+			}),
+		);
+		expect(prompt).toContain(
+			"Latest Project Status Update: green — Weekly status 4/08",
+		);
+		expect(prompt).toContain("UAT complete. Pilot Apr 13. No blockers.");
+		expect(prompt).toContain("(by Luciano on 2026-04-08)");
+	});
+
+	it("omits Latest Project Status Update block when no entry exists for the rock", () => {
+		const item = makeRoadmapEntry();
+		const statusByGid = new Map();
+		// Entry exists for a different gid
+		statusByGid.set("gid-other", {
+			title: "Other",
+			text: "other",
+			color: "red",
+			createdAt: "2026-04-08T14:00:00Z",
+		});
+		const prompt = buildRoadmapSynthesisPrompt(
+			makeRoadmapContext({
+				roadmapItems: [item],
+				statusByGid,
+			}),
+		);
+		expect(prompt).not.toContain("Latest Project Status Update:");
+	});
+
+	it("instructs the AI to treat Latest Project Status Update as canonical", () => {
+		const prompt = buildRoadmapSynthesisPrompt(makeRoadmapContext());
+		expect(prompt).toContain("Latest Project Status Update");
+		expect(prompt).toContain("treat it as the most recent canonical status");
+	});
+
+	it("allows the AI to override nextMilestone when a citation is provided", () => {
+		const prompt = buildRoadmapSynthesisPrompt(makeRoadmapContext());
+		expect(prompt).toContain("you MAY replace");
+		expect(prompt).toContain("nextMilestoneCitation");
+		expect(prompt).toContain("meeting-note");
+		expect(prompt).toContain("status-update");
+	});
+
+	it("warns the AI that overrides without citation will be discarded", () => {
+		const prompt = buildRoadmapSynthesisPrompt(makeRoadmapContext());
+		expect(prompt).toContain("OVERRIDE REQUIREMENTS");
+		expect(prompt).toContain("MANDATORY");
+		expect(prompt).toContain("will be discarded");
+	});
+
+	it("schema requires the new citation fields and has additionalProperties:false", async () => {
+		const mod = await import(
+			new URL(
+				"../../../src/services/ai-prompts.js?roadmap-schema-spec",
+				import.meta.url,
+			).href
+		);
+		const schema = mod.ROADMAP_SYNTHESIS_SCHEMA;
+		expect(schema.strict).toBe(true);
+		const itemSchema = schema.schema.properties.items.items;
+		expect(itemSchema.additionalProperties).toBe(false);
+		expect(itemSchema.required).toEqual(
+			expect.arrayContaining([
+				"nextMilestoneSource",
+				"nextMilestoneCitation",
+				"overallStatusSource",
+				"overallStatusCitation",
+			]),
+		);
+		expect(itemSchema.properties.nextMilestoneCitation).toEqual({
+			type: "string",
+		});
+	});
+
 	it("serializes subtask tree with TODO/DONE/OVERDUE status", () => {
 		const subtasks: RoadmapSubtaskInfo[] = [
 			makeSubtask({
@@ -1215,14 +1376,19 @@ describe("buildRoadmapSynthesisPrompt — configured mode", () => {
 		expect(prompt).toContain("No subtasks available.");
 	});
 
-	it("shows TBD when nextMilestone is empty", () => {
+	it("shows empty string placeholder when nextMilestone is empty (phase 3: no more TBD)", () => {
 		const item = makeRoadmapEntry({ nextMilestone: "" });
 		const prompt = buildRoadmapSynthesisPrompt(
 			makeRoadmapContext({
 				roadmapItems: [item],
 			}),
 		);
-		expect(prompt).toContain("Next Milestone (pre-computed): TBD");
+		// TBD was causing the AI to echo "TBD" back, which the override
+		// validator misread as an attempted override. Use empty-string
+		// placeholder so the round-trip matches exactly.
+		expect(prompt).not.toContain("Next Milestone (pre-computed): TBD");
+		expect(prompt).toContain('Next Milestone (pre-computed): ""');
+		expect(prompt).toContain("return empty string exactly");
 	});
 
 	it("includes structured output instructions", () => {

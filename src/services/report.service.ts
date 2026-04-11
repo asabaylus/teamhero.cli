@@ -7,6 +7,7 @@ import type { ReportCommandInput, ReportResult } from "../cli/index.js";
 import type {
 	CacheOptions,
 	DiscrepancyReport,
+	LatestProjectStatus,
 	MemberTaskSummary,
 	MetricsCollectionResult,
 	MetricsProvider,
@@ -21,6 +22,7 @@ import type {
 	ScopeProvider,
 	SectionDiscrepancy,
 	TaskTrackerProvider,
+	TechnicalFoundationalWinsResult,
 	VisibleWinsProvider,
 } from "../core/types.js";
 import {
@@ -39,12 +41,17 @@ import type {
 } from "../lib/report-renderer.js";
 import { serializeReportRenderInput } from "../lib/report-serializer.js";
 import {
+	applyRoadmapAiEntry,
 	deriveNextMilestone,
-	deriveRoadmapStatus,
+	deriveRoadmapStatusWithLatest,
 	extractRoadmapItems,
 } from "../lib/roadmap-extractor.js";
 import { RunHistoryStore } from "../lib/run-history.js";
 import { appendRunLogEntry } from "../lib/run-log.js";
+import {
+	resolveSectionAudience,
+	resolveSectionVerbosity,
+} from "../lib/section-writing-config.js";
 import { appendUnifiedLog } from "../lib/unified-log.js";
 import { enrichMemberDisplayNames } from "../lib/user-map.js";
 import { isVisibleWinsEnabled } from "../lib/visible-wins-config.js";
@@ -80,6 +87,12 @@ import {
 	extractPeriodSummary,
 	extractPeriodSummaryFromSnapshot,
 } from "./period-deltas.service.js";
+import {
+	flattenTechnicalWinsForDedup,
+	hashTechnicalWinsInput,
+	normalizeTechnicalWinsResult,
+	resolveTechnicalWinsSubheadings,
+} from "./technical-wins.service.js";
 
 /**
  * Content-addressable hash for member highlight caching.
@@ -191,6 +204,12 @@ export interface ReportServiceDependencies {
 	progressFactory?: ProgressReporterFactory;
 	/** Multi-board configuration (used for roadmap extraction). */
 	boardConfigs?: import("../lib/boards-config-loader.js").BoardConfig[];
+	/**
+	 * Map of rock task GID → Asana project GID, used by the roadmap section
+	 * to fetch project_statuses from the sibling project. Populated by
+	 * resolveRockProjectGidMap in boards-config-loader.
+	 */
+	rockProjectGidMap?: Record<string, string>;
 	/** Asana service for fetching subtasks (roadmap section). */
 	asanaService?: import("./asana.service.js").AsanaService;
 	/** Configurable title for the roadmap section. */
@@ -254,15 +273,23 @@ export class ReportService {
 			// LOC requires git — auto-enable if LOC is requested
 			const includeGit = input.sections.dataSources.git || includeLoc;
 			const includeTaskTracker = input.sections.dataSources.asana;
+			const includeTechnicalWins =
+				input.sections.reportSections.technicalFoundationalWins !== false;
+			// Technical wins depends on visible-wins and individual-contributions
+			// data, so auto-enable those pipelines even if their sections are off.
 			const includeIndividual =
-				input.sections.reportSections.individualContributions !== false;
+				input.sections.reportSections.individualContributions !== false ||
+				includeTechnicalWins;
+			const collectVisibleWins =
+				isVisibleWinsEnabled(input.sections.reportSections) ||
+				includeTechnicalWins;
 
 			// Core steps always present: org + repos/skip + members + metrics/skip + taskTracker/skip + final + write = 7
 			let expectedSteps = 7;
 			if (includeLoc) expectedSteps += 1;
-			if (isVisibleWinsEnabled(input.sections.reportSections))
-				expectedSteps += 1;
+			if (collectVisibleWins) expectedSteps += 1;
 			if (includeIndividual) expectedSteps += 2; // highlights + team highlight
+			if (includeTechnicalWins) expectedSteps += 1;
 
 			progress =
 				this.deps.progressFactory?.create({
@@ -543,12 +570,14 @@ export class ReportService {
 			let visibleWinsAccomplishments: ProjectAccomplishment[] | undefined;
 			let visibleWinsProjects: ProjectTask[] | undefined;
 			const visibleWinsErrors: string[] = [];
+			let technicalFoundationalWins:
+				| TechnicalFoundationalWinsResult
+				| undefined;
 
-			const includeIndividualContributions =
-				input.sections.reportSections.individualContributions !== false;
+			const includeIndividualContributions = includeIndividual;
 
 			const vwPromise = (async () => {
-				if (!isVisibleWinsEnabled(input.sections.reportSections)) return;
+				if (!collectVisibleWins) return;
 				const vwStep = progress.start("Collecting Visible Wins data");
 				if (!this.deps.visibleWins) {
 					this.logger.warn(
@@ -774,6 +803,181 @@ export class ReportService {
 				await highlightsPromise;
 			}
 
+			if (includeTechnicalWins) {
+				const winsStep = progress.start(
+					"Generating Technical / Foundational Wins section",
+				);
+				try {
+					// Build current-week input from visible-wins bullets, individual
+					// summaries, and the team highlight (if available).
+					const currentWeekSet = new Set<string>();
+					for (const acc of visibleWinsAccomplishments ?? []) {
+						for (const bullet of acc.bullets) {
+							const text = bullet.text.trim();
+							if (text) currentWeekSet.add(text);
+						}
+					}
+					for (const member of memberMetrics) {
+						const summary = member.aiSummary?.trim();
+						if (summary && summary.length > 0) {
+							currentWeekSet.add(`${member.displayName}: ${summary}`);
+						}
+					}
+					if (teamHighlight && teamHighlight.trim().length > 0) {
+						currentWeekSet.add(`Team Summary: ${teamHighlight.trim()}`);
+					}
+					const currentWeekItems = Array.from(currentWeekSet);
+
+					// Best-effort load of the previous run's Technical Wins result
+					// so the AI can skip duplicates. Supports both the new typed
+					// format and the legacy markdown-string snapshot format.
+					let previousWeekItems: string[] = [];
+					try {
+						const history = new RunHistoryStore();
+						const recent = await history.list(organization.login, 1);
+						if (recent.length > 0) {
+							const snapshot = await history.loadSnapshot(
+								organization.login,
+								recent[0].filename,
+							);
+							const prior = snapshot?.technicalFoundationalWins as
+								| TechnicalFoundationalWinsResult
+								| string
+								| undefined;
+							previousWeekItems = flattenTechnicalWinsForDedup(prior);
+						}
+					} catch {
+						// best effort only — dedup is not required for correctness
+					}
+
+					const verbosity = resolveSectionVerbosity(
+						"TECHNICAL_WINS_VERBOSITY",
+						"standard",
+					);
+					const subheadings = resolveTechnicalWinsSubheadings();
+					const audience = resolveSectionAudience("TECHNICAL_WINS_AUDIENCE");
+
+					if (currentWeekItems.length === 0) {
+						winsStep.fail(
+							"Technical / Foundational Wins skipped — no input data available",
+						);
+					} else {
+						// Build cross-section context for strategic framing
+						let visibleWinsSummary: string | undefined;
+						if (visibleWinsAccomplishments) {
+							const lines: string[] = [];
+							for (const acc of visibleWinsAccomplishments) {
+								if (acc.bullets.length === 0) continue;
+								lines.push(acc.projectName);
+								for (const b of acc.bullets) {
+									lines.push(`* ${b.text}`);
+								}
+							}
+							if (lines.length > 0) {
+								visibleWinsSummary = lines.join("\n");
+							}
+						}
+
+						let roadmapContext: string | undefined;
+						const roadmapNames = (this.deps.boardConfigs ?? [])
+							.flatMap((b) => b.roadmapItems ?? b.rocks ?? [])
+							.map((r) => r.displayName);
+						if (roadmapNames.length > 0) {
+							roadmapContext = roadmapNames.map((n) => `- ${n}`).join("\n");
+						}
+
+						// Content-addressed cache — mirrors the visible-wins pattern.
+						const twCacheOpts = this.deps.cacheOptions ?? {};
+						const twSourceMatch =
+							twCacheOpts.flush ||
+							twCacheOpts.flushSources?.includes("technical-wins");
+						const shouldFlushTw =
+							!!twSourceMatch &&
+							(!twCacheOpts.flushSince ||
+								window.startISO >= twCacheOpts.flushSince);
+						const twCache =
+							new FileSystemCacheStore<TechnicalFoundationalWinsResult>({
+								namespace: "technical-wins",
+								defaultTtlSeconds: 0,
+							});
+						const isTestMode = !!getEnv("TEAMHERO_TEST_MODE");
+						const twHash = hashTechnicalWinsInput({
+							currentWeekItems,
+							previousWeekItems,
+							verbosity,
+							subheadings,
+							audience,
+							windowStart: window.startDate,
+							windowEnd: window.endDate,
+							visibleWinsSummary,
+							roadmapContext,
+						});
+
+						let cached: TechnicalFoundationalWinsResult | null = null;
+						if (!isTestMode && !shouldFlushTw) {
+							cached = await twCache.get(twHash, { permanent: true });
+							if (cached) {
+								await appendUnifiedLog({
+									timestamp: new Date().toISOString(),
+									runId: "",
+									category: "cache",
+									event: "cache-hit",
+									namespace: "technical-wins",
+									inputHash: twHash,
+									org: input.org,
+								});
+							}
+						}
+
+						if (cached) {
+							technicalFoundationalWins = normalizeTechnicalWinsResult(cached);
+						} else {
+							const raw = await this.deps.ai.generateTechnicalWinsSection({
+								windowStart: window.startDate,
+								windowEnd: window.endDate,
+								verbosity,
+								subheadings,
+								audience,
+								currentWeekItems,
+								previousWeekItems,
+								visibleWinsSummary,
+								roadmapContext,
+								onStatus: (msg) => winsStep.update(msg),
+							});
+							technicalFoundationalWins = normalizeTechnicalWinsResult(raw);
+							if (!isTestMode) {
+								await twCache.set(twHash, technicalFoundationalWins);
+								await appendUnifiedLog({
+									timestamp: new Date().toISOString(),
+									runId: "",
+									category: "cache",
+									event: shouldFlushTw
+										? "cache-flush-and-set"
+										: "cache-miss-and-set",
+									namespace: "technical-wins",
+									inputHash: twHash,
+									org: input.org,
+								});
+							}
+						}
+
+						const catCount = technicalFoundationalWins.categories.length;
+						const winCount = technicalFoundationalWins.categories.reduce(
+							(sum, c) => sum + c.wins.length,
+							0,
+						);
+						winsStep.succeed(
+							`Technical / Foundational Wins ready (${catCount} categories, ${winCount} wins)`,
+						);
+					}
+				} catch (error) {
+					const message =
+						error instanceof Error ? error.message : String(error);
+					this.logger.warn(`Technical/foundational wins failed: ${message}`);
+					winsStep.fail("Technical / Foundational Wins skipped due to error");
+				}
+			}
+
 			const totals = this.computeTotals(
 				includeGit ? repositories.length : 0,
 				memberMetrics,
@@ -983,9 +1187,47 @@ export class ReportService {
 						(hasConfiguredSection || hasRoadmapItems) &&
 						visibleWinsProjects
 					) {
-						// Mode A: configured — items from designated section + subtask data
+						// Mode A: configured — items from designated section + subtask data.
+						//
+						// Enrich visibleWinsProjects with parent-task data for any declared
+						// rock GIDs that aren't already in the section-filtered slice.
+						// Without this, rocks outside the configured section land in the
+						// extractor as "not found" and are rendered with ⚪ unknown status
+						// and empty notes — even though Asana has the data.
+						const declaredRockGids = new Set<string>();
+						for (const board of this.deps.boardConfigs!) {
+							for (const rock of board.roadmapItems ?? board.rocks ?? []) {
+								declaredRockGids.add(rock.gid);
+							}
+						}
+						const enrichedProjects: ProjectTask[] = [...visibleWinsProjects];
+						if (this.deps.asanaService && declaredRockGids.size > 0) {
+							const existingGids = new Set(enrichedProjects.map((p) => p.gid));
+							const missingGids = Array.from(declaredRockGids).filter(
+								(gid) => !existingGids.has(gid),
+							);
+							if (missingGids.length > 0) {
+								const fetched = await Promise.all(
+									missingGids.map((gid) =>
+										this.deps.asanaService!.fetchTaskByGid(gid),
+									),
+								);
+								for (const task of fetched) {
+									if (task) {
+										enrichedProjects.push({
+											gid: task.gid,
+											name: task.name,
+											customFields: task.customFields,
+											priorityScore: 0,
+											notes: task.notes,
+										});
+									}
+								}
+							}
+						}
+
 						const items = extractRoadmapItems(
-							visibleWinsProjects,
+							enrichedProjects,
 							this.deps.boardConfigs!,
 						);
 
@@ -1010,18 +1252,59 @@ export class ReportService {
 							}
 						}
 
+						// Fetch latest Asana project status update for each rock that
+						// resolves to a sibling project GID. Rocks without a resolver
+						// entry degrade gracefully to custom-field + subtask derivation.
+						const statusByGid = new Map<string, LatestProjectStatus>();
+						const rockProjectGidMap = this.deps.rockProjectGidMap ?? {};
+						if (this.deps.asanaService && items.length > 0) {
+							const resolvedPairs = items
+								.map((item) => ({
+									gid: item.gid,
+									projectGid: rockProjectGidMap[item.gid],
+								}))
+								.filter((pair): pair is { gid: string; projectGid: string } =>
+									Boolean(pair.projectGid),
+								);
+
+							const fetched = await Promise.all(
+								resolvedPairs.map(async (pair) => {
+									const latest =
+										await this.deps.asanaService!.fetchLatestProjectStatus(
+											pair.projectGid,
+										);
+									return latest ? { gid: pair.gid, latest } : null;
+								}),
+							);
+							for (const entry of fetched) {
+								if (entry) {
+									statusByGid.set(entry.gid, entry.latest);
+								}
+							}
+							if (statusByGid.size > 0) {
+								roadmapStep.update(
+									`Fetched ${statusByGid.size} project status updates`,
+								);
+							}
+						}
+
 						// Re-derive status and milestone now that subtask data is available
 						if (subtasksByGid) {
 							for (const item of items) {
 								const subtasks = subtasksByGid.get(item.gid) ?? [];
-								const project = visibleWinsProjects.find(
+								const project = enrichedProjects.find(
 									(p) => p.gid === item.gid,
 								);
+								const latest = statusByGid.get(item.gid);
 								if (project) {
-									item.overallStatus = deriveRoadmapStatus(
+									item.overallStatus = deriveRoadmapStatusWithLatest(
 										subtasks,
 										project.customFields,
+										latest,
 									);
+								}
+								if (latest) {
+									item.latestStatusUpdate = latest;
 								}
 								item.nextMilestone = deriveNextMilestone(subtasks);
 							}
@@ -1032,15 +1315,34 @@ export class ReportService {
 								roadmapItems: items,
 								accomplishments: visibleWinsAccomplishments,
 								notes: vwRawNotes ?? [],
-								projects: visibleWinsProjects,
+								projects: enrichedProjects,
 								subtasksByGid,
+								statusByGid,
 								mode: "configured",
 							});
+							// Accept AI overrides for nextMilestone / overallStatus only
+							// when a citation is present. Missing citation = silently
+							// reject the override and keep the deterministic value.
+							// Gated by TEAMHERO_ROADMAP_AI_OVERRIDE (default "1").
+							const overrideEnabled =
+								getEnv("TEAMHERO_ROADMAP_AI_OVERRIDE") !== "0";
 							for (const entry of synthesized) {
 								const item = items.find((r) => r.gid === entry.gid);
-								if (item) {
-									// Only copy keyNotes — status and milestone are deterministic
-									item.keyNotes = entry.keyNotes;
+								if (!item) continue;
+								const outcome = applyRoadmapAiEntry(
+									item,
+									entry,
+									overrideEnabled,
+								);
+								if (outcome.milestoneRejected) {
+									this.logger.warn(
+										`[roadmap] AI changed nextMilestone for "${item.displayName}" without a citation — keeping pre-computed value`,
+									);
+								}
+								if (outcome.statusRejected) {
+									this.logger.warn(
+										`[roadmap] AI changed overallStatus for "${item.displayName}" without a citation — keeping pre-computed value`,
+									);
 								}
 							}
 							roadmapEntries = items;
@@ -1116,6 +1418,8 @@ export class ReportService {
 					git: input.sections.dataSources.git,
 					taskTracker: input.sections.dataSources.asana,
 					visibleWins: input.sections.reportSections.visibleWins,
+					technicalFoundationalWins:
+						input.sections.reportSections.technicalFoundationalWins,
 					individualContributions:
 						input.sections.reportSections.individualContributions,
 					discrepancyLog: input.sections.reportSections.discrepancyLog,
@@ -1123,6 +1427,7 @@ export class ReportService {
 				warnings: metricsResult?.warnings,
 				errors: [...(metricsResult?.errors ?? []), ...visibleWinsErrors],
 				visibleWins: visibleWinsAccomplishments,
+				technicalFoundationalWins,
 				visibleWinsProjects,
 				roadmapEntries,
 				roadmapTitle: this.deps.roadmapTitle,

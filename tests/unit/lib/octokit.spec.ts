@@ -159,7 +159,7 @@ describe("loadOctokitFromEnv", () => {
 		mocked(getEnv).mockReturnValue(undefined);
 
 		await expect(loadOctokitFromEnv()).rejects.toThrow(
-			"Missing GITHUB_PERSONAL_ACCESS_TOKEN",
+			"Missing GitHub authentication",
 		);
 	});
 

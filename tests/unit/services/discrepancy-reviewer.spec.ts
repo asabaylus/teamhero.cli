@@ -1,21 +1,33 @@
-import { afterAll, describe, expect, it, mock } from "bun:test";
+import {
+	afterAll,
+	beforeEach,
+	describe,
+	expect,
+	it,
+	mock,
+	spyOn,
+} from "bun:test";
 import * as fsPromisesMod from "node:fs/promises";
+import { consola } from "consola";
 import type { Discrepancy } from "../../../src/models/visible-wins.js";
-
-mock.module("consola", () => ({
-	consola: {
-		info: mock(),
-	},
-}));
-
-mock.module("node:fs/promises", () => ({
-	...fsPromisesMod,
-	appendFile: mock().mockResolvedValue(undefined),
-	mkdir: mock().mockResolvedValue(undefined),
-}));
 
 afterAll(() => {
 	mock.restore();
+});
+
+beforeEach(() => {
+	const infoSpy = spyOn(consola, "info").mockImplementation(
+		() => consola as any,
+	);
+	infoSpy.mockClear();
+	const appendFileSpy = spyOn(fsPromisesMod, "appendFile").mockResolvedValue(
+		undefined as never,
+	);
+	appendFileSpy.mockClear();
+	const mkdirSpy = spyOn(fsPromisesMod, "mkdir").mockResolvedValue(
+		undefined as never,
+	);
+	mkdirSpy.mockClear();
 });
 
 function makeDiscrepancy(overrides: Partial<Discrepancy> = {}): Discrepancy {
@@ -34,8 +46,7 @@ function makeDiscrepancy(overrides: Partial<Discrepancy> = {}): Discrepancy {
 
 describe("logDiscrepancies", () => {
 	it("does nothing for empty discrepancies", async () => {
-		const { appendFile } = await import("node:fs/promises");
-		const { consola } = await import("consola");
+		const appendFile = fsPromisesMod.appendFile as ReturnType<typeof mock>;
 		const { logDiscrepancies } = await import(
 			"../../../src/services/discrepancy-reviewer.js"
 		);
@@ -47,8 +58,7 @@ describe("logDiscrepancies", () => {
 	});
 
 	it("writes discrepancies to log file and prints summary", async () => {
-		const { appendFile } = await import("node:fs/promises");
-		const { consola } = await import("consola");
+		const appendFile = fsPromisesMod.appendFile as ReturnType<typeof mock>;
 		const { logDiscrepancies } = await import(
 			"../../../src/services/discrepancy-reviewer.js"
 		);
@@ -80,7 +90,7 @@ describe("logDiscrepancies", () => {
 	});
 
 	it("includes bullet text and rationale in log output", async () => {
-		const { appendFile } = await import("node:fs/promises");
+		const appendFile = fsPromisesMod.appendFile as ReturnType<typeof mock>;
 		const { logDiscrepancies } = await import(
 			"../../../src/services/discrepancy-reviewer.js"
 		);
@@ -94,7 +104,6 @@ describe("logDiscrepancies", () => {
 	});
 
 	it("uses singular form for single discrepancy", async () => {
-		const { consola } = await import("consola");
 		const { logDiscrepancies } = await import(
 			"../../../src/services/discrepancy-reviewer.js"
 		);
@@ -107,7 +116,7 @@ describe("logDiscrepancies", () => {
 	});
 
 	it("creates log directory before writing", async () => {
-		const { mkdir } = await import("node:fs/promises");
+		const mkdir = fsPromisesMod.mkdir as ReturnType<typeof mock>;
 		const { logDiscrepancies } = await import(
 			"../../../src/services/discrepancy-reviewer.js"
 		);

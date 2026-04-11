@@ -1,5 +1,4 @@
-import { afterAll, describe, expect, it, mock } from "bun:test";
-import * as consolaMod from "consola";
+import { describe, expect, it, mock } from "bun:test";
 import { VisibleWinsAdapter } from "../../../src/adapters/visible-wins/visible-wins-adapter.js";
 import type {
 	MeetingNotesProvider,
@@ -7,20 +6,6 @@ import type {
 	ReportingWindow,
 } from "../../../src/core/types.js";
 import type { ProjectTask } from "../../../src/models/visible-wins.js";
-
-mock.module("consola", () => {
-	const logger: Record<string, unknown> = {
-		warn: mock(),
-		info: mock(),
-		debug: mock(),
-	};
-	logger.withTag = () => logger;
-	return { ...consolaMod, default: logger, consola: logger };
-});
-
-afterAll(() => {
-	mock.restore();
-});
 
 function makeBoardProvider(projects: ProjectTask[]): ProjectBoardProvider {
 	return { fetchProjects: mock().mockResolvedValue(projects) };

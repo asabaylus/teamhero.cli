@@ -8,18 +8,9 @@ import {
 	mock,
 	spyOn,
 } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-import * as pathsMod from "../../../src/lib/paths.js";
-
-// Mock paths.ts to use a temp directory
-const mockConfigDir = mock();
-mock.module("../../../src/lib/paths.js", () => ({
-	...pathsMod,
-	configDir: () => mockConfigDir(),
-}));
 
 afterAll(() => {
 	mock.restore();
@@ -29,19 +20,19 @@ import {
 	getValidAccessToken,
 	isGoogleAuthorized,
 	tokenFilePath,
-} from "../../../src/lib/google-oauth.js";
+} from "../../../src/lib/google-oauth.js?google-oauth-spec";
 
 let tempDir: string;
 
 beforeEach(async () => {
 	tempDir = await mkdtemp(join(tmpdir(), "google-oauth-test-"));
-	mockConfigDir.mockReturnValue(tempDir);
+	process.env.XDG_CONFIG_HOME = tempDir;
+	await mkdir(join(tempDir, "teamhero"), { recursive: true });
 });
 
 afterEach(async () => {
 	await rm(tempDir, { recursive: true, force: true });
-	// Clear call counts without undoing mock.module() registrations
-	mockConfigDir.mockClear();
+	delete process.env.XDG_CONFIG_HOME;
 });
 
 describe("isGoogleAuthorized", () => {
@@ -51,7 +42,7 @@ describe("isGoogleAuthorized", () => {
 
 	it("returns true when token file has refresh_token", async () => {
 		await writeFile(
-			join(tempDir, "google-tokens.json"),
+			join(tempDir, "teamhero", "google-tokens.json"),
 			JSON.stringify({
 				access_token: "ya29.test",
 				refresh_token: "1//test",
@@ -66,7 +57,7 @@ describe("isGoogleAuthorized", () => {
 
 	it("returns false when token file has no refresh_token", async () => {
 		await writeFile(
-			join(tempDir, "google-tokens.json"),
+			join(tempDir, "teamhero", "google-tokens.json"),
 			JSON.stringify({
 				access_token: "ya29.test",
 				expires_at: Date.now() + 3600 * 1000,
@@ -77,7 +68,10 @@ describe("isGoogleAuthorized", () => {
 	});
 
 	it("returns false when token file is invalid JSON", async () => {
-		await writeFile(join(tempDir, "google-tokens.json"), "not json");
+		await writeFile(
+			join(tempDir, "teamhero", "google-tokens.json"),
+			"not json",
+		);
 
 		expect(await isGoogleAuthorized()).toBe(false);
 	});
@@ -92,7 +86,7 @@ describe("getValidAccessToken", () => {
 
 	it("returns access_token when not expired", async () => {
 		await writeFile(
-			join(tempDir, "google-tokens.json"),
+			join(tempDir, "teamhero", "google-tokens.json"),
 			JSON.stringify({
 				access_token: "ya29.valid",
 				refresh_token: "1//test",
@@ -108,7 +102,7 @@ describe("getValidAccessToken", () => {
 
 	it("attempts refresh when token is expired", async () => {
 		await writeFile(
-			join(tempDir, "google-tokens.json"),
+			join(tempDir, "teamhero", "google-tokens.json"),
 			JSON.stringify({
 				access_token: "ya29.expired",
 				refresh_token: "1//test-refresh",
@@ -139,6 +133,8 @@ describe("getValidAccessToken", () => {
 
 describe("tokenFilePath", () => {
 	it("returns path under config directory", () => {
-		expect(tokenFilePath()).toBe(join(tempDir, "google-tokens.json"));
+		expect(tokenFilePath()).toBe(
+			join(tempDir, "teamhero", "google-tokens.json"),
+		);
 	});
 });

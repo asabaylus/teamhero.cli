@@ -16,7 +16,9 @@ mock.module("node:os", () => ({
 }));
 
 // Import the module under test — must come after mocking
-const { configDir, cacheDir } = await import("../../../src/lib/paths.js");
+const { configDir, cacheDir } = await import(
+	new URL("../../../src/lib/paths.js?paths-spec", import.meta.url).href
+);
 
 afterAll(() => {
 	mock.restore();

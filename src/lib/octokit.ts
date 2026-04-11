@@ -69,7 +69,7 @@ export async function loadOctokitFromEnv(): Promise<OctokitClient> {
 	const token = getEnv("GITHUB_PERSONAL_ACCESS_TOKEN");
 	if (!token) {
 		throw new Error(
-			"Missing GITHUB_PERSONAL_ACCESS_TOKEN. Run `teamhero setup` or set the environment variable.",
+			"Missing GitHub authentication. Run `teamhero setup` to sign in.",
 		);
 	}
 

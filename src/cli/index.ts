@@ -16,6 +16,7 @@ export interface ReportSectionsSelection {
 	dataSources: { git: boolean; asana: boolean };
 	reportSections: {
 		visibleWins: boolean;
+		technicalFoundationalWins?: boolean;
 		individualContributions: boolean;
 		discrepancyLog?: boolean;
 		loc?: boolean;
@@ -75,7 +76,7 @@ export interface ReportResult {
 
 export interface LoginResult {
 	authenticated: boolean;
-	provider: "token";
+	provider: "oauth" | "pat" | "token";
 	message: string;
 }
 

@@ -49,7 +49,7 @@ Flags:
   --team <list>           Comma-separated contributor identifiers
   --members <list>        Comma-separated member logins
   --sources <list>        Data sources to fetch: git,asana (omit for all)
-  --sections <list>       Report sections to render: loc,individual,visible-wins,discrepancy-log (omit for all)
+  --sections <list>       Report sections to render: loc,individual,visible-wins,technical-wins,discrepancy-log (omit for all)
                           Note: "loc" (lines of code) is a section — GitHub is fetched automatically when included
   --since <date>          Start date, YYYY-MM-DD (default: 7 days ago)
   --until <date>          End date, YYYY-MM-DD (default: today)
@@ -159,27 +159,40 @@ func main() {
 	}
 
 	flag.Usage = printUsage
+
+	// Strip the subcommand from os.Args so flag.Parse() sees flags that
+	// follow it (e.g. `teamhero report --sections technical-wins`).
+	if subcommand != "" {
+		filtered := []string{os.Args[0]}
+		skipped := false
+		for _, a := range os.Args[1:] {
+			if !skipped && a == subcommand {
+				skipped = true
+				continue
+			}
+			filtered = append(filtered, a)
+		}
+		os.Args = filtered
+	}
+
 	flag.Parse()
 
 	// Handle subcommands
-	args := flag.Args()
-	if len(args) > 0 {
-		switch args[0] {
-		case "setup":
-			if err := runSetup(); err != nil {
-				if err == huh.ErrUserAborted {
-					fmt.Fprintln(os.Stderr, "\nSetup cancelled.")
-					os.Exit(0)
-				}
-				RenderError(err.Error())
-				os.Exit(1)
+	switch subcommand {
+	case "setup":
+		if err := runSetup(); err != nil {
+			if err == huh.ErrUserAborted {
+				fmt.Fprintln(os.Stderr, "\nSetup cancelled.")
+				os.Exit(0)
 			}
-			return
-		case "doctor":
-			exitCode := runDoctor()
-			os.Exit(exitCode)
-			return
+			RenderError(err.Error())
+			os.Exit(1)
 		}
+		return
+	case "doctor":
+		exitCode := runDoctor()
+		os.Exit(exitCode)
+		return
 	}
 
 	// Check for --version flag
@@ -317,12 +330,12 @@ func runHeadless() {
 			reportDataJSON = evt.Data
 		case "discrepancy":
 			discrepancyData = &DiscrepancyEvent{
-				Type:          evt.Type,
-				TotalCount:    evt.TotalCount,
-				ByContributor: evt.ByContributor,
-				Unattributed:  evt.Unattributed,
-				Items:         evt.Items,
-				AllItems:      evt.AllItems,
+				Type:                 evt.Type,
+				TotalCount:           evt.TotalCount,
+				ByContributor:        evt.ByContributor,
+				Unattributed:         evt.Unattributed,
+				Items:                evt.Items,
+				AllItems:             evt.AllItems,
 				DiscrepancyThreshold: evt.DiscrepancyThreshold,
 			}
 			if discrepancyData.TotalCount > 0 {

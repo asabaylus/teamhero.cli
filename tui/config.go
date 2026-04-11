@@ -20,8 +20,8 @@ func ExpressConfig() ReportConfig {
 			DataSources:    DataSources{Git: true, Asana: false},
 			ReportSections: ReportSectionsInner{IndividualContributions: true, VisibleWins: false},
 		},
-		ConfirmBeforeRun: true,
-		DiscrepancyThreshold:    30,
+		ConfirmBeforeRun:     true,
+		DiscrepancyThreshold: 30,
 	}
 }
 
@@ -55,25 +55,25 @@ func hasAsanaToken() bool {
 
 // ReportConfig mirrors the TypeScript ReportCommandInput shape.
 type ReportConfig struct {
-	Org              string          `json:"org"`
-	Team             string          `json:"team,omitempty"`
-	Members          []string        `json:"members"`
-	Repos            []string        `json:"repos"`
-	UseAllRepos      bool            `json:"useAllRepos"`
-	Since            string          `json:"since,omitempty"`
-	Until            string          `json:"until,omitempty"`
-	IncludeBots      bool            `json:"includeBots"`
-	ExcludePrivate   bool            `json:"excludePrivate"`
-	IncludeArchived  bool            `json:"includeArchived"`
-	Detailed         bool            `json:"detailed"`
-	MaxCommitPages   *int            `json:"maxCommitPages,omitempty"`
-	MaxPrPages       *int            `json:"maxPrPages,omitempty"`
-	Sections         ReportSections  `json:"sections"`
-	Sequential       bool            `json:"sequential"`
-	ConfirmBeforeRun bool            `json:"confirmBeforeRun"`
-	DiscrepancyThreshold    int               `json:"discrepancyThreshold"`
-	Template                string            `json:"template,omitempty"`
-	SystemPrompts           map[string]string `json:"systemPrompts,omitempty"`
+	Org                  string            `json:"org"`
+	Team                 string            `json:"team,omitempty"`
+	Members              []string          `json:"members"`
+	Repos                []string          `json:"repos"`
+	UseAllRepos          bool              `json:"useAllRepos"`
+	Since                string            `json:"since,omitempty"`
+	Until                string            `json:"until,omitempty"`
+	IncludeBots          bool              `json:"includeBots"`
+	ExcludePrivate       bool              `json:"excludePrivate"`
+	IncludeArchived      bool              `json:"includeArchived"`
+	Detailed             bool              `json:"detailed"`
+	MaxCommitPages       *int              `json:"maxCommitPages,omitempty"`
+	MaxPrPages           *int              `json:"maxPrPages,omitempty"`
+	Sections             ReportSections    `json:"sections"`
+	Sequential           bool              `json:"sequential"`
+	ConfirmBeforeRun     bool              `json:"confirmBeforeRun"`
+	DiscrepancyThreshold int               `json:"discrepancyThreshold"`
+	Template             string            `json:"template,omitempty"`
+	SystemPrompts        map[string]string `json:"systemPrompts,omitempty"`
 
 	// Transient fields — not persisted to config.json
 	FlushCache  string `json:"-"` // wizard cache flush choice (e.g. "all", "all:since=2026-02-20")
@@ -84,7 +84,7 @@ type ReportConfig struct {
 
 // ReportSections maps to the nested sections structure.
 type ReportSections struct {
-	DataSources    DataSources    `json:"dataSources"`
+	DataSources    DataSources         `json:"dataSources"`
 	ReportSections ReportSectionsInner `json:"reportSections"`
 }
 
@@ -96,35 +96,36 @@ type DataSources struct {
 
 // ReportSectionsInner toggles for report output sections.
 type ReportSectionsInner struct {
-	VisibleWins             bool `json:"visibleWins"`
-	IndividualContributions bool `json:"individualContributions"`
-	DiscrepancyLog          bool `json:"discrepancyLog,omitempty"`
-	Loc                     bool `json:"loc,omitempty"`
+	VisibleWins               bool `json:"visibleWins"`
+	TechnicalFoundationalWins bool `json:"technicalFoundationalWins"`
+	IndividualContributions   bool `json:"individualContributions"`
+	DiscrepancyLog            bool `json:"discrepancyLog,omitempty"`
+	Loc                       bool `json:"loc,omitempty"`
 }
 
 // ReportCommandInput is the JSON payload sent to the TypeScript service runner via stdin.
 type ReportCommandInput struct {
-	Org             string         `json:"org"`
-	Team            string         `json:"team,omitempty"`
-	Members         []string       `json:"members,omitempty"`
-	Repos           []string       `json:"repos,omitempty"`
-	Since           string         `json:"since,omitempty"`
-	Until           string         `json:"until,omitempty"`
-	IncludeBots     bool           `json:"includeBots"`
-	ExcludePrivate  bool           `json:"excludePrivate"`
-	IncludeArchived bool           `json:"includeArchived"`
-	Detailed        bool           `json:"detailed"`
-	MaxCommitPages  *int           `json:"maxCommitPages,omitempty"`
-	MaxPrPages      *int           `json:"maxPrPages,omitempty"`
-	Sections        ReportSections `json:"sections"`
-	Sequential      *bool          `json:"sequential,omitempty"`
-	DiscrepancyThreshold   *int           `json:"discrepancyThreshold,omitempty"`
-	FlushCache      string         `json:"flushCache,omitempty"`
-	Mode            string         `json:"mode,omitempty"`
-	OutputPath      string         `json:"outputPath,omitempty"`
-	OutputFormat    string            `json:"outputFormat,omitempty"`
-	Template        string            `json:"template,omitempty"`
-	SystemPrompts   map[string]string `json:"systemPrompts,omitempty"`
+	Org                  string            `json:"org"`
+	Team                 string            `json:"team,omitempty"`
+	Members              []string          `json:"members,omitempty"`
+	Repos                []string          `json:"repos,omitempty"`
+	Since                string            `json:"since,omitempty"`
+	Until                string            `json:"until,omitempty"`
+	IncludeBots          bool              `json:"includeBots"`
+	ExcludePrivate       bool              `json:"excludePrivate"`
+	IncludeArchived      bool              `json:"includeArchived"`
+	Detailed             bool              `json:"detailed"`
+	MaxCommitPages       *int              `json:"maxCommitPages,omitempty"`
+	MaxPrPages           *int              `json:"maxPrPages,omitempty"`
+	Sections             ReportSections    `json:"sections"`
+	Sequential           *bool             `json:"sequential,omitempty"`
+	DiscrepancyThreshold *int              `json:"discrepancyThreshold,omitempty"`
+	FlushCache           string            `json:"flushCache,omitempty"`
+	Mode                 string            `json:"mode,omitempty"`
+	OutputPath           string            `json:"outputPath,omitempty"`
+	OutputFormat         string            `json:"outputFormat,omitempty"`
+	Template             string            `json:"template,omitempty"`
+	SystemPrompts        map[string]string `json:"systemPrompts,omitempty"`
 }
 
 // configDir returns the XDG-compatible config directory for teamhero.
@@ -182,10 +183,10 @@ func DefaultConfig() ReportConfig {
 		UseAllRepos: true,
 		Sections: ReportSections{
 			DataSources:    DataSources{Git: true, Asana: true},
-			ReportSections: ReportSectionsInner{IndividualContributions: true},
+			ReportSections: ReportSectionsInner{IndividualContributions: true, TechnicalFoundationalWins: true},
 		},
-		ConfirmBeforeRun: true,
-		DiscrepancyThreshold:    30,
+		ConfirmBeforeRun:     true,
+		DiscrepancyThreshold: 30,
 	}
 
 	applyEnvTuningOverrides(&cfg)
