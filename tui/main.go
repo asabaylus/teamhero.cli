@@ -19,6 +19,7 @@ func printUsage() {
 
 Commands:
   report    Generate a developer contribution report (default)
+  assess    Run the Agent Maturity Assessment (12-criterion AI-readiness audit)
   setup     Configure credentials and preferences
   doctor    Validate installation health
 
@@ -132,7 +133,7 @@ func main() {
 	// Detect subcommand first so --help can be routed to the right usage.
 	subcommand := ""
 	for _, arg := range os.Args[1:] {
-		if arg == "report" || arg == "doctor" || arg == "setup" {
+		if arg == "report" || arg == "doctor" || arg == "setup" || arg == "assess" {
 			subcommand = arg
 			break
 		}
@@ -152,6 +153,8 @@ func main() {
 			printSetupUsage()
 		case "report":
 			printReportUsage()
+		case "assess":
+			printAssessUsage()
 		default:
 			printUsage()
 		}
@@ -192,6 +195,16 @@ func main() {
 	case "doctor":
 		exitCode := runDoctor()
 		os.Exit(exitCode)
+		return
+	case "assess":
+		if err := runAssess(); err != nil {
+			if err == huh.ErrUserAborted {
+				fmt.Fprintln(os.Stderr, "\nAssessment cancelled.")
+				os.Exit(0)
+			}
+			RenderError(err.Error())
+			os.Exit(2)
+		}
 		return
 	}
 

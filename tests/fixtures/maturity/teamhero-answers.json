@@ -1,0 +1,9 @@
+{
+  "q1": "Company-paid Claude Code seats with documented OpenAI/Anthropic data-handling policy.",
+  "q2": "AI is allowed in interviews; interviewers evaluate critique and decomposition under AI augmentation.",
+  "q3": "DORA metrics tracked but not yet on a shared dashboard the team checks daily.",
+  "q4": "Consistent ADR-style design step before agent code; planning docs live in docs/.",
+  "q5": "LLMs are used in dev-loop only; impact tracked via sprint retro notes.",
+  "q6": "unknown",
+  "q7": "No"
+}

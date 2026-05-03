@@ -154,7 +154,7 @@ export function createCli(
 				reportArgIndex >= 0 ? process.argv.slice(reportArgIndex + 1) : [];
 
 			// Reject subcommands that are top-level — don't allow `teamhero report doctor`.
-			const subcommands = ["doctor", "setup"];
+			const subcommands = ["doctor", "setup", "assess"];
 			if (argsToPass.length > 0 && subcommands.includes(argsToPass[0])) {
 				deps.logger.error(
 					`Unknown argument: ${argsToPass[0]}. Did you mean \`teamhero ${argsToPass[0]}\`?`,
@@ -162,6 +162,20 @@ export function createCli(
 				process.exit(1);
 			}
 
+			await spawnTui(deps, argsToPass);
+		});
+
+	program
+		.command("assess [args...]")
+		.description(
+			"Run the Agent Maturity Assessment (12-criterion AI-readiness audit)",
+		)
+		.helpOption(false)
+		.allowUnknownOption()
+		.allowExcessArguments()
+		.action(async function (this: Command) {
+			const idx = process.argv.indexOf("assess");
+			const argsToPass = idx >= 0 ? process.argv.slice(idx) : ["assess"];
 			await spawnTui(deps, argsToPass);
 		});
 
@@ -220,7 +234,7 @@ export async function run(
 	// If a subcommand is followed by --help, pass through to the Go binary
 	// instead of letting Commander handle it (which prints the top-level help).
 	const args = argv.slice(2);
-	const subcommands = ["report", "doctor", "setup"];
+	const subcommands = ["report", "doctor", "setup", "assess"];
 	if (
 		args.length >= 1 &&
 		subcommands.includes(args[0]) &&

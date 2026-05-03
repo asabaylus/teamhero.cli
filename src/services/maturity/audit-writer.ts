@@ -1,0 +1,223 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
+import { getRubricItem, MATURITY_BANDS, RUBRIC_CATEGORIES } from "./rubric.js";
+import type {
+	AssessmentArtifact,
+	CategoryId,
+	ItemScore,
+	ItemScoreValue,
+} from "./types.js";
+
+function tierLabel(tier: AssessmentArtifact["tier"]): string {
+	switch (tier) {
+		case "gh":
+			return "1: gh";
+		case "github-mcp":
+			return "2: GitHub MCP";
+		case "git-only":
+			return "3: git-only";
+	}
+}
+
+function formatScore(score: ItemScoreValue): string {
+	if (score === "n/a") return "n/a";
+	if (score === 1) return "1";
+	if (score === 0) return "0";
+	return "0.5";
+}
+
+function fixed(num: number, digits = 1): string {
+	return num.toFixed(digits);
+}
+
+function findItemScore(items: ItemScore[], itemId: number): ItemScore {
+	const score = items.find((s) => s.itemId === itemId);
+	if (!score) {
+		throw new Error(`Missing score for item ${itemId}`);
+	}
+	return score;
+}
+
+function categoryTable(
+	artifact: AssessmentArtifact,
+	categoryId: CategoryId,
+): string {
+	const cat = RUBRIC_CATEGORIES.find((c) => c.id === categoryId);
+	if (!cat) throw new Error(`Unknown category ${categoryId}`);
+	const subtotal = artifact.categorySubtotals.find((s) => s.id === categoryId);
+	if (!subtotal) throw new Error(`Missing subtotal for ${categoryId}`);
+
+	const lines: string[] = [];
+	lines.push(`### ${cat.id}. ${cat.title} (weight ${fixed(cat.weight, 2)}×)`);
+	lines.push("| # | Item | Score | Why this score |");
+	lines.push("|---|------|-------|----------------|");
+	for (const itemId of cat.itemIds) {
+		const itemDef = getRubricItem(itemId);
+		const itemScore = findItemScore(artifact.items, itemId);
+		lines.push(
+			`| ${itemId} | ${itemDef.title} | ${formatScore(itemScore.score)} | ${itemScore.whyThisScore} |`,
+		);
+	}
+	lines.push("");
+	const rawCount = artifact.items
+		.filter((s) => cat.itemIds.includes(s.itemId) && s.score !== "n/a")
+		.reduce((sum, s) => sum + (s.score as number), 0);
+	lines.push(
+		`Subtotal: ${fixed(rawCount)} × ${fixed(cat.weight, 2)} = ${fixed(rawCount * cat.weight)} / ${fixed(cat.maxWeighted, 2)}`,
+	);
+
+	return lines.join("\n");
+}
+
+export function renderAuditMarkdown(artifact: AssessmentArtifact): string {
+	const lines: string[] = [];
+	lines.push(
+		`# Agent Maturity Assessment — ${artifact.scope.displayName} — ${artifact.auditDate}`,
+	);
+	lines.push("");
+	lines.push("## Summary");
+	lines.push(
+		`- Raw score: ${fixed(artifact.rawScore)} / ${artifact.rawScoreMax}`,
+	);
+	lines.push(`- Weighted score: ${fixed(artifact.scorePercent)}%`);
+	lines.push(
+		`- Band: **${artifact.band}** (${MATURITY_BANDS.find((b) => b.name === artifact.band)?.rangeLabel ?? "?"})`,
+	);
+	lines.push(
+		`- Evidence tier: **${tierLabel(artifact.tier)}** (see references/preflight.md)`,
+	);
+	lines.push(`- One-line take: ${artifact.oneLineTake}`);
+	lines.push("");
+	lines.push("### Maturity scale (where this audit lands)");
+	lines.push("");
+	lines.push("| Band | % range | This audit |");
+	lines.push("|------|---------|:----------:|");
+	for (const band of MATURITY_BANDS) {
+		const marker = band.name === artifact.band ? "◉" : "";
+		lines.push(`| ${band.name} | ${band.rangeLabel} | ${marker} |`);
+	}
+	lines.push("");
+	lines.push("## Scores");
+	lines.push("");
+	lines.push(categoryTable(artifact, "A"));
+	lines.push("");
+	lines.push(categoryTable(artifact, "B"));
+	lines.push("");
+	lines.push(categoryTable(artifact, "C"));
+	lines.push("");
+	lines.push(categoryTable(artifact, "D"));
+	lines.push("");
+	lines.push("## Top 3 fixes (highest leverage)");
+	if (artifact.topFixes.length === 0) {
+		lines.push(
+			"_No fixes identified — assessment is either incomplete or the org is at the ceiling._",
+		);
+	} else {
+		artifact.topFixes.slice(0, 3).forEach((fix, idx) => {
+			const item = getRubricItem(fix.itemId);
+			const owner = fix.owner ? ` (suggested owner: ${fix.owner})` : "";
+			lines.push(
+				`${idx + 1}. **${item.title}** — ${fix.whyThisOne} ${fix.whatGoodLooksLike}${owner}`,
+			);
+		});
+	}
+	lines.push("");
+	lines.push("## Strengths to preserve");
+	if (artifact.strengths.length === 0) {
+		lines.push("- _None highlighted in this run._");
+	} else {
+		for (const s of artifact.strengths) {
+			lines.push(`- ${s}`);
+		}
+	}
+	lines.push("");
+	lines.push("## Adjacent repos consulted");
+	if (artifact.adjacentRepos.length === 0) {
+		lines.push("None — all evidence within scope repo.");
+	} else {
+		for (const r of artifact.adjacentRepos) {
+			lines.push(`- \`${r.owner}/${r.name}\` — ${r.reason}`);
+		}
+	}
+	lines.push("");
+	lines.push("## Notes for re-audit");
+	if (artifact.notesForReaudit.length === 0) {
+		lines.push("- _No outstanding calibration notes._");
+	} else {
+		for (const note of artifact.notesForReaudit) {
+			lines.push(`- ${note}`);
+		}
+	}
+	lines.push("");
+	lines.push("---");
+	lines.push("");
+	lines.push(
+		`<sub>Rubric version ${artifact.rubricVersion} · Generated by Team Hero · ${artifact.auditDate}</sub>`,
+	);
+	lines.push("");
+
+	return lines.join("\n");
+}
+
+export function renderAuditJson(artifact: AssessmentArtifact): string {
+	return JSON.stringify(artifact, null, 2);
+}
+
+async function ensureDir(filePath: string): Promise<void> {
+	const dir = dirname(filePath);
+	if (dir === "." || dir === "" || dir === "/") return;
+	await mkdir(dir, { recursive: true });
+}
+
+export interface WriteAuditOptions {
+	outputPath: string;
+	jsonOutputPath?: string;
+	format: "markdown" | "json" | "both";
+}
+
+export async function writeAudit(
+	artifact: AssessmentArtifact,
+	options: WriteAuditOptions,
+): Promise<{ outputPath: string; jsonOutputPath?: string }> {
+	let writtenMarkdown: string | undefined;
+	let writtenJson: string | undefined;
+
+	if (options.format === "markdown" || options.format === "both") {
+		const md = renderAuditMarkdown(artifact);
+		await ensureDir(options.outputPath);
+		await writeFile(options.outputPath, md, "utf8");
+		writtenMarkdown = options.outputPath;
+	}
+
+	if (options.format === "json" || options.format === "both") {
+		const jsonPath =
+			options.jsonOutputPath ??
+			`${options.outputPath.replace(/\.md$/i, "")}.json`;
+		const json = renderAuditJson(artifact);
+		await ensureDir(jsonPath);
+		await writeFile(jsonPath, json, "utf8");
+		writtenJson = jsonPath;
+	}
+
+	const result: { outputPath: string; jsonOutputPath?: string } = {
+		outputPath: writtenMarkdown ?? writtenJson ?? options.outputPath,
+	};
+	if (writtenJson && options.format !== "json") {
+		result.jsonOutputPath = writtenJson;
+	} else if (options.format === "json" && writtenJson) {
+		result.outputPath = writtenJson;
+	}
+	return result;
+}
+
+/**
+ * Compute the default markdown output path from a scope + date, mirroring the
+ * report file convention (`teamhero-report-<org>-<date>.md`).
+ */
+export function defaultOutputPath(displayName: string, date: string): string {
+	const slug = displayName
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "-")
+		.replace(/^-|-$/g, "");
+	return `./teamhero-maturity-${slug}-${date}.md`;
+}
