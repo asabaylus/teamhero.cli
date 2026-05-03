@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -22,37 +23,65 @@ type assessStepState struct {
 	finishedAt time.Time
 }
 
-// assessProgressModel is the Bubble Tea model for the maturity-assessment progress display.
-// Mirrors progressModel (report) so visual design matches: two-pane layout, step list with
-// ✔/✖/spinner icons, monotonic progress bar, right-side configuration summary.
+// interviewSubState tracks where the embedded interview form is in its flow.
+type interviewSubState int
+
+const (
+	interviewIdle      interviewSubState = iota // no interview active
+	interviewSelecting                          // showing the option select
+	interviewFreeText                           // showing the free-text input (after Other)
+)
+
+const interviewFreeTextSentinel = "__free_text__"
+
+// assessProgressModel is the Bubble Tea model for the maturity-assessment
+// progress display. Mirrors progressModel (report) so visual design matches:
+// two-pane layout, step list with ✔/✖/spinner icons, monotonic progress bar,
+// right-side configuration summary.
+//
+// The interview round-trip is hosted INSIDE this model — when an
+// `interview-question` event arrives, the left pane swaps to a `huh.Form`
+// inline (same shell header, same right-pane summary, same nav hints) instead
+// of releasing the terminal. This keeps the framed layout continuous through
+// the whole pipeline, matching how the report wizard handles its confirm
+// step inside the same Bubble Tea program.
 type assessProgressModel struct {
-	steps           []assessStepState
-	expectedSteps   []string // canonical pipeline order, used to compute progress + show all steps from start
-	spinner         spinner.Model
-	progressBar     progress.Model
-	shellViewport   viewport.Model
-	viewport        viewport.Model
-	cfg             *AssessConfig
-	title           string
-	resultPath      string
-	jsonPath        string
-	jsonData        string
-	errorMsg        string
-	pendingQuestion *GenericEvent // set when an interview-question event arrives mid-flow
-	answersSent     int
-	totalQuestions  int
-	done            bool
-	width           int
-	height          int
-	peakRatio       float64
-	cancelled       bool
+	steps         []assessStepState
+	expectedSteps []string // canonical pipeline order, used to compute progress + show all steps from start
+	spinner       spinner.Model
+	progressBar   progress.Model
+	shellViewport viewport.Model
+	viewport      viewport.Model
+	cfg           *AssessConfig
+	title         string
+	resultPath    string
+	jsonPath      string
+	jsonData      string
+	errorMsg      string
+
+	// Interview state — hosted in-model so the layout doesn't break.
+	interview         interviewSubState
+	interviewEvent    *GenericEvent
+	interviewForm     *huh.Form
+	interviewChoice   string
+	interviewFreeText string
+	answersSent       int
+	totalQuestions    int
+
+	// sendAnswer is invoked when the embedded form completes. The model
+	// keeps no knowledge of the runner's stdin pipe — it just calls back.
+	sendAnswer func(questionID, value string, isOption bool) error
+
+	done      bool
+	width     int
+	height    int
+	peakRatio float64
+	cancelled bool
 }
 
 // Messages used by the assess progress program.
 type assessStepMsg GenericEvent
 type assessDoneMsg struct{}
-type assessAskMsg struct{ evt GenericEvent }
-type assessAnswerSentMsg struct{ ok bool }
 type assessFatalMsg struct{ err error }
 
 // canonicalAssessSteps drives the right-pane progress denominator and the
@@ -69,7 +98,12 @@ var canonicalAssessSteps = []string{
 	"complete",
 }
 
-func newAssessProgressModel(title string, cfg *AssessConfig, totalQuestions int) assessProgressModel {
+func newAssessProgressModel(
+	title string,
+	cfg *AssessConfig,
+	totalQuestions int,
+	sendAnswer func(qid, value string, isOption bool) error,
+) assessProgressModel {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("14"))
@@ -94,6 +128,7 @@ func newAssessProgressModel(title string, cfg *AssessConfig, totalQuestions int)
 		title:          title,
 		expectedSteps:  canonicalAssessSteps,
 		totalQuestions: totalQuestions,
+		sendAnswer:     sendAnswer,
 		width:          w,
 		height:         24,
 	}
@@ -110,16 +145,34 @@ func (m assessProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.reflow()
 		m.syncViewportContent()
+		if m.interviewForm != nil {
+			m.interviewForm = m.interviewForm.WithWidth(m.formWidth())
+		}
 		return m, nil
 
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c", "q":
-			if m.pendingQuestion == nil {
+		// While an interview form is active, route keys to the form first
+		// (so users can type, navigate options, etc.).
+		if m.interviewForm != nil {
+			form, cmd := m.interviewForm.Update(msg)
+			if f, ok := form.(*huh.Form); ok {
+				m.interviewForm = f
+			}
+			if m.interviewForm.State == huh.StateCompleted {
+				return m.advanceInterview()
+			}
+			if m.interviewForm.State == huh.StateAborted {
 				m.cancelled = true
 				m.done = true
 				return m, tea.Quit
 			}
+			return m, cmd
+		}
+		switch msg.String() {
+		case "ctrl+c", "q":
+			m.cancelled = true
+			m.done = true
+			return m, tea.Quit
 		}
 		var cmd tea.Cmd
 		m.viewport, cmd = m.viewport.Update(msg)
@@ -153,6 +206,14 @@ func (m assessProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	}
 
+	// Forward non-key messages to the active form so its internal cmds run.
+	if m.interviewForm != nil {
+		form, cmd := m.interviewForm.Update(msg)
+		if f, ok := form.(*huh.Form); ok {
+			m.interviewForm = f
+		}
+		return m, cmd
+	}
 	return m, nil
 }
 
@@ -205,19 +266,22 @@ func (m assessProgressModel) handleStep(evt GenericEvent) (tea.Model, tea.Cmd) {
 		return m, m.progressBar.SetPercent(m.peakRatio)
 
 	case "interview-frame":
-		// Surface the framing message inline as an active step note.
 		m.upsertActive("interview", evt.Message)
 		m.syncViewportContent()
 		return m, nil
 
 	case "interview-question":
-		m.pendingQuestion = &evt
+		m.interviewEvent = &evt
+		m.interview = interviewSelecting
+		m.interviewChoice = ""
+		m.interviewFreeText = ""
+		m.interviewForm = m.buildInterviewSelectForm(evt)
 		m.upsertActive(
 			"interview",
-			fmt.Sprintf("Question %d of %d — awaiting answer (%s)…", m.answersSent+1, m.totalQuestions, evt.QuestionID),
+			fmt.Sprintf("Question %d of %d (%s)", m.answersSent+1, m.totalQuestions, evt.QuestionID),
 		)
 		m.syncViewportContent()
-		return m, nil
+		return m, m.interviewForm.Init()
 
 	case "result":
 		m.resultPath = evt.OutputPath
@@ -241,6 +305,97 @@ func (m assessProgressModel) handleStep(evt GenericEvent) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+// advanceInterview runs after the embedded form completes. It either
+// transitions to the free-text follow-up or submits the answer.
+func (m assessProgressModel) advanceInterview() (tea.Model, tea.Cmd) {
+	switch m.interview {
+	case interviewSelecting:
+		if m.interviewChoice == interviewFreeTextSentinel {
+			// Switch to the free-text input form.
+			m.interview = interviewFreeText
+			m.interviewForm = m.buildInterviewFreeTextForm()
+			return m, m.interviewForm.Init()
+		}
+		return m.submitInterviewAnswer(m.interviewChoice, true)
+	case interviewFreeText:
+		value := strings.TrimSpace(m.interviewFreeText)
+		if value == "" {
+			value = "unknown"
+		}
+		return m.submitInterviewAnswer(value, false)
+	}
+	return m, nil
+}
+
+func (m assessProgressModel) submitInterviewAnswer(value string, isOption bool) (tea.Model, tea.Cmd) {
+	qid := ""
+	if m.interviewEvent != nil {
+		qid = m.interviewEvent.QuestionID
+	}
+	if m.sendAnswer != nil && qid != "" {
+		if err := m.sendAnswer(qid, value, isOption); err != nil {
+			m.errorMsg = fmt.Sprintf("failed to send interview answer: %v", err)
+			m.done = true
+			return m, tea.Quit
+		}
+	}
+	m.answersSent++
+	m.interview = interviewIdle
+	m.interviewEvent = nil
+	m.interviewForm = nil
+	m.interviewChoice = ""
+	m.interviewFreeText = ""
+	m.upsertActive(
+		"interview",
+		fmt.Sprintf("Answered %d of %d questions…", m.answersSent, m.totalQuestions),
+	)
+	m.syncViewportContent()
+	return m, nil
+}
+
+func (m *assessProgressModel) buildInterviewSelectForm(evt GenericEvent) *huh.Form {
+	options := evt.Options
+	if len(options) == 0 {
+		options = []string{"I don't know"}
+	}
+	huhOptions := make([]huh.Option[string], 0, len(options)+1)
+	for _, opt := range options {
+		huhOptions = append(huhOptions, huh.NewOption(opt, opt))
+	}
+	if evt.AllowFreeText {
+		huhOptions = append(
+			huhOptions,
+			huh.NewOption("Other (type your own)", interviewFreeTextSentinel),
+		)
+	}
+
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
+	header := headerStyle.Render(
+		fmt.Sprintf("Question %d of %d — %s", m.answersSent+1, m.totalQuestions, evt.QuestionID),
+	)
+
+	return huh.NewForm(
+		huh.NewGroup(
+			huh.NewNote().Title(header).Description(evt.QuestionText),
+			huh.NewSelect[string]().
+				Title("Pick an answer").
+				Options(huhOptions...).
+				Value(&m.interviewChoice),
+		),
+	).WithWidth(m.formWidth()).WithTheme(huh.ThemeCharm())
+}
+
+func (m *assessProgressModel) buildInterviewFreeTextForm() *huh.Form {
+	return huh.NewForm(
+		huh.NewGroup(
+			huh.NewText().
+				Title("Your answer").
+				Description("Free text — leave blank for 'unknown'.").
+				Value(&m.interviewFreeText),
+		),
+	).WithWidth(m.formWidth()).WithTheme(huh.ThemeCharm())
 }
 
 func (m *assessProgressModel) upsertActive(stepName, message string) {
@@ -268,9 +423,6 @@ func (m assessProgressModel) findStep(step string) int {
 	return -1
 }
 
-// recalcPeakRatio computes a monotonically increasing ratio over the
-// canonical step list. Steps not yet seen contribute 0; active steps
-// contribute 0.5; complete/failed contribute 1.
 func (m *assessProgressModel) recalcPeakRatio() {
 	denom := float64(len(m.expectedSteps))
 	if denom == 0 {
@@ -307,16 +459,45 @@ func (m assessProgressModel) View() string {
 	m.syncViewportContent()
 
 	title := renderShellHeader(m.width)
-	leftPanel := m.renderProgressPanel()
+
+	leftPanel := m.renderLeftPanel()
 	rightPanel := m.renderConfigPanel()
 
 	left := lipgloss.NewStyle().Width(m.leftPanelWidth()).Render(leftPanel)
 	right := lipgloss.NewStyle().Width(m.rightPanelWidth()).Render(rightPanel)
 	body := lipgloss.JoinHorizontal(lipgloss.Top, left, "  ", right)
 
-	shell := lipgloss.JoinVertical(lipgloss.Left, title, "", body)
+	hintStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	hints := hintStyle.Render(m.hintsText())
+
+	shell := lipgloss.JoinVertical(lipgloss.Left, title, "", body, "", hints)
 	m.shellViewport.SetContent(shell)
 	return m.shellViewport.View()
+}
+
+func (m *assessProgressModel) hintsText() string {
+	if m.interviewForm != nil {
+		return "↑↓ navigate • enter submit • esc cancel"
+	}
+	return "ctrl+c quit"
+}
+
+func (m *assessProgressModel) renderLeftPanel() string {
+	if m.interviewForm != nil {
+		return m.renderInterviewPanel()
+	}
+	return m.renderProgressPanel()
+}
+
+func (m *assessProgressModel) renderInterviewPanel() string {
+	contentWidth := m.contentWidth()
+	frame := lipgloss.NewStyle().
+		Border(lipgloss.HiddenBorder()).
+		Padding(0, 1).
+		Width(contentWidth)
+	inner := lipgloss.NewStyle().Width(max(20, contentWidth-2))
+	body := inner.Render(m.interviewForm.View())
+	return frame.Render(body)
 }
 
 func (m *assessProgressModel) leftPanelWidth() int {
@@ -329,6 +510,10 @@ func (m *assessProgressModel) leftPanelWidth() int {
 		lw = 32
 	}
 	return lw
+}
+
+func (m *assessProgressModel) formWidth() int {
+	return max(32, m.leftPanelWidth()-4)
 }
 
 func (m *assessProgressModel) rightPanelWidth() int {
@@ -485,40 +670,24 @@ type AssessProgressResult struct {
 	Cancelled  bool
 }
 
-// RunAssessProgressDisplay drives the Bubble Tea progress program for the assess flow.
-// It owns event-channel reading, dispatches interview prompts to a callback, and
-// returns the final result + path data (or an error).
+// RunAssessProgressDisplay drives the Bubble Tea progress program for the
+// assess flow. Interview prompts are hosted INSIDE this same program — they
+// don't release the terminal — so the framed two-pane layout is continuous.
 //
-// askInterview is invoked synchronously when an "interview-question" event arrives;
-// it must return the answer + isOption flag (or an error to abort). The Tea program
-// exits the alt-screen for the duration of the prompt so huh can take over the TTY,
-// then resumes.
+// sendAnswer is invoked when each embedded interview form completes. It
+// must write the answer JSON line back to the runner's stdin.
 func RunAssessProgressDisplay(
 	title string,
 	cfg *AssessConfig,
 	res *AssessRunResult,
-	askInterview func(evt GenericEvent) (string, bool, error),
+	sendAnswer func(qid, value string, isOption bool) error,
 ) AssessProgressResult {
-	m := newAssessProgressModel(title, cfg, 7)
+	m := newAssessProgressModel(title, cfg, 7, sendAnswer)
 
 	p := tea.NewProgram(m, tea.WithOutput(os.Stderr), tea.WithAltScreen())
 
 	go func() {
 		for evt := range res.Events {
-			if evt.Type == "interview-question" {
-				// Pause the alt-screen, run the prompt synchronously, then forward the answer.
-				p.ReleaseTerminal()
-				value, isOption, err := askInterview(evt)
-				if err != nil {
-					p.Send(assessFatalMsg{err: err})
-					p.RestoreTerminal()
-					continue
-				}
-				_ = SendInterviewAnswer(res, evt.QuestionID, value, isOption)
-				p.RestoreTerminal()
-				p.Send(assessStepMsg(evt))
-				continue
-			}
 			p.Send(assessStepMsg(evt))
 		}
 		p.Send(assessDoneMsg{})

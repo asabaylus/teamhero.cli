@@ -9,7 +9,7 @@ import (
 
 func newProgressForTest() assessProgressModel {
 	cfg := DefaultAssessConfig()
-	m := newAssessProgressModel("Test", &cfg, 7)
+	m := newAssessProgressModel("Test", &cfg, 7, func(_, _ string, _ bool) error { return nil })
 	m.width = 100
 	m.height = 30
 	m.reflow()
@@ -113,7 +113,7 @@ func TestAssessProgress_ErrorEventCapturesMessage(t *testing.T) {
 	}
 }
 
-func TestAssessProgress_InterviewQuestionUpdatesActiveStep(t *testing.T) {
+func TestAssessProgress_InterviewQuestionMountsForm(t *testing.T) {
 	m := newProgressForTest()
 	updated, _ := m.handleStep(GenericEvent{Type: "progress", Step: "interview", Status: "active", Message: "Gathering Phase-1…"})
 	m = updated.(assessProgressModel)
@@ -121,17 +121,119 @@ func TestAssessProgress_InterviewQuestionUpdatesActiveStep(t *testing.T) {
 		Type:         "interview-question",
 		QuestionID:   "q1",
 		QuestionText: "what?",
+		Options:      []string{"a", "b", "I don't know"},
+		AllowFreeText: true,
 	})
 	final := updated.(assessProgressModel)
-	if final.pendingQuestion == nil {
-		t.Fatal("pendingQuestion should be set")
+	if final.interviewEvent == nil {
+		t.Fatal("interviewEvent should be set")
+	}
+	if final.interviewForm == nil {
+		t.Fatal("interviewForm should be mounted")
+	}
+	if final.interview != interviewSelecting {
+		t.Errorf("interview state = %d, want interviewSelecting (%d)", final.interview, interviewSelecting)
 	}
 	idx := final.findStep("interview")
 	if idx < 0 {
 		t.Fatal("interview step not found")
 	}
-	if !strings.Contains(final.steps[idx].message, "awaiting answer") {
-		t.Errorf("message = %q, want awaiting-answer note", final.steps[idx].message)
+	if !strings.Contains(final.steps[idx].message, "Question 1 of 7") {
+		t.Errorf("message = %q, want 'Question 1 of 7' progress", final.steps[idx].message)
+	}
+}
+
+func TestAssessProgress_SubmitInterviewAdvances(t *testing.T) {
+	captured := struct {
+		qid     string
+		value   string
+		isOption bool
+	}{}
+	cfg := DefaultAssessConfig()
+	m := newAssessProgressModel("Test", &cfg, 7, func(qid, value string, isOption bool) error {
+		captured.qid = qid
+		captured.value = value
+		captured.isOption = isOption
+		return nil
+	})
+	m.width = 100
+	m.height = 30
+	m.reflow()
+
+	// Fire the question then simulate the form completing with a chosen option.
+	updated, _ := m.handleStep(GenericEvent{
+		Type:         "interview-question",
+		QuestionID:   "q1",
+		QuestionText: "what?",
+		Options:      []string{"yes", "no", "I don't know"},
+	})
+	m = updated.(assessProgressModel)
+	m.interviewChoice = "yes"
+
+	updated2, _ := m.advanceInterview()
+	final := updated2.(assessProgressModel)
+	if captured.qid != "q1" || captured.value != "yes" || !captured.isOption {
+		t.Errorf("captured = %+v, want q1/yes/true", captured)
+	}
+	if final.interview != interviewIdle {
+		t.Errorf("interview state should be idle after submit, got %d", final.interview)
+	}
+	if final.interviewForm != nil {
+		t.Error("interviewForm should be nil after submit")
+	}
+	if final.answersSent != 1 {
+		t.Errorf("answersSent = %d, want 1", final.answersSent)
+	}
+}
+
+func TestAssessProgress_FreeTextSentinelTransitions(t *testing.T) {
+	cfg := DefaultAssessConfig()
+	m := newAssessProgressModel("Test", &cfg, 7, func(_, _ string, _ bool) error { return nil })
+	m.width = 100
+	m.height = 30
+	m.reflow()
+
+	updated, _ := m.handleStep(GenericEvent{
+		Type:         "interview-question",
+		QuestionID:   "q5",
+		QuestionText: "?",
+		Options:      []string{"a"},
+		AllowFreeText: true,
+	})
+	m = updated.(assessProgressModel)
+	m.interviewChoice = interviewFreeTextSentinel
+
+	updated2, _ := m.advanceInterview()
+	final := updated2.(assessProgressModel)
+	if final.interview != interviewFreeText {
+		t.Errorf("expected transition to interviewFreeText, got %d", final.interview)
+	}
+	if final.interviewForm == nil {
+		t.Error("free-text form should be mounted")
+	}
+}
+
+func TestAssessProgress_FreeTextEmptyMapsToUnknown(t *testing.T) {
+	captured := ""
+	cfg := DefaultAssessConfig()
+	m := newAssessProgressModel("Test", &cfg, 7, func(_, value string, _ bool) error {
+		captured = value
+		return nil
+	})
+	m.width = 100
+	m.height = 30
+	m.reflow()
+	m.interviewEvent = &GenericEvent{QuestionID: "q5"}
+	m.interview = interviewFreeText
+	m.interviewFreeText = "   "
+
+	updated, _ := m.advanceInterview()
+	final := updated.(assessProgressModel)
+	if captured != "unknown" {
+		t.Errorf("empty free-text should map to 'unknown', got %q", captured)
+	}
+	if final.interview != interviewIdle {
+		t.Errorf("should reset to interviewIdle, got %d", final.interview)
 	}
 }
 
@@ -184,14 +286,21 @@ func TestAssessProgress_KeyCtrlCSetsCancelled(t *testing.T) {
 	}
 }
 
-func TestAssessProgress_PendingQuestionBlocksCancel(t *testing.T) {
+func TestAssessProgress_QKeyDuringInterviewIsRoutedToForm(t *testing.T) {
+	// While the interview form is mounted, key events go to the form (not
+	// the progress display's quit handler) so users can type freely.
 	m := newProgressForTest()
-	updated, _ := m.handleStep(GenericEvent{Type: "interview-question", QuestionID: "q1", QuestionText: "?"})
+	updated, _ := m.handleStep(GenericEvent{
+		Type:         "interview-question",
+		QuestionID:   "q1",
+		QuestionText: "?",
+		Options:      []string{"a", "b"},
+	})
 	m = updated.(assessProgressModel)
 	updated2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	final := updated2.(assessProgressModel)
 	if final.cancelled {
-		t.Error("cancelled should remain false while a question is pending")
+		t.Error("cancelled should remain false while interview form is active")
 	}
 }
 

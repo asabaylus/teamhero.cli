@@ -38,7 +38,14 @@ func runAssessInteractive(cfg *AssessConfig) error {
 	}
 	defer runner.Close()
 
-	progress := RunAssessProgressDisplay("Agent Maturity Assessment", cfg, runner, promptInterviewQuestion)
+	progress := RunAssessProgressDisplay(
+		"Agent Maturity Assessment",
+		cfg,
+		runner,
+		func(qid, value string, isOption bool) error {
+			return SendInterviewAnswer(runner, qid, value, isOption)
+		},
+	)
 
 	for runErr := range runner.Errors {
 		if runErr != nil {
@@ -460,60 +467,7 @@ func parseRepoCSV(s string) []string {
 	return out
 }
 
-// promptInterviewQuestion shows a single Phase-1 question via huh and returns
-// the captured answer. Choosing "Other" pops a free-text follow-up.
-//
-// Used as the askInterview callback by RunAssessProgressDisplay during the
-// interactive interview round-trip — the Tea program releases the terminal
-// for the duration of the prompt, then resumes.
-func promptInterviewQuestion(evt GenericEvent) (string, bool, error) {
-	const freeTextSentinel = "__free_text__"
-	options := evt.Options
-	if len(options) == 0 {
-		options = []string{"I don't know"}
-	}
-	choice := ""
-
-	huhOptions := make([]huh.Option[string], 0, len(options)+1)
-	for _, opt := range options {
-		huhOptions = append(huhOptions, huh.NewOption(opt, opt))
-	}
-	if evt.AllowFreeText {
-		huhOptions = append(huhOptions, huh.NewOption("Other (type your own)", freeTextSentinel))
-	}
-
-	form := huh.NewForm(
-		huh.NewGroup(
-			huh.NewSelect[string]().
-				Title(evt.QuestionText).
-				Description(fmt.Sprintf("[%s]", evt.QuestionID)).
-				Options(huhOptions...).
-				Value(&choice),
-		),
-	).WithTheme(huh.ThemeCharm())
-	if err := form.Run(); err != nil {
-		return "unknown", false, err
-	}
-
-	if choice == freeTextSentinel {
-		freeText := ""
-		ftForm := huh.NewForm(
-			huh.NewGroup(
-				huh.NewText().
-					Title("Your answer").
-					Description("Free text — leave blank for 'unknown'.").
-					Value(&freeText),
-			),
-		).WithTheme(huh.ThemeCharm())
-		if err := ftForm.Run(); err != nil {
-			return "unknown", false, err
-		}
-		freeText = strings.TrimSpace(freeText)
-		if freeText == "" {
-			return "unknown", false, nil
-		}
-		return freeText, false, nil
-	}
-
-	return choice, true, nil
-}
+// Interview prompts are hosted inside the progress model now (see
+// assess_progress.go::buildInterviewSelectForm). Keeping that logic out
+// of a standalone huh.Form.Run() keeps the framed two-pane layout
+// continuous through the entire pipeline.
