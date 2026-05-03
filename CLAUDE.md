@@ -103,6 +103,29 @@ teamhero report --headless --foreground --flush-cache loc  # Force re-fetch LOC
 - Scan for leaked secrets: `npx varlock scan` (or `npx varlock scan --staged` in pre-commit)
 - The `.env.schema` is safe for AI tools — it contains types and descriptions but never secret values
 
+## Maturity Assessment (`teamhero assess`)
+
+- The 12-item rubric is **hardcoded** in `src/services/maturity/rubric.ts`.
+  `RUBRIC_VERSION` is part of the cache key — bump it when rubric text or
+  scoring math changes so audits don't surface stale results.
+- The 7 Phase-1 interview questions in `src/services/maturity/interview.ts`
+  are **verbatim from references/interview.md** — the wording is calibrated,
+  do not paraphrase. The skill rule "ask one question at a time, wait for
+  the answer" is enforced by the bidirectional JSON-lines protocol — don't
+  batch them.
+- Tier-3 (git-only) audits **must cap items 2, 3, 9, 11 at 0.5** even when the
+  AI awards 1.0. `ai-scorer.ts::applyTier3Caps` enforces this post-hoc.
+- `scripts/run-assess.ts` is bidirectional: stdin stays open after the initial
+  config line so the Go TUI can write `interview-answer` events.
+  `RunAssessServiceRunner` in `tui/assess_runner.go` keeps the stdin pipe
+  open intentionally — do not close it.
+- The `MaturityProvider`, `InterviewTransport`, `AuditStore` ports live in
+  `src/core/types.ts` (same rule as every other port). Concrete value types
+  live in `src/services/maturity/types.ts`.
+- `docs/maturity-skill-ref/` is a **reference copy** of the upstream skill
+  (extracted from the original zip) — kept for human readers. The canonical
+  rubric is the TS code, not these files.
+
 ## Landing Changes
 
 - Always use `/land` to commit, push, and open PRs — never do these steps manually.

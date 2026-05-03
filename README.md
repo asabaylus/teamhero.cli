@@ -129,6 +129,104 @@ Or set `OPENAI_SERVICE_TIER=flex` in `~/.config/teamhero/.env`.
 
 ---
 
+## Run a maturity assessment
+
+Score an engineering organization (or a single repo) against the 12-criterion
+**Agent Maturity Assessment** — reproducible dev environments, integration
+cadence, testability, observability, design discipline, deep modules,
+repo-local agent context, sanctioned AI tooling, human review, evals,
+blast-radius controls, and judgment under AI augmentation.
+
+The audit produces a weighted percentage, a raw `/12` score, item-level
+evidence sentences, the top-3 fixes, and strengths to preserve. Output lands
+in the current directory as `teamhero-maturity-<scope>-<date>.md` plus a
+JSON sidecar with the full data.
+
+**Bands:** **Excellent** (90%+) · **Healthy** (75–89%) · **Functional but
+slow** (60–74%) · **Significant dysfunction** (40–59%) · **Triage** (<40%).
+
+### Interactive TUI
+
+```bash
+teamhero assess
+```
+
+The wizard asks for scope (local repo / GitHub org / both), then walks you
+through the 7 Phase-1 interview questions one at a time (AI tooling, hiring,
+DORA visibility, design discipline, evals, blast-radius red-teaming, adjacent
+repos). Each question has a small set of pre-written answer options plus a
+free-text "Other" choice; "I don't know" maps the linked criterion to `n/a`.
+
+### Headless / scripted
+
+```bash
+# Audit the current repo (no interview — uses CONFIG.md or "unknown")
+teamhero assess --headless --path .
+
+# Audit with pre-supplied interview answers
+teamhero assess --headless --path . \
+  --interview-answers ./answers.json
+
+# Org-wide audit
+teamhero assess --headless --target-org acme \
+  --interview-answers ./answers.json
+
+# Smoke test without an OpenAI call (placeholder scores)
+teamhero assess --headless --path . --dry-run
+```
+
+`answers.json` shape — keys map to question IDs, value is verbatim text or
+`"unknown"`:
+
+```json
+{
+  "q1": "Company-paid Claude with policy",
+  "q2": "AI allowed; interviewers trained",
+  "q3": "DORA via Grafana",
+  "q4": "Consistent ADR step before agent code",
+  "q5": "LLMs in dev loop, retro-tracked",
+  "q6": "unknown",
+  "q7": "No"
+}
+```
+
+### Useful flags
+
+| Flag | Purpose |
+|------|---------|
+| `--scope-mode {org\|local-repo\|both}` | Override scope (auto-inferred from other flags) |
+| `--evidence-tier {auto\|gh\|github-mcp\|git-only}` | Pin the evidence tier; default auto-detects |
+| `--audit-output <path>` | Override the markdown output path |
+| `--audit-output-format {markdown\|json\|both}` | Default: `both` |
+| `--dry-run` | Skip the AI scorer; emit a placeholder audit |
+| `--show-assess-config` | Print saved configuration as JSON and exit |
+
+Run `teamhero assess --help` for the full list.
+
+### How the score is built
+
+1. **Preflight** — auto-detects evidence tier (`gh` CLI authed → Tier 1,
+   GitHub MCP available → Tier 2, otherwise → Tier 3 git+filesystem only).
+2. **Adjacent repos** — scans the local repo for workflow `uses:`, Terraform
+   module sources, submodules, and README cross-refs to find sibling repos
+   that should be in scope.
+3. **Interview** — captures the 7 Phase-1 answers (interactively, from
+   `--interview-answers`, or from `docs/audits/CONFIG.md` if it exists in
+   the repo). Persists the confirmed answers back to `CONFIG.md` after
+   every successful run so re-audits can confirm-or-refresh.
+4. **Evidence** — 12 deterministic detectors run against the local repo
+   (test files, CI workflows, dependency manifests, ADRs, agent context
+   files, CODEOWNERS, OIDC vs. long-lived secrets, Terraform IaC, etc.).
+5. **AI scoring** — OpenAI Responses API with a strict JSON schema returns
+   per-item scores, ≤25-word evidence sentences, top-3 fixes, and
+   strengths. Tier-3 audits cap items 2/3/9/11 at 0.5 because the
+   GitHub-side evidence isn't observable.
+6. **Output** — markdown rendered against the canonical template +
+   matching `.json` with the full artifact (rubric version, evidence
+   facts, category subtotals).
+
+---
+
 ## Learn more
 
 - [Configuration Reference](docs/CONFIG_FORMAT.md) — all settings, credentials, and user identity mapping
@@ -153,6 +251,7 @@ just                  # List all available recipes
 | `just test-all` | Run all tests (TypeScript + Go) |
 | `just lint` | Format and lint (Biome) |
 | `just report` | Run a report |
+| `just assess` | Run a maturity assessment |
 | `just reset` | Clean all build artifacts |
 
 ### Secure credential setup with varlock
