@@ -65,6 +65,11 @@ jobs:
         run: bun build --compile --target=${{ matrix.bun_target }} --outfile=${{ steps.filename.outputs.name }} scripts/run-report.ts
         continue-on-error: ${{ matrix.os == 'windows' }}
 
+      # Bun --compile leaves the Mach-O unsigned; AMFI on arm64 kills unsigned binaries with SIGKILL.
+      - name: Ad-hoc codesign macOS service binary
+        if: matrix.os == 'darwin'
+        run: codesign --sign - --force --timestamp=none "${{ steps.filename.outputs.name }}"
+
       - name: Upload service artifact
         uses: actions/upload-artifact@v5
         with:
