@@ -62,7 +62,7 @@ jobs:
           fi
 
       - name: Build TypeScript service binary
-        run: bun build --compile --target=${{ matrix.bun_target }} --outfile=${{ steps.filename.outputs.name }} scripts/run-report.ts
+        run: bun build --compile --target=${{ matrix.bun_target }} --outfile=${{ steps.filename.outputs.name }} scripts/service.ts
         continue-on-error: ${{ matrix.os == 'windows' }}
 
       # Bun --compile leaves the Mach-O unsigned; AMFI on arm64 kills unsigned binaries with SIGKILL.
