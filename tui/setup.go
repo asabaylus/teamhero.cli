@@ -2789,6 +2789,17 @@ func runServiceScript(script string, input interface{}) (map[string]interface{},
 	}
 
 	if err := cmd.Run(); err != nil {
+		// Try to extract the real error message from stdout JSON before giving up.
+		if stdout.Len() > 0 {
+			var result map[string]interface{}
+			if jsonErr := json.Unmarshal(stdout.Bytes(), &result); jsonErr == nil {
+				for _, key := range []string{"error", "message"} {
+					if msg, ok := result[key].(string); ok && msg != "" {
+						return nil, fmt.Errorf("%s", msg)
+					}
+				}
+			}
+		}
 		return nil, err
 	}
 
