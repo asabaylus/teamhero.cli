@@ -189,6 +189,22 @@ export function createCli(
 			await spawnTui(deps, argsToPass);
 		});
 
+	program
+		.command("interview")
+		.description(
+			"Grade candidate AI-collaboration interviews (bootstrap, grade, cohort)",
+		)
+		.helpOption(false)
+		.allowUnknownOption()
+		.action(async function (this: Command) {
+			const interviewArgIndex = process.argv.indexOf("interview");
+			const argsToPass =
+				interviewArgIndex >= 0
+					? process.argv.slice(interviewArgIndex)
+					: ["interview"];
+			await spawnTui(deps, argsToPass);
+		});
+
 	return program;
 }
 
@@ -220,7 +236,7 @@ export async function run(
 	// If a subcommand is followed by --help, pass through to the Go binary
 	// instead of letting Commander handle it (which prints the top-level help).
 	const args = argv.slice(2);
-	const subcommands = ["report", "doctor", "setup"];
+	const subcommands = ["report", "doctor", "setup", "interview"];
 	if (
 		args.length >= 1 &&
 		subcommands.includes(args[0]) &&
