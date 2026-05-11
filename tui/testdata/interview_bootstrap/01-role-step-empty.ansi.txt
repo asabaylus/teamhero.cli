@@ -1,0 +1,18 @@
+[?25l[?2004h//// TEAM HERO //////////////////////////////////////////////////////////////////////////////////// 
+                                                                                                    
+                                                              ╭────────────────────────────────────╮
+  ┃ Role slug (URL-safe identifier)                           │ Interview Bootstrap                │
+  ┃ Lowercase, hyphenated — e.g. 'senior-backend' or          │                                    │
+  'staff-                                                     │ Role slug: —                       │
+  ┃ frontend'                                                 │ Role title: —                      │
+                                                              │ Stack: —                           │
+  enter submit                                                │ Domain: —                          │
+                                                              │ Feature: —                         │
+                                                              │ Time-box: —                        │
+                                                              │ Project mode: —                    │
+                                                              │ Analysis mode: —                   │
+                                                              │ Rubric: —                          │
+                                                              │ Output dir: —                      │
+                                                              ╰────────────────────────────────────╯
+                                                                                                    
+enter continue • ctrl+c quit                                                                        

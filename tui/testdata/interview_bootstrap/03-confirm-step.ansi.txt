@@ -1,0 +1,19 @@
+[?25l[?2004h//// TEAM HERO //////////////////////////////////////////////////////////////////////////////////// 
+                                                                                                    
+                                                              ╭────────────────────────────────────╮
+  ┃ Ready to bootstrap?                                       │ Interview Bootstrap                │
+  ┃ role=senior-backend · stack=Go · domain=Payments ·        │                                    │
+  time-                                                       │ Role slug: senior-backend          │
+  ┃ box=90 · project=A · analysis=ai-assisted ·               │ Role title: —                      │
+  rubric=default                                              │ Stack: Go                          │
+  ┃ · out=./roles/senior-backend                              │ Domain: Payments                   │
+                                                              │ Feature: ledger entry-point        │
+  ←/→ toggle • enter submit • y Yes, generate the role …      │ Time-box: 90 min                   │
+                                                              │ Project mode: A — generated        │
+                                                              │ starter                            │
+                                                              │ Analysis mode: ai-assisted         │
+                                                              │ Rubric: default                    │
+                                                              │ Output dir: ./roles/senior-backend │
+                                                              ╰────────────────────────────────────╯
+                                                                                                    
+enter continue • ctrl+c quit                                                                        

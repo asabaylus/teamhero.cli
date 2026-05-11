@@ -1,0 +1,21 @@
+[?25l[?2004h//// TEAM HERO //////////////////////////////////////////////////////////////////////////////////// 
+                                                                                                    
+                                                              ╭────────────────────────────────────╮
+  ┃ Output directory                                          │ Interview Bootstrap                │
+  ┃ Where the role config and starter project will be         │                                    │
+  written                                                     │ Role slug: senior-backend          │
+  ┃ > ./roles/senior-backend                                  │ Role title: Senior Backend         │
+                                                              │ Engineer                           │
+  enter submit                                                │ Stack: Go                          │
+                                                              │ Domain: Payments                   │
+                                                              │ Feature: build a ledger entry-     │
+                                                              │ point                              │
+                                                              │ Time-box: 90 min                   │
+                                                              │ Project mode: A — generated        │
+                                                              │ starter                            │
+                                                              │ Analysis mode: ai-assisted         │
+                                                              │ Rubric: default                    │
+                                                              │ Output dir: —                      │
+                                                              ╰────────────────────────────────────╯
+                                                                                                    
+enter continue • ctrl+c quit                                                                        

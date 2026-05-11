@@ -18,12 +18,20 @@ func TestRunInterview_NoVerb_PrintsUsageAndReturnsNonZero(t *testing.T) {
 }
 
 func TestRunInterview_BootstrapVerb_RequiresFlags(t *testing.T) {
-	// bootstrap is implemented in Slice 2; with no flags it should reject
-	// (only --headless mode is supported at this stage).
+	// `bootstrap` with no flags drops into the interactive wizard on a TTY
+	// or exits non-zero otherwise. Pin stdin-is-TTY to false so the test
+	// exercises the "no TTY → reject" path deterministically rather than
+	// inheriting whichever stdin the developer's `go test` session has —
+	// without this pin, an interactive go-test invocation would launch the
+	// real bubbletea program and hang.
+	origTTY := isStdinTTY
+	t.Cleanup(func() { isStdinTTY = origTTY })
+	isStdinTTY = func() bool { return false }
+
 	var out bytes.Buffer
 	code := runInterview([]string{"bootstrap"}, &out)
 	if code == 0 {
-		t.Errorf("bootstrap without flags should return non-zero, got %d", code)
+		t.Errorf("bootstrap without flags and no TTY should return non-zero, got %d", code)
 	}
 }
 

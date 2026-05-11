@@ -1,52 +1,19 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/huh"
 )
 
-// runHuhBootstrapWizard renders the sequence of huh.Forms that populate a
-// bootstrapWizardModel. Each screen uses huhFormRun so tests can stub the
-// driver. On huh.ErrUserAborted at any screen, the wizard returns
-// Aborted=true with no options.
+// runHuhBootstrapWizard runs the bootstrap wizard as a single bubbletea
+// program (interviewBootstrapTeaModel) so the wizard adopts the same
+// shell-header + summary-panel layout as the report wizard. The data
+// container (bootstrapWizardModel) and per-screen validators are unchanged;
+// only the runner is.
 func runHuhBootstrapWizard(d BootstrapWizardDefaults) (*BootstrapWizardResult, error) {
-	m := newBootstrapWizardModel(d)
-
-	steps := []func(*bootstrapWizardModel) error{
-		stepRole,
-		stepRoleTitle,
-		stepStack,
-		stepDomain,
-		stepFeature,
-		stepTimeBox,
-		stepProjectMode,
-		stepAnalysisMode,
-		stepRubricMode,
-		stepConditionalRubric,
-		stepOutputDir,
-		stepConfirm,
-	}
-
-	for _, step := range steps {
-		if err := step(&m); err != nil {
-			if errors.Is(err, huh.ErrUserAborted) {
-				return &BootstrapWizardResult{Aborted: true}, nil
-			}
-			return nil, err
-		}
-		if m.aborted {
-			return &BootstrapWizardResult{Aborted: true}, nil
-		}
-	}
-
-	res := &BootstrapWizardResult{
-		Options:   bootstrapWizardOptionsFromModel(m),
-		Confirmed: m.confirmed,
-	}
-	return res, nil
+	return runBootstrapTeaWizard(d)
 }
 
 func stepRole(m *bootstrapWizardModel) error {

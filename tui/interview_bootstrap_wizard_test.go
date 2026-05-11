@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
 )
 
@@ -14,6 +15,22 @@ import (
 // driving a TTY.
 func stubHuhFormRunner(_ *testing.T) func(*huh.Form) error {
 	return func(_ *huh.Form) error { return nil }
+}
+
+// stubTeaProgramRunner returns a runBootstrapTeaProgram stub that skips the
+// real bubbletea program loop and synthesizes a BootstrapWizardResult
+// directly from the model's seeded data. Used by the launcher smoke tests
+// so they exercise the launcher → result plumbing without spinning a TTY
+// or leaking huh cursor-blink goroutines.
+func stubTeaProgramRunner(_ *testing.T, confirmed bool) func(*tea.Program, *interviewBootstrapTeaModel) (*BootstrapWizardResult, error) {
+	return func(_ *tea.Program, m *interviewBootstrapTeaModel) (*BootstrapWizardResult, error) {
+		m.data.confirmed = confirmed
+		return &BootstrapWizardResult{
+			Options:   bootstrapWizardOptionsFromModel(m.data),
+			Confirmed: confirmed,
+			Aborted:   false,
+		}, nil
+	}
 }
 
 // stringsContains is a tiny alias to keep test code readable.
@@ -251,12 +268,12 @@ func TestBootstrapWizard_HuhLauncherImplementsInterface(t *testing.T) {
 // step ordering produces a usable BootstrapOptions on the "default" rubric
 // branch (the simplest path through the form sequence).
 func TestBootstrapWizard_HuhLauncherDefaultRubricSmoke(t *testing.T) {
-	origRun := huhFormRun
-	t.Cleanup(func() { huhFormRun = origRun })
-	// Stub the form driver so each step "completes" instantly without I/O.
-	// The model has its defaults pre-populated, so the resulting options
-	// after the smoke run should be the same defaults.
-	huhFormRun = stubHuhFormRunner(t)
+	// The launcher now drives a bubbletea program (interviewBootstrapTeaModel)
+	// instead of iterating huhFormRun calls. Stub the program runner so the
+	// smoke test still completes synchronously without spinning a real TTY.
+	origRunner := runBootstrapTeaProgram
+	t.Cleanup(func() { runBootstrapTeaProgram = origRunner })
+	runBootstrapTeaProgram = stubTeaProgramRunner(t, true)
 
 	launcher := newHuhBootstrapWizardLauncher(BootstrapWizardDefaults{
 		Role: "smoke-role", Stack: "Go", Domain: "Smoke",
@@ -278,9 +295,9 @@ func TestBootstrapWizard_HuhLauncherDefaultRubricSmoke(t *testing.T) {
 // rubric-mode=custom branch — same shape as the default smoke but
 // also confirms the conditional step executes when modeRubric is set.
 func TestBootstrapWizard_HuhLauncherCustomRubricSmoke(t *testing.T) {
-	origRun := huhFormRun
-	t.Cleanup(func() { huhFormRun = origRun })
-	huhFormRun = stubHuhFormRunner(t)
+	origRunner := runBootstrapTeaProgram
+	t.Cleanup(func() { runBootstrapTeaProgram = origRunner })
+	runBootstrapTeaProgram = stubTeaProgramRunner(t, true)
 
 	launcher := newHuhBootstrapWizardLauncher(BootstrapWizardDefaults{
 		Role: "smoke-role", Stack: "Go", Domain: "Smoke", Feature: "smoke",
@@ -297,9 +314,9 @@ func TestBootstrapWizard_HuhLauncherCustomRubricSmoke(t *testing.T) {
 
 // TestBootstrapWizard_HuhLauncherJDRubricSmoke covers the default+jd branch.
 func TestBootstrapWizard_HuhLauncherJDRubricSmoke(t *testing.T) {
-	origRun := huhFormRun
-	t.Cleanup(func() { huhFormRun = origRun })
-	huhFormRun = stubHuhFormRunner(t)
+	origRunner := runBootstrapTeaProgram
+	t.Cleanup(func() { runBootstrapTeaProgram = origRunner })
+	runBootstrapTeaProgram = stubTeaProgramRunner(t, true)
 
 	launcher := newHuhBootstrapWizardLauncher(BootstrapWizardDefaults{
 		Role: "smoke-role", Stack: "Go", Domain: "Smoke", Feature: "smoke",

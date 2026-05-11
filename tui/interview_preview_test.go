@@ -6,7 +6,10 @@ import (
 	"testing"
 )
 
-var ansiEscapes = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+// Matches CSI sequences including DEC-private mode (`?`) and intermediate
+// bytes. Without the `?` in the parameter class we miss `\x1b[?25l`,
+// `\x1b[?2004h`, etc., and they bleed into captured TUI screenshots.
+var ansiEscapes = regexp.MustCompile(`\x1b\[[?0-9; ]*[a-zA-Z]`)
 
 func stripANSI(s string) string {
 	return ansiEscapes.ReplaceAllString(s, "")
