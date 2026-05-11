@@ -13,13 +13,12 @@ const STDLIB_OWNERS = new Set([
 ]);
 
 /**
- * Detect adjacent repos referenced from the local repo. Mirrors the four
- * detection commands in references/preflight.md (multi-repo section):
+ * Discover external GitHub repositories referenced by the local repository.
  *
- *  1. External GitHub Actions referenced in workflows (`uses: owner/repo@vX`)
- *  2. Terraform modules sourced from external Git
- *  3. Submodules
- *  4. Generic cross-repo references in docs/scripts
+ * Scans the repository root (scope.localPath) for references via GitHub Actions `uses`, Terraform module sources, `.gitmodules` submodules, and `github.com` links in README.md; excludes known standard-library owners and de-duplicates results case-insensitively.
+ *
+ * @param scope - Descriptor whose `localPath` is the repository root to scan; if `localPath` is falsy the function returns an empty array
+ * @returns An array of detected `AdjacentRepo` objects (`{ owner, name, reason }`), de-duplicated by `owner/name` (case-insensitive)
  */
 export async function detectAdjacentRepos(
 	scope: ScopeDescriptor,
@@ -98,6 +97,14 @@ export async function detectAdjacentRepos(
 	return [...found.values()];
 }
 
+/**
+ * Add an adjacent repository to the map if it is not already present.
+ *
+ * @param map - Map used for de-duplication, keyed by the lowercase `owner/name`
+ * @param owner - Repository owner (organization or user)
+ * @param name - Repository name
+ * @param reason - Short human-readable reason describing why the repository was detected
+ */
 function addRepo(
 	map: Map<string, AdjacentRepo>,
 	owner: string,

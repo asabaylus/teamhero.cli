@@ -13,7 +13,11 @@ import (
 )
 
 // assessScriptPath returns the path to scripts/run-assess.ts. Mirrors
-// resolveScriptPath but for the assess service runner.
+// assessScriptPath determines the filesystem path to scripts/run-assess.ts using a series of fallbacks.
+// It first checks for ../scripts/run-assess.ts relative to the running executable, then checks
+// "scripts/run-assess.ts" and "./scripts/run-assess.ts" in the current working directory, and finally
+// checks $HOME/teamhero.cli/scripts/run-assess.ts when the home directory is available. If none of the
+// candidates exist, it returns "scripts/run-assess.ts" as a final fallback (which may not exist).
 func assessScriptPath() string {
 	exePath, err := os.Executable()
 	if err == nil {
@@ -61,7 +65,9 @@ func (r *AssessRunResult) Close() {
 
 // RunAssessServiceRunner spawns the TS service runner for the maturity
 // assessment. The first stdin write is the AssessConfig JSON; the stream is
-// kept open so the TUI can send subsequent interview-answer JSON lines.
+// RunAssessServiceRunner starts the external "assess" runner with the given AssessConfig and streams parsed JSON events from its stdout.
+// It writes the config as the first newline-delimited JSON line to the runner's stdin and keeps stdin open so callers may send subsequent interview-answer messages.
+// The returned AssessRunResult exposes channels for streamed events and a single termination error, a buffer capturing the runner's stderr, and a writer for stdin; callers should call Close on the result to run cleanup.
 func RunAssessServiceRunner(input AssessConfig) (*AssessRunResult, error) {
 	configJSON, err := json.Marshal(input)
 	if err != nil {
@@ -147,7 +153,10 @@ func RunAssessServiceRunner(input AssessConfig) (*AssessRunResult, error) {
 	}, nil
 }
 
-// SendInterviewAnswer writes a JSON-line answer event to the runner's stdin.
+// SendInterviewAnswer writes an `interview-answer` JSON-line event for the given
+// question and value to the runner's stdin.
+//
+// It returns an error if marshaling the event or writing to the runner's stdin fails.
 func SendInterviewAnswer(r *AssessRunResult, questionID, value string, isOption bool) error {
 	evt := InterviewAnswerEvent{
 		Type:       "interview-answer",

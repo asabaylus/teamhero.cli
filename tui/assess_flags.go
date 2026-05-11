@@ -23,7 +23,8 @@ var (
 	flagAssessShowConfig     = flag.Bool("show-assess-config", false, "Print saved assess configuration as JSON and exit")
 )
 
-// applyAssessFlagsTo merges explicitly-set CLI flags into cfg.
+// applyAssessFlagsTo updates cfg with values from assess CLI flags that were explicitly set.
+// For each supported flag, if wasSet reports it was provided, the corresponding cfg field is overwritten with the flag's value.
 func applyAssessFlagsTo(cfg *AssessConfig, wasSet func(string) bool) {
 	if wasSet("scope-mode") {
 		cfg.Scope.Mode = strings.TrimSpace(*flagAssessScopeMode)
@@ -61,7 +62,20 @@ func applyAssessFlagsTo(cfg *AssessConfig, wasSet func(string) bool) {
 }
 
 // fillAssessDefaults populates required fields if they're missing. Mirrors
-// DefaultAssessConfig but applied to an already-loaded config.
+// fillAssessDefaults populates missing fields on an AssessConfig with sensible defaults.
+// 
+// If Scope.Mode is empty it is derived from the presence of Scope.Org and Scope.LocalPath:
+// - only LocalPath present -> "local-repo"
+// - only Org present -> "org"
+// - both present -> "both"
+// - neither present -> "local-repo"
+//
+// If Scope.DisplayName is empty it is set based on Scope.Mode:
+// - "org" -> Scope.Org
+// - "local-repo" -> base name of Scope.LocalPath (if set)
+// - "both" -> Scope.Org if present, otherwise base name of Scope.LocalPath (if set)
+//
+// OutputFormat defaults to "both" and EvidenceTier defaults to "auto" when unset.
 func fillAssessDefaults(cfg *AssessConfig) {
 	if cfg.Scope.Mode == "" {
 		if cfg.Scope.LocalPath != "" && cfg.Scope.Org == "" {
@@ -99,7 +113,8 @@ func fillAssessDefaults(cfg *AssessConfig) {
 }
 
 // hasMinimalAssessConfig returns true if enough config is present to run
-// headless without further interactive input.
+// hasMinimalAssessConfig determines whether cfg contains the minimal fields required to run an assess operation without interactive input.
+// It returns true when cfg is non-nil, the scope mode is one of "org", "local-repo", or "both" with the corresponding required scope value present (org for "org"/"both", local path for "local-repo"), and Scope.DisplayName is non-empty after trimming whitespace.
 func hasMinimalAssessConfig(cfg *AssessConfig) bool {
 	if cfg == nil {
 		return false

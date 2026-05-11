@@ -46,6 +46,12 @@ type assessPreviewModel struct {
 	spinner   spinner.Model
 }
 
+// newAssessPreviewModel creates and initializes an assessPreviewModel for the given audit and JSON inputs.
+// 
+// It converts path to an absolute path and attempts to read the audit file into the model's markdown.
+// On read failure the model's renderErr is set and markdown is left empty. It also stores jsonPath and
+// jsonData, allocates and sizes viewports for each tab, configures the initial spinner, sets the initial
+// active tab to the audit tab, and marks the model as awaiting its initial render.
 func newAssessPreviewModel(path, jsonPath, jsonData string) assessPreviewModel {
 	absPath, _ := filepath.Abs(path)
 
@@ -308,7 +314,7 @@ func (m *assessPreviewModel) previewFrameHeight() int {
 
 // buildAssessEvidenceMarkdown extracts the evidence facts and per-item scores
 // from the audit JSON and renders them as a single markdown document for the
-// Evidence tab. Falls back to a placeholder when no JSON is present.
+// optional explanation, followed by a "Notes for re-audit" section when present.
 func buildAssessEvidenceMarkdown(jsonData string) string {
 	if jsonData == "" {
 		return "## Evidence\n\n_No JSON data available — re-run with `--audit-output-format both`._\n"
@@ -357,7 +363,10 @@ func buildAssessEvidenceMarkdown(jsonData string) string {
 }
 
 // RunAssessPreview displays the audit markdown in a tabbed Glamour-rendered
-// preview matching the report flow's RunReportPreviewFull look-and-feel.
+// RunAssessPreview launches a full-screen interactive preview UI for an audit file and its associated JSON.
+// It presents three tabs — Audit (rendered markdown from path), Evidence (markdown built from jsonData), and JSON Data (pretty-printed jsonData) — and handles resizing, tab switching, scrolling, and exiting.
+// path is the path to the audit markdown file to display. jsonPath, if provided, is shown in the info panel. jsonData is the raw audit JSON used to populate the Evidence and JSON Data tabs.
+// It returns any error encountered while running the TUI program.
 func RunAssessPreview(path, jsonPath, jsonData string) error {
 	m := newAssessPreviewModel(path, jsonPath, jsonData)
 	p := tea.NewProgram(m, tea.WithOutput(os.Stderr), tea.WithAltScreen())

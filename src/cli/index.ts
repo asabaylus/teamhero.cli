@@ -128,6 +128,14 @@ async function spawnTui(deps: CliDependencies, args: string[]): Promise<void> {
 	});
 }
 
+/**
+ * Build the CLI program with subcommands that forward execution to the Go TUI.
+ *
+ * @param deps - Runtime dependencies (auth and logger) used when delegating work to the TUI and reporting errors.
+ * @param options - Optional CLI construction flags.
+ * @param options.exitOverride - If set, configures Commander to throw instead of exiting on parse errors.
+ * @returns The configured Commander `Command` instance ready to parse CLI arguments.
+ */
 export function createCli(
 	deps: CliDependencies,
 	options: CliOptions = {},
@@ -224,6 +232,17 @@ export async function createDefaultDependencies(): Promise<CliDependencies> {
 	} satisfies CliDependencies;
 }
 
+/**
+ * Parse CLI arguments and dispatch execution to the Commander program or the external TUI binary.
+ *
+ * When the first positional subcommand is one of "report", "doctor", "setup", or "assess"
+ * and the arguments include `--help`, this function forwards the raw arguments to the Go TUI
+ * binary instead of letting Commander render top-level help. Otherwise it delegates to the
+ * Commander program returned by `createCli`.
+ *
+ * @param argv - The argument vector to parse; defaults to `process.argv`
+ * @param deps - Optional runtime dependencies (logger and auth); if omitted, defaults are created
+ */
 export async function run(
 	argv: string[] = process.argv,
 	deps?: CliDependencies,

@@ -14,6 +14,8 @@ import (
 // version is injected at build time via -ldflags "-X main.version=X.Y.Z"
 var version = "dev"
 
+// printUsage writes the top-level help text to stderr, listing available subcommands
+// and global flags.
 func printUsage() {
 	fmt.Fprintf(os.Stderr, `Usage: teamhero <command> [flags]
 
@@ -129,6 +131,12 @@ Examples:
 `)
 }
 
+// main is the CLI entrypoint; it parses command-line arguments, routes `--help` to
+// subcommand-specific usage, and dispatches execution for `setup`, `doctor`,
+// `assess`, headless, or interactive modes.
+// It also handles global flags such as `--version` (prints build version) and
+// `--show-config` (prints the saved configuration), and maps common cancellation
+// or error conditions to appropriate exit codes.
 func main() {
 	// Detect subcommand first so --help can be routed to the right usage.
 	subcommand := ""

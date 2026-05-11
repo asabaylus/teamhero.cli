@@ -314,6 +314,13 @@ export const RUBRIC_ITEMS: ReadonlyArray<RubricItem> = [
 	},
 ] as const;
 
+/**
+ * Retrieves a rubric item by its numeric identifier.
+ *
+ * @param id - The numeric identifier of the rubric item
+ * @returns The matching RubricItem
+ * @throws Error when no rubric item with the given `id` exists
+ */
 export function getRubricItem(id: number): RubricItem {
 	const item = RUBRIC_ITEMS.find((i) => i.id === id);
 	if (!item) {
@@ -322,6 +329,13 @@ export function getRubricItem(id: number): RubricItem {
 	return item;
 }
 
+/**
+ * Retrieve a rubric category by its ID.
+ *
+ * @param id - The category identifier (`"A"`, `"B"`, `"C"`, or `"D"`)
+ * @returns The `RubricCategory` matching `id`
+ * @throws Error if no category with the provided `id` exists
+ */
 export function getCategory(id: "A" | "B" | "C" | "D"): RubricCategory {
 	const cat = RUBRIC_CATEGORIES.find((c) => c.id === id);
 	if (!cat) {

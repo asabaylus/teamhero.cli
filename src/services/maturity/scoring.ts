@@ -13,7 +13,10 @@ import type {
 } from "./types.js";
 
 /**
- * Per-item numeric value, treating "n/a" as null.
+ * Convert an item's score to a numeric value, returning `null` for `"n/a"`.
+ *
+ * @param score - The item's score, which may be a number or the string `"n/a"`
+ * @returns The numeric score, or `null` if `score` is `"n/a"`
  */
 function scoreNumeric(score: ItemScore["score"]): number | null {
 	if (score === "n/a") return null;
@@ -28,6 +31,19 @@ export interface CategorySubtotal {
 	maxWeighted: number; // adjusted for n/a
 }
 
+/**
+ * Compute per-category subtotals for the provided item scores.
+ *
+ * Items with `"n/a"` scores are excluded from sums and assessment counts.
+ *
+ * @param items - Array of item scores to aggregate by rubric category
+ * @returns An array of `CategorySubtotal` objects (one per rubric category, in the same order as `RUBRIC_CATEGORIES`). Each subtotal includes:
+ * - `id`: category id
+ * - `rawSum`: sum of numeric scores in the category
+ * - `weighted`: `rawSum` multiplied by the category weight
+ * - `maxRaw`: number of assessed items in the category (each contributes at most 1.0)
+ * - `maxWeighted`: `maxRaw` multiplied by the category weight
+ */
 export function categorySubtotals(items: ItemScore[]): CategorySubtotal[] {
 	return RUBRIC_CATEGORIES.map((cat) => {
 		const inCat = items.filter((s) => {
@@ -67,6 +83,18 @@ export interface OverallScore {
 	band: MaturityBand;
 }
 
+/**
+ * Computes aggregated raw and weighted scores, the percent score, and its maturity band for the supplied item scores.
+ *
+ * @param items - Array of `ItemScore` entries to include; `"n/a"` scores are excluded from numeric aggregates.
+ * @returns An `OverallScore` object containing:
+ * - `rawScore`: sum of raw (unweighted) scores across categories
+ * - `rawScoreMax`: maximum possible raw score given assessed items
+ * - `weightedScore`: sum of category-weighted scores
+ * - `weightedScoreMax`: maximum possible weighted score given assessed items
+ * - `scorePercent`: weighted score expressed as a percentage of `weightedScoreMax` (0 when `weightedScoreMax` is 0)
+ * - `band`: the maturity band corresponding to `scorePercent`
+ */
 export function computeOverallScore(items: ItemScore[]): OverallScore {
 	const subtotals = categorySubtotals(items);
 
@@ -89,6 +117,12 @@ export function computeOverallScore(items: ItemScore[]): OverallScore {
 	};
 }
 
+/**
+ * Selects the maturity band whose inclusive range contains the given score percentage.
+ *
+ * @param scorePercent - The score percentage (typically 0–100) to classify
+ * @returns The `MaturityBand` whose `min`..`max` range includes `scorePercent`; if no band matches, returns the last entry of `MATURITY_BANDS` as a fallback
+ */
 export function classifyBand(scorePercent: number): MaturityBand {
 	for (const band of MATURITY_BANDS) {
 		if (scorePercent >= band.min && scorePercent <= band.max) {
@@ -99,6 +133,13 @@ export function classifyBand(scorePercent: number): MaturityBand {
 	return MATURITY_BANDS[MATURITY_BANDS.length - 1];
 }
 
+/**
+ * Get the maturity band for the given band name.
+ *
+ * @param name - The name of the maturity band to look up
+ * @returns The `MaturityBand` whose `name` matches `name`
+ * @throws Error if no maturity band with the provided name exists
+ */
 export function bandByName(name: MaturityBandName): MaturityBand {
 	const band = MATURITY_BANDS.find((b) => b.name === name);
 	if (!band) {
@@ -107,14 +148,23 @@ export function bandByName(name: MaturityBandName): MaturityBand {
 	return band;
 }
 
-/** Returns the unweighted-max constants for diagnostics. */
+/**
+ * Provide the maximum attainable raw and weighted scores for diagnostics.
+ *
+ * @returns An object with `raw` equal to the maximum raw score and `weighted` equal to the maximum weighted score
+ */
 export function maxScores(): { raw: number; weighted: number } {
 	return { raw: MAX_RAW_SCORE, weighted: MAX_WEIGHTED_SCORE };
 }
 
 /**
- * Validate that a list of ItemScores covers all 12 items exactly once.
- * Returns missing item IDs (empty array if valid).
+ * Identify which of the 12 expected rubric item IDs (1–12) are not present in the provided scores.
+ *
+ * This compares against the fixed set of expected IDs {1..12} and returns those that never appear in `items`.
+ * Duplicate or extra entries in `items` are ignored; only the presence of an `itemId` matters.
+ *
+ * @param items - Array of scored items to check for coverage
+ * @returns A sorted array of missing item IDs from 1 through 12; empty if all are present
  */
 export function findMissingItems(items: ItemScore[]): number[] {
 	const expected = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
