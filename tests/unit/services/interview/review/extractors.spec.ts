@@ -2,11 +2,11 @@ import { describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { extractRiskAwareness } from "../../../../../src/services/interview/assess/extractors/risk-awareness.js";
-import { extractTestPass } from "../../../../../src/services/interview/assess/extractors/test-pass.js";
-import { extractThroughput } from "../../../../../src/services/interview/assess/extractors/throughput.js";
-import { extractVerification } from "../../../../../src/services/interview/assess/extractors/verification.js";
-import type { EvidenceEvent } from "../../../../../src/services/interview/assess/types.js";
+import { extractRiskAwareness } from "../../../../../src/services/interview/review/extractors/risk-awareness.js";
+import { extractTestPass } from "../../../../../src/services/interview/review/extractors/test-pass.js";
+import { extractThroughput } from "../../../../../src/services/interview/review/extractors/throughput.js";
+import { extractVerification } from "../../../../../src/services/interview/review/extractors/verification.js";
+import type { EvidenceEvent } from "../../../../../src/services/interview/review/types.js";
 
 const prompt = (ts: string, text: string): EvidenceEvent => ({
 	type: "prompt",

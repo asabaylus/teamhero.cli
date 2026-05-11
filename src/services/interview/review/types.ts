@@ -98,13 +98,13 @@ export interface Measurement {
 }
 
 /** The top-level result emitted per candidate before audit-writer renders it. */
-export interface GradeResult {
+export interface ReviewResult {
 	readonly rubric_version: string;
 	readonly candidate_id: string;
 	readonly role_slug: string;
 	readonly observed_at: string; // ISO-8601 — never "scored_at"
 	readonly observations: readonly Observation[];
 	readonly measurements: readonly Measurement[];
-	/** Free-form metadata captured at grading time (e.g., interviewer notes path). */
+	/** Free-form metadata captured at review time (e.g., interviewer notes path). */
 	readonly metadata?: Readonly<Record<string, string>>;
 }

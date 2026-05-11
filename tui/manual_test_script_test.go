@@ -27,7 +27,7 @@ func TestManualTestScript_CoversAllRequiredSteps(t *testing.T) {
 	required := []string{
 		"interview bootstrap", // wizard step
 		"--headless",          // headless bootstrap step
-		"interview grade",     // grade step
+		"interview review",    // review step
 		"interview cohort",    // cohort step
 		"sign-off",            // sign-off gating step
 	}
@@ -47,11 +47,11 @@ func TestManualTestScript_PausesBetweenSteps(t *testing.T) {
 
 func TestManualTestScript_DoesNotRequireOpenAIKey(t *testing.T) {
 	body := readScript(t, manualTestScriptPath)
-	// The grade step must use --mode-analysis human-only (or an explicit
+	// The review step must use --mode-analysis human-only (or an explicit
 	// stub observer flag) so the operator doesn't need an API key.
 	hasHumanOnly := strings.Contains(body, "human-only")
 	if !hasHumanOnly {
-		t.Errorf("script must invoke grade with human-only analysis to avoid OpenAI costs; body did not mention 'human-only'")
+		t.Errorf("script must invoke review with human-only analysis to avoid OpenAI costs; body did not mention 'human-only'")
 	}
 }
 

@@ -7,8 +7,8 @@ import (
 	"testing"
 )
 
-func TestParseGradeFlags_Positional(t *testing.T) {
-	opts, parseErr := ParseGradeFlags([]string{"https://github.com/x/y", "--candidate", "Jane"})
+func TestParseReviewFlags_Positional(t *testing.T) {
+	opts, parseErr := ParseReviewFlags([]string{"https://github.com/x/y", "--candidate", "Jane"})
 	if parseErr != "" {
 		t.Fatalf("unexpected parse error: %s", parseErr)
 	}
@@ -17,8 +17,8 @@ func TestParseGradeFlags_Positional(t *testing.T) {
 	}
 }
 
-func TestParseGradeFlags_AllFlags(t *testing.T) {
-	opts, parseErr := ParseGradeFlags([]string{
+func TestParseReviewFlags_AllFlags(t *testing.T) {
+	opts, parseErr := ParseReviewFlags([]string{
 		"--candidate", "Jane",
 		"--repo", "https://x.com/y",
 		"--transcript", "/tmp/t.txt",
@@ -39,41 +39,41 @@ func TestParseGradeFlags_AllFlags(t *testing.T) {
 	}
 }
 
-func TestValidateGradeOptions_RequiresCandidate(t *testing.T) {
-	opts := &GradeOptions{Repo: "https://x"}
-	if msg := ValidateGradeOptions(opts); msg == "" {
+func TestValidateReviewOptions_RequiresCandidate(t *testing.T) {
+	opts := &ReviewOptions{Repo: "https://x"}
+	if msg := ValidateReviewOptions(opts); msg == "" {
 		t.Fatal("expected error on missing candidate")
 	}
 }
 
-func TestValidateGradeOptions_RequiresRepoOrLocal(t *testing.T) {
-	opts := &GradeOptions{Candidate: "Jane"}
-	if msg := ValidateGradeOptions(opts); msg == "" {
+func TestValidateReviewOptions_RequiresRepoOrLocal(t *testing.T) {
+	opts := &ReviewOptions{Candidate: "Jane"}
+	if msg := ValidateReviewOptions(opts); msg == "" {
 		t.Fatal("expected error on missing repo and local")
 	}
 }
 
-func TestValidateGradeOptions_RejectsBadPlatform(t *testing.T) {
-	opts := &GradeOptions{Candidate: "Jane", Repo: "x", SessionPlatform: "nope"}
-	if msg := ValidateGradeOptions(opts); msg == "" {
+func TestValidateReviewOptions_RejectsBadPlatform(t *testing.T) {
+	opts := &ReviewOptions{Candidate: "Jane", Repo: "x", SessionPlatform: "nope"}
+	if msg := ValidateReviewOptions(opts); msg == "" {
 		t.Fatal("expected error on bad platform")
 	}
 }
 
-type stubGradeRunner struct {
-	gotOpts *GradeOptions
+type stubReviewRunner struct {
+	gotOpts *ReviewOptions
 	code    int
 }
 
-func (s *stubGradeRunner) Run(opts *GradeOptions, _, _ io.Writer) int {
+func (s *stubReviewRunner) Run(opts *ReviewOptions, _, _ io.Writer) int {
 	s.gotOpts = opts
 	return s.code
 }
 
-func TestRunInterviewGrade_PrintsWarningBanner(t *testing.T) {
+func TestRunInterviewReview_PrintsWarningBanner(t *testing.T) {
 	var out, errBuf bytes.Buffer
-	stub := &stubGradeRunner{code: 0}
-	code := runInterviewGrade(
+	stub := &stubReviewRunner{code: 0}
+	code := runInterviewReview(
 		[]string{"--candidate", "Jane", "--repo", "x"},
 		stub, &out, &errBuf,
 	)
@@ -88,10 +88,10 @@ func TestRunInterviewGrade_PrintsWarningBanner(t *testing.T) {
 	}
 }
 
-func TestRunInterviewGrade_ForwardsExitCode(t *testing.T) {
+func TestRunInterviewReview_ForwardsExitCode(t *testing.T) {
 	var out, errBuf bytes.Buffer
-	stub := &stubGradeRunner{code: 7}
-	code := runInterviewGrade(
+	stub := &stubReviewRunner{code: 7}
+	code := runInterviewReview(
 		[]string{"--candidate", "Jane", "--repo", "x"},
 		stub, &out, &errBuf,
 	)

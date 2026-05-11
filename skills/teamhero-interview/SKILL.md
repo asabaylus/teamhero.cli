@@ -1,6 +1,6 @@
 ---
 name: teamhero-interview
-description: Run candidate AI-collaboration coding interviews end-to-end — configure a role and generate the project (bootstrap), grade a single candidate's submission with structured observations (grade), produce a cohort roll-up across all candidates for a role (cohort). Use this when the user wants to set up an interview, evaluate a candidate's submitted repo, see the full cohort for a role, or asks anything about hiring through the `teamhero interview` CLI.
+description: Run candidate AI-collaboration coding interviews end-to-end — configure a role and generate the project (bootstrap), review a single candidate's submission with structured observations (review), produce a cohort roll-up across all candidates for a role (cohort). Use this when the user wants to set up an interview, evaluate a candidate's submitted repo, see the full cohort for a role, or asks anything about hiring through the `teamhero interview` CLI.
 ---
 
 # teamhero-interview — bounded-context skill
@@ -17,7 +17,7 @@ skill at all.
 
 ## Ethical framing — always present these to the user
 
-Before running grade or cohort, remind the user of the three commitments
+Before running review or cohort, remind the user of the three commitments
 that govern this tool. These are not boilerplate; they shape how the
 output should be read:
 
@@ -75,18 +75,18 @@ When user says: "set up an interview for a senior backend role", "create a
 new role", "I need a coding project for candidates", "bootstrap a hiring
 round" → run bootstrap.
 
-#### `teamhero interview grade <repo-url>`
-Grades a single candidate's submitted repository.
+#### `teamhero interview review <repo-url>`
+Reviews a single candidate's submitted repository.
 
 ```
-teamhero interview grade --candidate "Jane Doe" --repo <url> \
+teamhero interview review --candidate "Jane Doe" --repo <url> \
   [--transcript <file>] [--interviewer-notes <file>] \
   [--session-recording-url <url>] [--session-platform zoom|teams|meet|other] \
   [--session-date YYYY-MM-DD] [--output-dir <path>]
 ```
 
-When user says: "grade Alice's submission", "evaluate this candidate's
-repo", "produce the audit for X" → run grade.
+When user says: "review Alice's submission", "evaluate this candidate's
+repo", "produce the audit for X" → run review.
 
 Always print the ADVISORY warning banner before reporting results, and
 always end by reminding the user the audit is not complete until they
@@ -114,7 +114,7 @@ the workaround (`ls docs/interviews/`).
 
 ## Cohort orchestration — when invoked conversationally
 
-If the user says "grade the whole cohort" or "review all candidates for
+If the user says "review the whole cohort" or "review all candidates for
 role X":
 
 1. Locate the role config (typically `docs/interviews/<slug>/role-config.json`
@@ -124,10 +124,10 @@ role X":
    a. Ask the user which transcript file (if any) belongs to that candidate.
       Look in `~/Downloads/`, the project's `transcripts/` directory, or
       anywhere the user indicates. Do NOT guess — ask.
-   b. Invoke `teamhero interview grade --candidate "<name>" --repo <url> \
+   b. Invoke `teamhero interview review --candidate "<name>" --repo <url> \
         --transcript <path>` and capture the audit.
    c. Report which audit was written (path).
-3. After all candidates are graded, invoke `teamhero interview cohort
+3. After all candidates are reviewed, invoke `teamhero interview cohort
    --role <slug>` and report the path to `COHORT.md`.
 4. Remind the user that **each candidate's audit needs a separate sign-off
    from the manager** before it counts as complete, and that no hiring
@@ -140,7 +140,7 @@ role X":
   without also including a pointer to the audit.md (the reasoning chain is
   preserved there for a reason — managers should read the full chain, not
   just the summary).
-- If a grade run fails, surface the failure list literally; do not
+- If a review run fails, surface the failure list literally; do not
   paraphrase the diagnostic.
 
 ## What NOT to do

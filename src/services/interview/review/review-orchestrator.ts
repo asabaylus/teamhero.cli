@@ -32,7 +32,7 @@ import { extractThroughput } from "./extractors/throughput.js";
 import { extractVerification } from "./extractors/verification.js";
 import type {
 	EvidenceEvent,
-	GradeResult,
+	ReviewResult,
 	Measurement,
 } from "./types.js";
 
@@ -47,7 +47,7 @@ const defaultCloner: Cloner = (repoUrl, destDir) => {
 	});
 };
 
-export interface GradeInput {
+export interface ReviewInput {
 	readonly repoUrl: string;
 	readonly transcriptPath?: string;
 	readonly interviewerNotesPath?: string;
@@ -60,16 +60,16 @@ export interface GradeInput {
 	readonly localRepoPath?: string;
 }
 
-export interface GradeDependencies {
+export interface ReviewDependencies {
 	readonly observer: ObserverClient;
 	readonly clone?: Cloner;
 	readonly testRunner?: TestRunner;
 }
 
-export interface GradeOutcome {
+export interface ReviewOutcome {
 	readonly ok: boolean;
 	readonly outputs?: AuditWriteOutputs;
-	readonly result?: GradeResult;
+	readonly result?: ReviewResult;
 	readonly failures: readonly string[];
 }
 
@@ -98,7 +98,7 @@ function copyIfExists(src: string, dest: string): void {
 
 function collectEvents(
 	repoDir: string,
-	input: GradeInput,
+	input: ReviewInput,
 ): readonly EvidenceEvent[] {
 	const streams: EvidenceEvent[][] = [];
 
@@ -136,7 +136,7 @@ function collectEvents(
 function computeMeasurements(
 	repoDir: string,
 	events: readonly EvidenceEvent[],
-	deps: GradeDependencies,
+	deps: ReviewDependencies,
 ): readonly Measurement[] {
 	return [
 		extractVerification(events),
@@ -146,10 +146,10 @@ function computeMeasurements(
 	];
 }
 
-export async function gradeCandidate(
-	input: GradeInput,
-	deps: GradeDependencies,
-): Promise<GradeOutcome> {
+export async function reviewCandidate(
+	input: ReviewInput,
+	deps: ReviewDependencies,
+): Promise<ReviewOutcome> {
 	const cleanupPaths: string[] = [];
 	try {
 		let repoDir: string;
@@ -189,7 +189,7 @@ export async function gradeCandidate(
 			observations = humanOnlyObservations();
 		}
 
-		const result: GradeResult = {
+		const result: ReviewResult = {
 			rubric_version: getRubricVersion(),
 			candidate_id: `${slug(input.candidateName)}-${todayIso()}`,
 			role_slug: roleConfig.roleSlug,
@@ -244,7 +244,7 @@ export async function gradeCandidate(
 }
 
 function buildFrontmatter(
-	input: GradeInput,
+	input: ReviewInput,
 	role: RoleConfig,
 ): AuditFrontmatter {
 	return {
@@ -262,5 +262,5 @@ function buildFrontmatter(
 }
 
 // Suppress unused-export lint helper for narrow type re-export
-export type { GradeResult, Measurement };
+export type { ReviewResult, Measurement };
 export { readFileSync as _readFileSync };

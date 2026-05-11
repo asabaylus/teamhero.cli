@@ -1,10 +1,10 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { getDimensions } from "../shared/rubric.js";
-import type { GradeResult, Measurement, Observation } from "./types.js";
+import type { ReviewResult, Measurement, Observation } from "./types.js";
 
 /**
- * Audit writer. Pure transformation from GradeResult to the per-candidate
+ * Audit writer. Pure transformation from ReviewResult to the per-candidate
  * audit folder layout (summary.md / audit.md / audit.json). Reasoning chains
  * are preserved in BOTH summary.md and audit.md.
  */
@@ -25,7 +25,7 @@ export interface AuditFrontmatter {
 }
 
 export interface WriteAuditInput {
-	readonly result: GradeResult;
+	readonly result: ReviewResult;
 	readonly frontmatter: AuditFrontmatter;
 	readonly outputDir: string;
 }

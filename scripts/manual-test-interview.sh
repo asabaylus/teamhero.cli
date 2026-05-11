@@ -7,7 +7,7 @@
 # the wizard's branching, the glamour preview's readability, and the
 # phased progress display's responsiveness.
 #
-# It does NOT spend money on OpenAI: the grade step is invoked with
+# It does NOT spend money on OpenAI: the review step is invoked with
 # --mode-analysis human-only so no API key is required.
 #
 # Usage:
@@ -73,20 +73,20 @@ pause "Run the headless bootstrap and verify no TUI is rendered."
   --output-dir "$TMPDIR/manual-test-role" || true
 echo "Bootstrap output (if any) is in: $TMPDIR/manual-test-role"
 
-step 3 "Grade flow — phased progress display + glamour preview"
-echo "The grade step is invoked with --mode-analysis human-only so no OpenAI"
+step 3 "Review flow — phased progress display + glamour preview"
+echo "The review step is invoked with --mode-analysis human-only so no OpenAI"
 echo "key is needed. Watch for:"
 echo "  - Phased progress display: clone → collect-evidence → extract-measurements → observe → audit-write"
 echo "  - The ADVISORY warning banner at the start"
 echo "  - A glamour-rendered preview of summary.md after the run completes"
-pause "Run grade and verify the progress display + glamour preview."
-"$BIN" interview grade \
+pause "Run review and verify the progress display + glamour preview."
+"$BIN" interview review \
   --candidate "Manual Test Candidate" \
   --repo "https://example.com/fake-repo" \
-  --output-dir "$TMPDIR/grade-output" || true
+  --output-dir "$TMPDIR/review-output" || true
 
 step 4 "Sign-off file gating"
-echo "Open the summary.md and audit.md in $TMPDIR/grade-output/ and verify:"
+echo "Open the summary.md and audit.md in $TMPDIR/review-output/ and verify:"
 echo "  - The ADVISORY banner is at the top of BOTH files"
 echo "  - The sign-off section is present and requires a categorical decision"
 echo "  - The session recording URL appears in frontmatter only (not in body)"

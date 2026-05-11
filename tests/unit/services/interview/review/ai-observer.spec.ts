@@ -9,9 +9,9 @@ import {
 	OBSERVATION_RESPONSE_SCHEMA,
 	OpenAIObserverClient,
 	rejectIfScored,
-} from "../../../../../src/services/interview/assess/ai-observer.js";
+} from "../../../../../src/services/interview/review/ai-observer.js";
 import type { RoleConfig } from "../../../../../src/services/interview/bootstrap/role-config.js";
-import type { EvidenceEvent } from "../../../../../src/services/interview/assess/types.js";
+import type { EvidenceEvent } from "../../../../../src/services/interview/review/types.js";
 
 function role(overrides: Partial<RoleConfig> = {}): RoleConfig {
 	return {

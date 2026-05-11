@@ -9,11 +9,11 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { gradeCandidate } from "../../../../../src/services/interview/assess/grade-orchestrator.js";
+import { reviewCandidate } from "../../../../../src/services/interview/review/review-orchestrator.js";
 import { writeRoleConfig } from "../../../../../src/services/interview/bootstrap/role-config.js";
 
 function stageRepo(opts: { analysisMode?: "ai-assisted" | "human-only" } = {}) {
-	const dir = mkdtempSync(join(tmpdir(), "iv-grade-"));
+	const dir = mkdtempSync(join(tmpdir(), "iv-review-"));
 	writeRoleConfig(dir, {
 		roleSlug: "senior-backend",
 		roleTitle: "Senior Backend Engineer",
@@ -88,12 +88,12 @@ const stubObserver = {
 	},
 };
 
-describe("gradeCandidate orchestrator", () => {
+describe("reviewCandidate orchestrator", () => {
 	it("produces summary.md, audit.md, audit.json, and evidence/ for a complete repo", async () => {
 		const repo = stageRepo();
 		const out = mkdtempSync(join(tmpdir(), "iv-out-"));
 		try {
-			const outcome = await gradeCandidate(
+			const outcome = await reviewCandidate(
 				{
 					repoUrl: "stub",
 					candidateName: "Jane Doe",
@@ -123,7 +123,7 @@ describe("gradeCandidate orchestrator", () => {
 		const repo = mkdtempSync(join(tmpdir(), "iv-bad-"));
 		const out = mkdtempSync(join(tmpdir(), "iv-out-"));
 		try {
-			const outcome = await gradeCandidate(
+			const outcome = await reviewCandidate(
 				{
 					repoUrl: "stub",
 					candidateName: "Jane",
@@ -152,7 +152,7 @@ describe("gradeCandidate orchestrator", () => {
 			},
 		};
 		try {
-			const outcome = await gradeCandidate(
+			const outcome = await reviewCandidate(
 				{
 					repoUrl: "stub",
 					candidateName: "Jane",
@@ -178,7 +178,7 @@ describe("gradeCandidate orchestrator", () => {
 		const repo = stageRepo();
 		const out = mkdtempSync(join(tmpdir(), "iv-out-"));
 		try {
-			const outcome = await gradeCandidate(
+			const outcome = await reviewCandidate(
 				{
 					repoUrl: "stub",
 					candidateName: "Jane",

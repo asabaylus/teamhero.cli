@@ -8,11 +8,11 @@ import {
 	renderSummary,
 	validateSignOff,
 	writeAudit,
-} from "../../../../../src/services/interview/assess/audit-writer.js";
+} from "../../../../../src/services/interview/review/audit-writer.js";
 import type {
-	GradeResult,
+	ReviewResult,
 	Observation,
-} from "../../../../../src/services/interview/assess/types.js";
+} from "../../../../../src/services/interview/review/types.js";
 
 function frontmatter(
 	overrides: Partial<AuditFrontmatter> = {},
@@ -46,7 +46,7 @@ function sampleObservation(): Observation {
 	};
 }
 
-function sampleResult(): GradeResult {
+function sampleResult(): ReviewResult {
 	return {
 		rubric_version: "1.0.0",
 		candidate_id: "jane-doe-2026-05-10",
@@ -159,7 +159,7 @@ describe("renderAudit", () => {
 
 	it("renders evidence excerpts without truncation", () => {
 		const long = "x".repeat(400);
-		const res: GradeResult = {
+		const res: ReviewResult = {
 			...sampleResult(),
 			observations: [
 				{

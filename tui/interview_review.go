@@ -8,8 +8,8 @@ import (
 	"strings"
 )
 
-// GradeOptions are the headless flags accepted by `teamhero interview grade`.
-type GradeOptions struct {
+// ReviewOptions are the headless flags accepted by `teamhero interview review`.
+type ReviewOptions struct {
 	Repo                string
 	Candidate           string
 	Transcript          string
@@ -21,10 +21,10 @@ type GradeOptions struct {
 	LocalRepoPath       string
 }
 
-// ParseGradeFlags parses headless flags from the args following `grade`.
+// ParseReviewFlags parses headless flags from the args following `review`.
 // The candidate URL/path can be a positional first arg (just like git clone).
-func ParseGradeFlags(args []string) (*GradeOptions, string) {
-	opts := &GradeOptions{}
+func ParseReviewFlags(args []string) (*ReviewOptions, string) {
+	opts := &ReviewOptions{}
 	i := 0
 	for i < len(args) {
 		a := args[i]
@@ -70,8 +70,8 @@ func ParseGradeFlags(args []string) (*GradeOptions, string) {
 	return opts, ""
 }
 
-// ValidateGradeOptions returns "" on success.
-func ValidateGradeOptions(opts *GradeOptions) string {
+// ValidateReviewOptions returns "" on success.
+func ValidateReviewOptions(opts *ReviewOptions) string {
 	if strings.TrimSpace(opts.Candidate) == "" {
 		return "missing required flag: --candidate"
 	}
@@ -88,15 +88,15 @@ func ValidateGradeOptions(opts *GradeOptions) string {
 	return ""
 }
 
-// GradeRunner is the interface that abstracts the TS subprocess for tests.
-type GradeRunner interface {
-	Run(opts *GradeOptions, stdout, stderr io.Writer) int
+// ReviewRunner is the interface that abstracts the TS subprocess for tests.
+type ReviewRunner interface {
+	Run(opts *ReviewOptions, stdout, stderr io.Writer) int
 }
 
-type bunGradeRunner struct{}
+type bunReviewRunner struct{}
 
-func (bunGradeRunner) Run(opts *GradeOptions, stdout, stderr io.Writer) int {
-	script := findGradeScript()
+func (bunReviewRunner) Run(opts *ReviewOptions, stdout, stderr io.Writer) int {
+	script := findReviewScript()
 	args := []string{"run", script, "--candidate", opts.Candidate}
 	if opts.Repo != "" {
 		args = append(args, "--repo", opts.Repo)
@@ -124,37 +124,37 @@ func (bunGradeRunner) Run(opts *GradeOptions, stdout, stderr io.Writer) int {
 		if exit, ok := err.(*exec.ExitError); ok {
 			return exit.ExitCode()
 		}
-		fmt.Fprintf(stderr, "Failed to run grade subprocess: %v\n", err)
+		fmt.Fprintf(stderr, "Failed to run review subprocess: %v\n", err)
 		return 1
 	}
 	return 0
 }
 
-func findGradeScript() string {
+func findReviewScript() string {
 	candidates := []string{
-		"scripts/run-interview-grade.ts",
-		"../scripts/run-interview-grade.ts",
+		"scripts/run-interview-review.ts",
+		"../scripts/run-interview-review.ts",
 	}
 	for _, c := range candidates {
 		if _, err := os.Stat(c); err == nil {
 			return c
 		}
 	}
-	return "scripts/run-interview-grade.ts"
+	return "scripts/run-interview-review.ts"
 }
 
-func runInterviewGrade(args []string, runner GradeRunner, stdout, stderr io.Writer) int {
-	opts, parseErr := ParseGradeFlags(args)
+func runInterviewReview(args []string, runner ReviewRunner, stdout, stderr io.Writer) int {
+	opts, parseErr := ParseReviewFlags(args)
 	if parseErr != "" {
 		fmt.Fprintln(stderr, parseErr)
 		return 1
 	}
-	if msg := ValidateGradeOptions(opts); msg != "" {
+	if msg := ValidateReviewOptions(opts); msg != "" {
 		fmt.Fprintln(stderr, msg)
 		return 1
 	}
 
-	// Warning banner — mandatory at the start of every grade flow.
+	// Warning banner — mandatory at the start of every review flow.
 	fmt.Fprintln(stderr, "⚠ THIS RUN PRODUCES AN ADVISORY AUDIT. Hiring decisions are made by humans.")
 	fmt.Fprintln(stderr, "  The candidate is a person, not a score. The audit is one factor among many.")
 	fmt.Fprintln(stderr)

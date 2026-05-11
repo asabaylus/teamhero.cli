@@ -9,7 +9,7 @@ import type { PromptEvent, ToolUseEvent } from "../types.js";
  *   {"event":"pre-tool-use","timestamp":"...","tool_name":"...","tool_input":{...}}
  *
  * Lines that fail to parse are dropped silently — a corrupt log line should
- * not abort the entire grade run.
+ * not abort the entire review run.
  */
 
 export interface InterviewLogParseResult {

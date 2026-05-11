@@ -9,7 +9,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AuditFrontmatter } from "../../../../../src/services/interview/assess/audit-writer.js";
+import type { AuditFrontmatter } from "../../../../../src/services/interview/review/audit-writer.js";
 import {
 	loadCohort,
 	renderCohortSummary,

@@ -26,7 +26,7 @@ func newInterviewStyles() interviewStyles {
 }
 
 // AdvisoryBanner is the lipgloss style for the mandatory ADVISORY warning that
-// must appear at the top of every grade run, every audit, and every cohort
+// must appear at the top of every review run, every audit, and every cohort
 // report.
 func (s interviewStyles) AdvisoryBanner() lipgloss.Style {
 	return lipgloss.NewStyle().

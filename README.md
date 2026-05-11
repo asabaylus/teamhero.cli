@@ -91,10 +91,10 @@ teamhero report --headless --since 2026-03-01 --until 2026-03-14 --sections loc,
 
 Run `teamhero report --help` for all flags.
 
-### 4. Grade candidate interviews
+### 4. Review candidate interviews
 
-TeamHero also includes a candidate AI-collaboration interview grader. Run the
-interactive wizard to configure a role:
+TeamHero also includes a candidate AI-collaboration interview reviewer. Run
+the interactive wizard to configure a role:
 
 ```bash
 teamhero interview bootstrap
@@ -104,13 +104,13 @@ The wizard walks you through role slug, tech stack, business domain, feature
 description, time-box, project mode, analysis mode, and rubric mode (with
 conditional follow-ups for a custom prompt or a job-description file).
 
-Once a candidate has submitted their repository, grade it:
+Once a candidate has submitted their repository, review it:
 
 ```bash
-teamhero interview grade --candidate "Jane Doe" --repo https://github.com/jane/submission
+teamhero interview review --candidate "Jane Doe" --repo https://github.com/jane/submission
 ```
 
-The grade run prints a phased progress display (clone → collect-evidence →
+The review run prints a phased progress display (clone → collect-evidence →
 extract-measurements → observe → audit-write) and finishes with a
 glamour-rendered preview of the audit. **Every audit ships with a mandatory
 ADVISORY banner** — the audit is advisory; hiring decisions are made by

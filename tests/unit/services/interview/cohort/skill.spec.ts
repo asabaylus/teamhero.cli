@@ -27,7 +27,7 @@ describe("teamhero-interview Claude skill", () => {
 
 	it("documents all 3 MVP verbs with example invocations", () => {
 		const body = loadSkill();
-		for (const verb of ["bootstrap", "grade", "cohort"]) {
+		for (const verb of ["bootstrap", "review", "cohort"]) {
 			expect(body).toContain(`teamhero interview ${verb}`);
 		}
 	});
@@ -50,7 +50,7 @@ describe("teamhero-interview Claude skill", () => {
 		expect(body).toMatch(/Do not produce scores/i);
 	});
 
-	it("describes cohort orchestration (read role config → grade each → run cohort)", () => {
+	it("describes cohort orchestration (read role config → review each → run cohort)", () => {
 		const body = loadSkill();
 		expect(body).toMatch(/Cohort orchestration/);
 		expect(body).toMatch(/role config/);

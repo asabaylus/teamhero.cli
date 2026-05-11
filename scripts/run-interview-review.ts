@@ -1,13 +1,13 @@
 #!/usr/bin/env bun
-// CLI entry for `teamhero interview grade`. Spawned by the Go TUI.
+// CLI entry for `teamhero interview review`. Spawned by the Go TUI.
 
 import { consola } from "consola";
 import { config as loadDotenv } from "dotenv";
 
 loadDotenv({ override: true });
 
-import { OpenAIObserverClient } from "../src/services/interview/assess/ai-observer.js";
-import { gradeCandidate } from "../src/services/interview/assess/grade-orchestrator.js";
+import { OpenAIObserverClient } from "../src/services/interview/review/ai-observer.js";
+import { reviewCandidate } from "../src/services/interview/review/review-orchestrator.js";
 
 interface Flags {
 	repo?: string;
@@ -54,7 +54,7 @@ async function main() {
 		consola.error("Need either --repo <url> or --local-repo-path <dir>");
 		process.exit(1);
 	}
-	const result = await gradeCandidate(
+	const result = await reviewCandidate(
 		{
 			repoUrl: flags.repo ?? "",
 			candidateName: flags.candidate,
@@ -69,7 +69,7 @@ async function main() {
 		{ observer: new OpenAIObserverClient() },
 	);
 	if (!result.ok) {
-		consola.error("Grade failed:");
+		consola.error("Review failed:");
 		for (const f of result.failures) consola.error(`  - ${f}`);
 		process.exit(1);
 	}

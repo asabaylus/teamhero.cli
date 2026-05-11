@@ -21,7 +21,7 @@ Commands:
   report      Generate a developer contribution report (default)
   setup       Configure credentials and preferences
   doctor      Validate installation health
-  interview   Grade candidate AI-collaboration interviews
+  interview   Review candidate AI-collaboration interviews
 
 Run 'teamhero <command> --help' for command-specific help.
 

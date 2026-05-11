@@ -14,7 +14,7 @@ const (
 	interviewPhaseFailed
 )
 
-// interviewPhases lists the canonical phases of the `interview grade`
+// interviewPhases lists the canonical phases of the `interview review`
 // pipeline in execution order. The TS subprocess emits these step names via
 // the InterviewProgressEvent protocol.
 var interviewPhases = []string{

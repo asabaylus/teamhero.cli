@@ -2,10 +2,10 @@ import { describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parseAsciinemaCast } from "../../../../../src/services/interview/assess/collectors/asciinema.js";
-import { parseGitHistory } from "../../../../../src/services/interview/assess/collectors/git-history.js";
-import { parseInterviewLog } from "../../../../../src/services/interview/assess/collectors/jsonl-log.js";
-import { parseTranscript } from "../../../../../src/services/interview/assess/collectors/transcript.js";
+import { parseAsciinemaCast } from "../../../../../src/services/interview/review/collectors/asciinema.js";
+import { parseGitHistory } from "../../../../../src/services/interview/review/collectors/git-history.js";
+import { parseInterviewLog } from "../../../../../src/services/interview/review/collectors/jsonl-log.js";
+import { parseTranscript } from "../../../../../src/services/interview/review/collectors/transcript.js";
 
 function tmp(): string {
 	return mkdtempSync(join(tmpdir(), "iv-coll-"));

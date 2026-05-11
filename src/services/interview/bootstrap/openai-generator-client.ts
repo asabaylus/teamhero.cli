@@ -73,7 +73,7 @@ This is attempt ${attempt}.${retryNote}
 
 ${modeSpec}
 
-Rubric (interview-grader v${getRubricVersion()}) — the project must give the candidate room to demonstrate each dimension:
+Rubric (interview-reviewer v${getRubricVersion()}) — the project must give the candidate room to demonstrate each dimension:
 ${rubric}
 
 Return a JSON object with a "files" array. Each entry has "path" (repo-relative) and "content" (full file content).`;

@@ -27,13 +27,13 @@ func TestRunInterview_BootstrapVerb_RequiresFlags(t *testing.T) {
 	}
 }
 
-func TestRunInterview_GradeVerb_RequiresFlags(t *testing.T) {
-	// grade is implemented in Slice 4; with no flags it should reject
+func TestRunInterview_ReviewVerb_RequiresFlags(t *testing.T) {
+	// review is implemented in Slice 4; with no flags it should reject
 	// (--candidate and either --repo or --local-repo-path are required).
 	var out bytes.Buffer
-	code := runInterview([]string{"grade"}, &out)
+	code := runInterview([]string{"review"}, &out)
 	if code == 0 {
-		t.Errorf("grade without flags should return non-zero, got %d", code)
+		t.Errorf("review without flags should return non-zero, got %d", code)
 	}
 }
 
@@ -59,7 +59,7 @@ func TestPrintInterviewUsage_ListsAllThreeVerbs(t *testing.T) {
 	var out bytes.Buffer
 	printInterviewUsage(&out)
 	got := out.String()
-	for _, verb := range []string{"bootstrap", "grade", "cohort"} {
+	for _, verb := range []string{"bootstrap", "review", "cohort"} {
 		if !strings.Contains(got, verb) {
 			t.Errorf("interview usage should list verb %q; got: %s", verb, got)
 		}

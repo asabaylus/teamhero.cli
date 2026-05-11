@@ -1,4 +1,4 @@
-# Plan — Candidate Interview Grader
+# Plan — Candidate Interview Reviewer
 
 > **Status:** Design landed via grilling session 2026-05-09 (revised same day across multiple architectural and product refinements; final ethical revision drops all numerical scoring in favor of observations + raw measurements). **All open questions are resolved.**
 >
@@ -252,7 +252,7 @@ type Measurement = {
   }>;
 };
 
-type GradeResult = {
+type ReviewResult = {
   rubric_version: string;
   candidate_id: string;
   role_slug: string;
@@ -521,14 +521,14 @@ Manager-discretion. Tool ships with guidance: retain at least until the hiring d
 |---|---|---|---|
 | **Hiring manager** | Once per role (before candidates start) | `teamhero interview bootstrap` (wizard) | 1× per role |
 | **Candidate** | During the interview session | The kit's `start.sh` / `end.sh` | 1× per candidate |
-| **Interviewer** | After each candidate's session | `teamhero interview grade` | 1× per candidate |
+| **Interviewer** | After each candidate's session | `teamhero interview review` | 1× per candidate |
 
 ### CLI namespace (DDD-organized)
 
 ```
 teamhero interview                   # (no verb) → prints help + verb menu
 teamhero interview bootstrap         # MVP: bootstrap a role's project
-teamhero interview grade             # MVP: produce observations for a single candidate
+teamhero interview review            # MVP: produce observations for a single candidate
 teamhero interview cohort            # MVP: produce cohort summary roll-up for a role
 teamhero interview list-roles        # v1.5
 teamhero interview list-candidates   # v1.5
@@ -544,25 +544,25 @@ src/services/interview/              ← all interview logic, organized by verb
 │   ├── project-generator.ts
 │   ├── validator.ts
 │   └── prompts.ts
-├── observe/                         ← formerly "grade/" — observation generation, not scoring
+├── review/                          ← observation generation, not scoring
 │   ├── evidence-collectors.ts       # per-input adapters (asciinema, JSONL, markdown, audio)
 │   ├── deterministic-extractors.ts  # raw measurements for the 4 deterministic dims
 │   ├── ai-observer.ts               # mega-call to Responses API for LLM-judge dimensions
-│   └── prompts.ts                   # observation-generation prompt + GRADE_RESULT schema
+│   └── prompts.ts                   # observation-generation prompt + REVIEW_RESULT schema
 ├── cohort/
 │   ├── summary.ts                   # cohort listing — no ranking math
 │   └── audit-store.ts               # cohort persistence (COHORT.md per role)
 └── shared/
     ├── rubric.ts                    # single source of truth, RUBRIC_VERSION
-    ├── audit-writer.ts              # both tiers from the same GradeResult
+    ├── audit-writer.ts              # both tiers from the same ReviewResult
     └── types.ts
 
 scripts/run-interview-bootstrap.ts
-scripts/run-interview-grade.ts       ← still named "grade" for CLI familiarity, despite producing observations
+scripts/run-interview-review.ts      ← invoked by the Go TUI when the operator runs `teamhero interview review`
 
 tui/interview.go
 tui/interview_bootstrap_*.go
-tui/interview_grade_*.go             ← UI displays observations, not scores
+tui/interview_review_*.go            ← UI displays observations, not scores
 tui/interview_cohort_*.go
 
 teamhero-interview-kit/              ← candidate-facing recording/logging kit
@@ -578,13 +578,13 @@ teamhero-interview-kit/              ← candidate-facing recording/logging kit
 ~/.claude/skills/teamhero-interview/SKILL.md
 
 docs/
-├── 2026-05-09-candidate-interview-grader-plan.md   ← THIS FILE
+├── 2026-05-09-candidate-interview-reviewer-plan.md ← THIS FILE
 ├── interview-rubric.md                              ← formal rubric (9 dims, observation framework)
 ├── interview-classification-rationale.md            ← defensibility doc, leads with ethics preamble
 └── interviews/<role-slug>/                          ← per-role audit outputs
 ```
 
-Note the `observe/` subdirectory naming — the architectural code reflects that we're observing, not scoring. The CLI verb stays `grade` for user familiarity (matches the surface area of `teamhero assess`), but internally the verbiage is consistent: observations, not scores.
+The `review/` subdirectory naming reflects that we're reviewing — observing and producing an advisory audit, not scoring. The CLI verb (`review`) and the directory name match deliberately: the language is consistent end-to-end with the ethics floor (observations, not scores).
 
 ### The single skill
 
@@ -692,7 +692,7 @@ $ git push (their fork)
 ### Interviewer (1× per candidate)
 
 ```
-$ teamhero interview grade <candidate-fork-url> \
+$ teamhero interview review <candidate-fork-url> \
     --transcript <granola.txt> \
     [--recording <loom.mp4>] \
     [--interviewer-notes <notes.md>] \
@@ -704,7 +704,7 @@ $ teamhero interview grade <candidate-fork-url> \
 [appends to docs/interviews/<role-slug>/COHORT.md]
 ```
 
-## Inputs the Grader Consumes
+## Inputs the Reviewer Consumes
 
 | Input | Source | Captures | Required? | Used by |
 |---|---|---|---|---|

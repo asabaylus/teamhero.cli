@@ -192,7 +192,7 @@ export function createCli(
 	program
 		.command("interview")
 		.description(
-			"Grade candidate AI-collaboration interviews (bootstrap, grade, cohort)",
+			"Review candidate AI-collaboration interviews (bootstrap, review, cohort)",
 		)
 		.helpOption(false)
 		.allowUnknownOption()
@@ -226,6 +226,8 @@ export async function createDefaultDependencies(): Promise<CliDependencies> {
 	} satisfies CliDependencies;
 }
 
+const KNOWN_SUBCOMMANDS = ["report", "doctor", "setup", "interview"];
+
 export async function run(
 	argv: string[] = process.argv,
 	deps?: CliDependencies,
@@ -233,13 +235,29 @@ export async function run(
 	const resolvedDeps = deps ?? (await createDefaultDependencies());
 	const program = createCli(resolvedDeps);
 
+	const args = argv.slice(2);
+	const first = args[0];
+
+	// Reject unknown subcommands explicitly. Without this guard, commander
+	// silently prints the top-level help and exits 0, which makes a stale
+	// build look like a missing-command bug.
+	if (
+		typeof first === "string" &&
+		first.length > 0 &&
+		!first.startsWith("-") &&
+		!KNOWN_SUBCOMMANDS.includes(first)
+	) {
+		resolvedDeps.logger.error(
+			`Unknown subcommand: ${first}. Run \`teamhero --help\` to see available commands.`,
+		);
+		process.exit(1);
+	}
+
 	// If a subcommand is followed by --help, pass through to the Go binary
 	// instead of letting Commander handle it (which prints the top-level help).
-	const args = argv.slice(2);
-	const subcommands = ["report", "doctor", "setup", "interview"];
 	if (
 		args.length >= 1 &&
-		subcommands.includes(args[0]) &&
+		KNOWN_SUBCOMMANDS.includes(args[0]) &&
 		args.includes("--help")
 	) {
 		await spawnTui(resolvedDeps, args);
