@@ -17,14 +17,13 @@ func TestRunInterview_NoVerb_PrintsUsageAndReturnsNonZero(t *testing.T) {
 	}
 }
 
-func TestRunInterview_BootstrapVerb_NotYetImplemented(t *testing.T) {
+func TestRunInterview_BootstrapVerb_RequiresFlags(t *testing.T) {
+	// bootstrap is implemented in Slice 2; with no flags it should reject
+	// (only --headless mode is supported at this stage).
 	var out bytes.Buffer
 	code := runInterview([]string{"bootstrap"}, &out)
 	if code == 0 {
-		t.Errorf("bootstrap stub should return non-zero, got %d", code)
-	}
-	if !strings.Contains(out.String(), "not yet implemented") {
-		t.Errorf("expected 'not yet implemented' in output, got %q", out.String())
+		t.Errorf("bootstrap without flags should return non-zero, got %d", code)
 	}
 }
 

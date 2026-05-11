@@ -1,0 +1,168 @@
+package main
+
+import (
+	"bytes"
+	"io"
+	"strings"
+	"testing"
+)
+
+func TestParseBootstrapFlags_AllFlags(t *testing.T) {
+	args := []string{
+		"--headless",
+		"--no-confirm",
+		"--foreground",
+		"--role", "senior-backend",
+		"--role-title", "Senior Backend Engineer",
+		"--stack", "TypeScript",
+		"--domain", "Payments",
+		"--feature", "Add idempotency keys",
+		"--time-box", "90",
+		"--mode-project", "A",
+		"--mode-analysis", "ai-assisted",
+		"--mode-rubric", "default",
+		"--output-dir", "./roles/senior-backend",
+	}
+	opts, parseErr := ParseBootstrapFlags(args)
+	if parseErr != "" {
+		t.Fatalf("unexpected parse error: %s", parseErr)
+	}
+	if opts.Role != "senior-backend" {
+		t.Errorf("role: got %q", opts.Role)
+	}
+	if !opts.Headless || !opts.NoConfirm || !opts.Foreground {
+		t.Errorf("boolean flags not parsed: %+v", opts)
+	}
+	if opts.TimeBox != "90" {
+		t.Errorf("time-box: got %q", opts.TimeBox)
+	}
+}
+
+func TestParseBootstrapFlags_MissingValueErrors(t *testing.T) {
+	_, parseErr := ParseBootstrapFlags([]string{"--role"})
+	if parseErr == "" {
+		t.Fatal("expected parse error on dangling --role")
+	}
+}
+
+func TestParseBootstrapFlags_UnknownFlagErrors(t *testing.T) {
+	_, parseErr := ParseBootstrapFlags([]string{"--what-is-this"})
+	if parseErr == "" {
+		t.Fatal("expected parse error on unknown flag")
+	}
+}
+
+func TestValidateBootstrapOptions_RejectsMissingRequired(t *testing.T) {
+	opts := &BootstrapOptions{
+		Role:         "x",
+		Stack:        "x",
+		ModeProject:  "A",
+		ModeAnalysis: "ai-assisted",
+		ModeRubric:   "default",
+		OutputDir:    "x",
+		// missing Domain and Feature
+	}
+	if msg := ValidateBootstrapOptions(opts); msg == "" {
+		t.Fatal("expected validation error on missing fields")
+	}
+}
+
+func TestValidateBootstrapOptions_RejectsBadModeProject(t *testing.T) {
+	opts := &BootstrapOptions{
+		Role: "x", Stack: "x", Domain: "x", Feature: "x", OutputDir: "x",
+		ModeProject: "C", ModeAnalysis: "ai-assisted", ModeRubric: "default",
+	}
+	if msg := ValidateBootstrapOptions(opts); msg == "" {
+		t.Fatal("expected validation error on bad mode-project")
+	}
+}
+
+func TestValidateBootstrapOptions_CustomRubricRequiresPrompt(t *testing.T) {
+	opts := &BootstrapOptions{
+		Role: "x", Stack: "x", Domain: "x", Feature: "x", OutputDir: "x",
+		ModeProject: "A", ModeAnalysis: "ai-assisted", ModeRubric: "custom",
+	}
+	if msg := ValidateBootstrapOptions(opts); msg == "" {
+		t.Fatal("expected validation error on missing custom prompt")
+	}
+}
+
+func TestValidateBootstrapOptions_JDRubricRequiresPath(t *testing.T) {
+	opts := &BootstrapOptions{
+		Role: "x", Stack: "x", Domain: "x", Feature: "x", OutputDir: "x",
+		ModeProject: "A", ModeAnalysis: "ai-assisted", ModeRubric: "default+jd",
+	}
+	if msg := ValidateBootstrapOptions(opts); msg == "" {
+		t.Fatal("expected validation error on missing jd-path")
+	}
+}
+
+func TestValidateBootstrapOptions_HappyPath(t *testing.T) {
+	opts := &BootstrapOptions{
+		Role: "x", Stack: "x", Domain: "x", Feature: "x", OutputDir: "x",
+		ModeProject: "A", ModeAnalysis: "ai-assisted", ModeRubric: "default",
+	}
+	if msg := ValidateBootstrapOptions(opts); msg != "" {
+		t.Fatalf("expected validation pass, got: %s", msg)
+	}
+}
+
+type stubRunner struct {
+	gotOpts *BootstrapOptions
+	code    int
+}
+
+func (s *stubRunner) Run(opts *BootstrapOptions, _, _ io.Writer) int {
+	s.gotOpts = opts
+	return s.code
+}
+
+func TestRunInterviewBootstrap_RequiresHeadlessForNow(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	stub := &stubRunner{code: 0}
+	code := runInterviewBootstrap([]string{
+		"--role", "x", "--stack", "x", "--domain", "x", "--feature", "x",
+		"--mode-project", "A", "--mode-analysis", "ai-assisted",
+		"--mode-rubric", "default", "--output-dir", "x",
+	}, stub, &out, &errBuf)
+	if code == 0 {
+		t.Error("expected non-zero exit without --headless")
+	}
+	if !strings.Contains(errBuf.String(), "headless") {
+		t.Errorf("expected message about --headless, got: %s", errBuf.String())
+	}
+}
+
+func TestRunInterviewBootstrap_DelegatesToRunner(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	stub := &stubRunner{code: 0}
+	code := runInterviewBootstrap([]string{
+		"--headless",
+		"--role", "x", "--stack", "x", "--domain", "x", "--feature", "x",
+		"--mode-project", "A", "--mode-analysis", "ai-assisted",
+		"--mode-rubric", "default", "--output-dir", "x",
+	}, stub, &out, &errBuf)
+	if code != 0 {
+		t.Errorf("expected exit 0 from stub, got %d (stderr: %s)", code, errBuf.String())
+	}
+	if stub.gotOpts == nil {
+		t.Fatal("runner not called")
+	}
+	if stub.gotOpts.Role != "x" {
+		t.Errorf("runner saw role=%q", stub.gotOpts.Role)
+	}
+}
+
+func TestRunInterviewBootstrap_ForwardsRunnerExitCode(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	stub := &stubRunner{code: 7}
+	code := runInterviewBootstrap([]string{
+		"--headless",
+		"--role", "x", "--stack", "x", "--domain", "x", "--feature", "x",
+		"--mode-project", "A", "--mode-analysis", "ai-assisted",
+		"--mode-rubric", "default", "--output-dir", "x",
+	}, stub, &out, &errBuf)
+	if code != 7 {
+		t.Errorf("expected exit 7 forwarded from runner, got %d", code)
+	}
+}

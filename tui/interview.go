@@ -25,8 +25,11 @@ func runInterview(args []string, out io.Writer) int {
 		return 1
 	}
 	verb := args[0]
+	rest := args[1:]
 	switch verb {
-	case "bootstrap", "grade", "cohort":
+	case "bootstrap":
+		return runInterviewBootstrap(rest, bunBootstrapRunner{}, out, out)
+	case "grade", "cohort":
 		fmt.Fprintf(out, "teamhero interview %s: not yet implemented\n", verb)
 		return 1
 	default:
