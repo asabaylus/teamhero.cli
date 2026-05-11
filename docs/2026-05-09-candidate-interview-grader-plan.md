@@ -1,6 +1,11 @@
 # Plan — Candidate Interview Grader
 
-> **Status:** Design landed via grilling session 2026-05-09 (revised same day across multiple architectural and product refinements; final ethical revision drops all numerical scoring in favor of observations + raw measurements). **All open questions are resolved.** Implementation should begin only when the user gives explicit go-ahead.
+> **Status:** Design landed via grilling session 2026-05-09 (revised same day across multiple architectural and product refinements; final ethical revision drops all numerical scoring in favor of observations + raw measurements). **All open questions are resolved.**
+>
+> **Implementation status (2026-05-11):**
+> - **MVP (5 slices) shipped** on branch `claude/slice-1-foundation` / PR #10. Beads tracked as `teamhero-scripts-{3sh,7qe,h13,bt2,9v2}` — all closed. Ships the rubric module, headless bootstrap, kit, full assessment pipeline (collectors, extractors, AI observer, audit writer), and cohort summary + Claude skill.
+> - **v1.5 (3 slices) shipped** on same PR. Beads `teamhero-scripts-{92a,upo,rjp}` — all closed. Adds the interactive `huh` wizard for `bootstrap`, shared interview style module, glamour-rendered audit preview, phased progress display consuming the JSON-lines protocol, and a manual end-to-end smoke script + doc refresh.
+> - **Still deferred:** `list-roles` / `list-candidates` verbs, multi-model bias diversification, periodic anonymized bias audit. See the "Out of Scope" section below for the full deferred list.
 
 ## Context
 
@@ -727,7 +732,7 @@ $ teamhero interview grade <candidate-fork-url> \
 - **Replay UI.** Use raw asciinema playback + the audit tier markdown at MVP.
 - **Real-time cheat detection.** Live observation absorbs the cheating risk.
 - **Per-role rubric customization beyond default presets.** Single rubric framework at MVP plus the three rubric modes from #20.
-- **`teamhero interview list-roles | list-candidates`.** Deferred to v1.5.
+- **`teamhero interview list-roles | list-candidates`.** Still deferred (skill documents `ls docs/interviews/` workaround).
 - **Cross-role comparison.** Tool stays within-role.
 - **Per-dimension calls (vs mega-call).** Mega-call is canonical.
 - **Cloud storage / multi-manager sync.** Local disk only at MVP.
@@ -739,16 +744,35 @@ $ teamhero interview grade <candidate-fork-url> \
 
 All open questions are resolved. Implementation can begin when the user gives explicit go-ahead.
 
-## Next Steps — Deferred Until Explicit Go-Ahead
+## Implementation Progress
 
-1. Write the formal rubric document (`docs/interview-rubric.md`) — observation framework per dimension, no scoring levels.
-2. Write the classification-rationale document (`docs/interview-classification-rationale.md`) — defensibility doc explaining the methodology. **Top-section preamble must establish the observations-not-scores ethical principle, the bias-diversification framing (NOT bias-elimination), and the human-in-the-loop framing before any technical details.** Must also include: (a) explicit acknowledgment that candidates do not receive the audit by default, with a flag that GDPR Article 15 may require disclosure for EU/UK candidates and the company should revisit when expanding internationally; (b) the appeal mechanism documented in the privacy release; (c) the single-model bias limitation and the v1.5 plan for multi-model evaluation.
-3. Spec the bootstrap prompt template encoding scaffold requirements.
-4. Build `teamhero-interview-kit/` (~2 days). Start macOS/Linux/WSL only.
-5. Build `src/services/interview/{bootstrap,observe,cohort,shared}/` and `teamhero interview` CLI subcommand (~2–3 weeks). Lean heavily on the `agent-maturity-assessment` patterns. **TUI must mirror `tui/report*.go` and `tui/assess*.go` exactly. Crucially: TUI must NOT display numerical scores, totals, or bands — only observations and raw measurements.**
-6. Build the `~/.claude/skills/teamhero-interview/SKILL.md` skill — single skill for the whole bounded context.
-7. Pilot with first batch of real candidates. Manually spot-check observation output for the first 10. Refine the observation prompt based on observed failure modes (e.g., LLM accidentally producing a numerical assessment despite instructions — validation must reject this). Update the classification-rationale doc when the prompt changes meaningfully.
-8. v1.5: add `list-roles | list-candidates` verbs.
+### MVP — shipped via PR #10 (commits prior to `c7ff78f`)
+
+| # | Step | Status | Beads issue |
+|---|---|---|---|
+| 1 | Formal rubric document `docs/interview-rubric.md` (9 dims, observation framework) | ✅ shipped | `teamhero-scripts-3sh` |
+| 2 | Classification-rationale `docs/interview-classification-rationale.md` (ethics preamble, GDPR Art. 15 caveat, appeal mechanism, single-model bias limitation) | ✅ shipped | `teamhero-scripts-3sh` |
+| 3 | Bootstrap prompt template encoding scaffold requirements | ✅ shipped (`src/services/interview/bootstrap/project-generator.ts`) | `teamhero-scripts-7qe` |
+| 4 | `teamhero-interview-kit/` (POSIX privacy gate, start/end scripts, templates) | ✅ shipped | `teamhero-scripts-h13` |
+| 5 | `src/services/interview/{bootstrap,assess,cohort,shared}/` + `teamhero interview` CLI subcommand | ✅ shipped (4 evidence collectors, 4 deterministic extractors, AI observer with bias guard + scoreless strict schema, audit writer with sign-off validator) | `teamhero-scripts-{7qe,bt2}` |
+| 6 | `skills/teamhero-interview/SKILL.md` (single bounded-context skill) | ✅ shipped | `teamhero-scripts-9v2` |
+
+### v1.5 — shipped via PR #10 commit `c7ff78f`
+
+| # | Step | Status | Beads issue |
+|---|---|---|---|
+| v1 | Interactive `huh` wizard for `teamhero interview bootstrap` (no-flag invocation drops into wizard; rubric-mode branching for custom + JD; shared validator gate with headless path) | ✅ shipped | `teamhero-scripts-92a` |
+| v2 | TUI style polish — shared `interviewStyles` palette, glamour-rendered audit preview with pinned ADVISORY banner, phased progress display (`clone → collect-evidence → extract-measurements → observe → audit-write`) consuming the JSON-lines protocol | ✅ shipped | `teamhero-scripts-upo` |
+| v3 | Manual end-to-end smoke script `scripts/manual-test-interview.sh` (TTY-only, no OpenAI spend via `--mode-analysis human-only`) + README and SKILL.md doc refresh | ✅ shipped | `teamhero-scripts-rjp` |
+
+Note on `tui/assess_*.go` patterns: the TUI Implementation Constraints table above lists `tui/assess_progress.go`, `tui/assess_config.go`, `tui/assess_preview.go`, `tui/assess_protocol.go` as reference files. **Those files do not exist on `main` yet** (they live on `claude/condescending-tereshkova-88a936`). The v1.5 implementation aligned with the existing primary — `tui/wizard.go` and `tui/setup.go` — instead. When the maturity-assessment branch lands on `main`, a small follow-up can re-align if any palette/header differences remain.
+
+### Still deferred
+
+7. **Pilot with first batch of real candidates.** Manually spot-check observation output for the first 10. Refine the observation prompt based on observed failure modes (e.g., LLM accidentally producing a numerical assessment despite instructions — validation must reject this). Update the classification-rationale doc when the prompt changes meaningfully.
+8. **`list-roles` and `list-candidates` verbs.** Workaround documented in `skills/teamhero-interview/SKILL.md` (`ls docs/interviews/`).
+9. **Multi-model bias diversification.** Currently single-model.
+10. **Periodic anonymized bias audit of accumulated observations.** Data structure exists; the audit pipeline does not.
 
 ## References
 
