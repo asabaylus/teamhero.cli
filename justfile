@@ -37,6 +37,10 @@ lint:
 report:
   bun run report
 
+# Run the Agent Maturity Assessment (alias: just assess <args>)
+assess *ARGS:
+  ./tui/teamhero-tui assess {{ARGS}}
+
 # Uninstall CLI wrapper
 uninstall:
   sh scripts/uninstall.sh

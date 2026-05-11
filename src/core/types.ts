@@ -545,3 +545,44 @@ export interface PeriodDeltas {
  * visibleWins, technicalWins, discrepancyAnalysis, roadmapSynthesis.
  */
 export type SystemPrompts = Record<string, string>;
+
+// ---------------------------------------------------------------------------
+// Maturity Assessment ports
+// ---------------------------------------------------------------------------
+
+import type {
+	AdjacentRepo,
+	EvidenceFact,
+	EvidenceTier,
+	InterviewAnswer,
+	InterviewQuestion,
+	ScopeDescriptor,
+} from "../services/maturity/types.js";
+
+export interface MaturityProvider {
+	/** Stable id matching the rubric item this provider scores. */
+	readonly itemId: number;
+	/**
+	 * Run the deterministic detector against the given scope and tier.
+	 * Returns zero or more EvidenceFact records — never throws on missing files.
+	 */
+	collect(input: {
+		scope: ScopeDescriptor;
+		tier: EvidenceTier;
+		adjacentRepos: AdjacentRepo[];
+	}): Promise<EvidenceFact[]>;
+}
+
+export interface InterviewTransport {
+	/** Show the framing message before the first question. */
+	frame(message: string): Promise<void>;
+	/** Ask one question and wait for the answer. Implementations must block. */
+	ask(question: InterviewQuestion): Promise<InterviewAnswer>;
+}
+
+export interface AuditStore {
+	/** Read prior interview answers from docs/audits/CONFIG.md (or equivalent). */
+	readPriorAnswers(): Promise<InterviewAnswer[]>;
+	/** Persist confirmed/updated interview answers and the today date. */
+	writeAnswers(answers: InterviewAnswer[], today: string): Promise<void>;
+}

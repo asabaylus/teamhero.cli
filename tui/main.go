@@ -14,11 +14,14 @@ import (
 // version is injected at build time via -ldflags "-X main.version=X.Y.Z"
 var version = "dev"
 
+// printUsage writes the top-level help text to stderr, listing available subcommands
+// and global flags.
 func printUsage() {
 	fmt.Fprintf(os.Stderr, `Usage: teamhero <command> [flags]
 
 Commands:
   report    Generate a developer contribution report (default)
+  assess    Run the Agent Maturity Assessment (12-criterion AI-readiness audit)
   setup     Configure credentials and preferences
   doctor    Validate installation health
 
@@ -128,11 +131,17 @@ Examples:
 `)
 }
 
+// main is the CLI entrypoint; it parses command-line arguments, routes `--help` to
+// subcommand-specific usage, and dispatches execution for `setup`, `doctor`,
+// `assess`, headless, or interactive modes.
+// It also handles global flags such as `--version` (prints build version) and
+// `--show-config` (prints the saved configuration), and maps common cancellation
+// or error conditions to appropriate exit codes.
 func main() {
 	// Detect subcommand first so --help can be routed to the right usage.
 	subcommand := ""
 	for _, arg := range os.Args[1:] {
-		if arg == "report" || arg == "doctor" || arg == "setup" {
+		if arg == "report" || arg == "doctor" || arg == "setup" || arg == "assess" {
 			subcommand = arg
 			break
 		}
@@ -152,6 +161,8 @@ func main() {
 			printSetupUsage()
 		case "report":
 			printReportUsage()
+		case "assess":
+			printAssessUsage()
 		default:
 			printUsage()
 		}
@@ -192,6 +203,16 @@ func main() {
 	case "doctor":
 		exitCode := runDoctor()
 		os.Exit(exitCode)
+		return
+	case "assess":
+		if err := runAssess(); err != nil {
+			if err == huh.ErrUserAborted {
+				fmt.Fprintln(os.Stderr, "\nAssessment cancelled.")
+				os.Exit(0)
+			}
+			RenderError(err.Error())
+			os.Exit(2)
+		}
 		return
 	}
 

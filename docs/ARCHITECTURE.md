@@ -296,6 +296,26 @@ class AsanaService {
 - Comment collection
 - Redirect handling for Asana API
 
+### MaturityService (src/services/maturity/maturity.service.ts)
+
+Orchestrates the Agent Maturity Assessment — a parallel feature to `ReportService` that scores an engineering org against a 12-criterion rubric.
+
+```typescript
+class MaturityService {
+  run(input: AssessCommandInput): Promise<AssessResult>;
+}
+```
+
+**Pipeline:**
+1. **Preflight** — auto-detects evidence tier (`gh` CLI / GitHub MCP / git-only)
+2. **Adjacent repos** — scans workflow `uses:`, Terraform sources, submodules, README cross-refs
+3. **Phase-1 interview** — 7 verbatim questions over a bidirectional JSON-lines stdin protocol (interactive mode) or pre-supplied via JSON file (headless mode)
+4. **Evidence collection** — 12 deterministic detectors, one per criterion (`MaturityProvider` port in `src/core/types.ts`)
+5. **AI scoring** — OpenAI Responses API with `text.format.json_schema` strict mode; tier-3 caps on items 2/3/9/11 enforced post-hoc
+6. **Audit writer** — renders canonical-template markdown + JSON sidecar; round-trips confirmed interview answers to `docs/audits/CONFIG.md`
+
+The hardcoded rubric lives in `src/services/maturity/rubric.ts` (`RUBRIC_VERSION` participates in the cache key). The TUI integration is in `tui/assess_*.go` and uses the same framed two-pane layout as the report flow. See [Maturity Assessment Reference](MATURITY_ASSESSMENT.md) for full details.
+
 ---
 
 ## Configuration

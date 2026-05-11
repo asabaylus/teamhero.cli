@@ -128,6 +128,14 @@ async function spawnTui(deps: CliDependencies, args: string[]): Promise<void> {
 	});
 }
 
+/**
+ * Build the CLI program with subcommands that forward execution to the Go TUI.
+ *
+ * @param deps - Runtime dependencies (auth and logger) used when delegating work to the TUI and reporting errors.
+ * @param options - Optional CLI construction flags.
+ * @param options.exitOverride - If set, configures Commander to throw instead of exiting on parse errors.
+ * @returns The configured Commander `Command` instance ready to parse CLI arguments.
+ */
 export function createCli(
 	deps: CliDependencies,
 	options: CliOptions = {},
@@ -154,7 +162,7 @@ export function createCli(
 				reportArgIndex >= 0 ? process.argv.slice(reportArgIndex + 1) : [];
 
 			// Reject subcommands that are top-level — don't allow `teamhero report doctor`.
-			const subcommands = ["doctor", "setup"];
+			const subcommands = ["doctor", "setup", "assess"];
 			if (argsToPass.length > 0 && subcommands.includes(argsToPass[0])) {
 				deps.logger.error(
 					`Unknown argument: ${argsToPass[0]}. Did you mean \`teamhero ${argsToPass[0]}\`?`,
@@ -162,6 +170,20 @@ export function createCli(
 				process.exit(1);
 			}
 
+			await spawnTui(deps, argsToPass);
+		});
+
+	program
+		.command("assess [args...]")
+		.description(
+			"Run the Agent Maturity Assessment (12-criterion AI-readiness audit)",
+		)
+		.helpOption(false)
+		.allowUnknownOption()
+		.allowExcessArguments()
+		.action(async function (this: Command) {
+			const idx = process.argv.indexOf("assess");
+			const argsToPass = idx >= 0 ? process.argv.slice(idx) : ["assess"];
 			await spawnTui(deps, argsToPass);
 		});
 
@@ -210,6 +232,17 @@ export async function createDefaultDependencies(): Promise<CliDependencies> {
 	} satisfies CliDependencies;
 }
 
+/**
+ * Parse CLI arguments and dispatch execution to the Commander program or the external TUI binary.
+ *
+ * When the first positional subcommand is one of "report", "doctor", "setup", or "assess"
+ * and the arguments include `--help`, this function forwards the raw arguments to the Go TUI
+ * binary instead of letting Commander render top-level help. Otherwise it delegates to the
+ * Commander program returned by `createCli`.
+ *
+ * @param argv - The argument vector to parse; defaults to `process.argv`
+ * @param deps - Optional runtime dependencies (logger and auth); if omitted, defaults are created
+ */
 export async function run(
 	argv: string[] = process.argv,
 	deps?: CliDependencies,
@@ -220,7 +253,7 @@ export async function run(
 	// If a subcommand is followed by --help, pass through to the Go binary
 	// instead of letting Commander handle it (which prints the top-level help).
 	const args = argv.slice(2);
-	const subcommands = ["report", "doctor", "setup"];
+	const subcommands = ["report", "doctor", "setup", "assess"];
 	if (
 		args.length >= 1 &&
 		subcommands.includes(args[0]) &&

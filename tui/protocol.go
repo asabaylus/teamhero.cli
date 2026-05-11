@@ -79,4 +79,12 @@ type GenericEvent struct {
 	Items         []DiscrepancyItem             `json:"items,omitempty"`
 	AllItems      []DiscrepancyItem             `json:"allItems,omitempty"`
 	DiscrepancyThreshold int                           `json:"discrepancyThreshold,omitempty"`
+
+	// Maturity-assessment interview event fields
+	// (type == "interview-frame" / "interview-question")
+	QuestionID    string   `json:"questionId,omitempty"`
+	QuestionText  string   `json:"questionText,omitempty"`
+	Options       []string `json:"options,omitempty"`
+	AllowFreeText bool     `json:"allowFreeText,omitempty"`
+	ConfigHeading string   `json:"configHeading,omitempty"`
 }
