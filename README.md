@@ -201,7 +201,7 @@ teamhero assess --headless --path . --dry-run
 | `--dry-run` | Skip the AI scorer; emit a placeholder audit |
 | `--show-assess-config` | Print saved configuration as JSON and exit |
 
-Run `teamhero assess --help` for the full list.
+Run `teamhero assess --help` for the full list, or read the [**full maturity assessment reference**](docs/MATURITY_ASSESSMENT.md) for everything — every flag, all 7 interview questions, evidence tiers, output format, troubleshooting.
 
 ### How the score is built
 
@@ -230,6 +230,7 @@ Run `teamhero assess --help` for the full list.
 ## Learn more
 
 - [Configuration Reference](docs/CONFIG_FORMAT.md) — all settings, credentials, and user identity mapping
+- [Maturity Assessment Reference](docs/MATURITY_ASSESSMENT.md) — full `teamhero assess` docs: rubric, interview, tiers, output, troubleshooting
 - [Architecture Overview](docs/ARCHITECTURE.md) — how the system works under the hood
 
 ---
@@ -274,6 +275,16 @@ claude plugin install teamhero-scripts@teamhero
 ```
 
 In Cowork, the plugin uses MCP connectors for GitHub and Asana (OAuth-based, no API tokens to manage).
+
+### Shareable maturity-assessment skill
+
+The Agent Maturity Assessment is also packaged as a **standalone, harness-agnostic skill** you can drop into any Claude environment (Claude Code, Cowork, Workbench, custom SDK harness) without installing TeamHero itself:
+
+```
+share/skills/agent-maturity-assessment/   ← copy this folder to ~/.claude/skills/
+```
+
+See [`share/skills/agent-maturity-assessment/INSTALL.md`](share/skills/agent-maturity-assessment/INSTALL.md) for installation steps for each harness. The skill works in pure-Claude mode by default and uses the `teamhero` binary as an optional accelerator when it's installed.
 
 ### Further reading
 
