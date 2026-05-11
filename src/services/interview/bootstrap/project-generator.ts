@@ -53,6 +53,13 @@ const DEFAULT_MAX_ATTEMPTS = 3;
  * client returns file paths from an LLM response, which is untrusted input.
  */
 function resolveWithinRoot(rootAbs: string, relPath: string): string {
+	// Reject null bytes outright — they truncate paths in many syscalls and
+	// have been used to bypass extension/path checks (e.g. "evil.png\0.sh").
+	if (relPath.includes("\0")) {
+		throw new Error(
+			`Generated file path contains a null byte, refusing: ${JSON.stringify(relPath)}`,
+		);
+	}
 	if (isAbsolute(relPath)) {
 		throw new Error(
 			`Generated file path is absolute, refusing: ${relPath}`,
