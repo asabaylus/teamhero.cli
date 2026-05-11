@@ -17,6 +17,8 @@ export interface AuditFrontmatter {
 	readonly rubric_version: string;
 	readonly rubric_mode: string;
 	readonly signed_off: boolean;
+	/** Categorical sign-off result. Present only when signed_off is true. */
+	readonly recommendation?: "Hire" | "Hire with notes" | "No hire";
 	readonly session_recording_url?: string;
 	readonly session_platform?: string;
 	readonly session_date?: string;
@@ -57,6 +59,9 @@ function yaml(value: AuditFrontmatter): string {
 	lines.push(`rubric_version: ${value.rubric_version}`);
 	lines.push(`rubric_mode: ${value.rubric_mode}`);
 	lines.push(`signed_off: ${value.signed_off}`);
+	if (value.recommendation !== undefined) {
+		lines.push(`recommendation: ${value.recommendation}`);
+	}
 	if (value.session_recording_url !== undefined) {
 		lines.push(`session_recording_url: ${value.session_recording_url}`);
 	}

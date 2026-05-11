@@ -32,8 +32,7 @@ func runInterview(args []string, out io.Writer) int {
 	case "grade":
 		return runInterviewGrade(rest, bunGradeRunner{}, out, out)
 	case "cohort":
-		fmt.Fprintf(out, "teamhero interview %s: not yet implemented\n", verb)
-		return 1
+		return runInterviewCohort(rest, bunCohortRunner{}, out, out)
 	default:
 		fmt.Fprintf(out, "teamhero interview: unknown verb %q\n", verb)
 		printInterviewUsage(out)

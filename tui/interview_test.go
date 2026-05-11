@@ -37,14 +37,13 @@ func TestRunInterview_GradeVerb_RequiresFlags(t *testing.T) {
 	}
 }
 
-func TestRunInterview_CohortVerb_NotYetImplemented(t *testing.T) {
+func TestRunInterview_CohortVerb_RequiresFlags(t *testing.T) {
+	// cohort is implemented in Slice 5; with no flags it should reject
+	// (--role is required).
 	var out bytes.Buffer
 	code := runInterview([]string{"cohort"}, &out)
 	if code == 0 {
-		t.Errorf("cohort stub should return non-zero, got %d", code)
-	}
-	if !strings.Contains(out.String(), "not yet implemented") {
-		t.Errorf("expected 'not yet implemented' in output, got %q", out.String())
+		t.Errorf("cohort without flags should return non-zero, got %d", code)
 	}
 }
 
