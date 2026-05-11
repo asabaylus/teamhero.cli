@@ -44,7 +44,22 @@ is the appropriate output for the request.
 #### `teamhero interview bootstrap`
 Configures a role and generates the candidate coding project.
 
-Headless flags:
+**Interactive wizard (primary path for humans in a terminal session).** When
+the user is at a TTY and not scripting, recommend they just run:
+
+```
+teamhero interview bootstrap
+```
+
+with no flags. They will be walked through role slug, stack, domain, feature,
+time-box, project mode, analysis mode, and rubric mode (with conditional
+follow-ups for custom prompt or job-description file). The wizard hands the
+chosen configuration to the same validator the headless path uses.
+
+**Headless flags (agents and CI use this form).** If the user is scripting,
+asks for a one-liner, or is invoking via an agent like Claude Code, use the
+explicit flag list:
+
 ```
 teamhero interview bootstrap --headless \
   --role <slug> --stack <stack> --domain <domain> --feature "<one-line spec>" \

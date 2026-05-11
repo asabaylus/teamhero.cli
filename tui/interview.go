@@ -28,7 +28,8 @@ func runInterview(args []string, out io.Writer) int {
 	rest := args[1:]
 	switch verb {
 	case "bootstrap":
-		return runInterviewBootstrap(rest, bunBootstrapRunner{}, out, out)
+		launcher := newHuhBootstrapWizardLauncher(BootstrapWizardDefaults{})
+		return runInterviewBootstrapWithWizard(rest, bunBootstrapRunner{}, launcher, out, out)
 	case "grade":
 		return runInterviewGrade(rest, bunGradeRunner{}, out, out)
 	case "cohort":

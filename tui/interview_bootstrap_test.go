@@ -166,3 +166,92 @@ func TestRunInterviewBootstrap_ForwardsRunnerExitCode(t *testing.T) {
 		t.Errorf("expected exit 7 forwarded from runner, got %d", code)
 	}
 }
+
+// stubLauncher records the wizard invocation and returns a pre-built result.
+type stubWizardLauncher struct {
+	called bool
+	result *BootstrapWizardResult
+	err    error
+}
+
+func (s *stubWizardLauncher) Launch() (*BootstrapWizardResult, error) {
+	s.called = true
+	return s.result, s.err
+}
+
+func TestRunInterviewBootstrap_WizardAbortReturnsCleanZero(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	stubRun := &stubRunner{code: 99}
+	stubLauncher := &stubWizardLauncher{
+		result: &BootstrapWizardResult{Aborted: true},
+	}
+	code := runInterviewBootstrapWithWizard([]string{}, stubRun, stubLauncher, &out, &errBuf)
+	if code != 0 {
+		t.Errorf("expected exit 0 on wizard abort, got %d", code)
+	}
+	if stubRun.gotOpts != nil {
+		t.Errorf("runner must NOT be invoked when wizard aborts")
+	}
+}
+
+func TestRunInterviewBootstrap_WizardDeclineSkipsRunner(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	stubRun := &stubRunner{code: 99}
+	stubLauncher := &stubWizardLauncher{
+		result: &BootstrapWizardResult{Confirmed: false, Options: &BootstrapOptions{}},
+	}
+	code := runInterviewBootstrapWithWizard([]string{}, stubRun, stubLauncher, &out, &errBuf)
+	if code != 0 {
+		t.Errorf("expected exit 0 when user declines confirm screen, got %d", code)
+	}
+	if stubRun.gotOpts != nil {
+		t.Errorf("runner must NOT be invoked when user declines confirm screen")
+	}
+}
+
+func TestRunInterviewBootstrap_FlagsBypassWizard(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	stubRun := &stubRunner{code: 0}
+	stubLauncher := &stubWizardLauncher{}
+	code := runInterviewBootstrapWithWizard([]string{
+		"--headless",
+		"--role", "x", "--stack", "x", "--domain", "x", "--feature", "x",
+		"--mode-project", "A", "--mode-analysis", "ai-assisted",
+		"--mode-rubric", "default", "--output-dir", "x",
+	}, stubRun, stubLauncher, &out, &errBuf)
+	if code != 0 {
+		t.Errorf("expected exit 0 from headless path, got %d (stderr=%s)", code, errBuf.String())
+	}
+	if stubLauncher.called {
+		t.Errorf("wizard must NOT be launched when flags are present")
+	}
+	if stubRun.gotOpts == nil {
+		t.Errorf("runner should be invoked with parsed headless flags")
+	}
+}
+
+func TestRunInterviewBootstrap_NoFlagsInvokesWizard(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	stubRun := &stubRunner{code: 0}
+	stubLauncher := &stubWizardLauncher{
+		result: &BootstrapWizardResult{
+			Confirmed: true,
+			Options: &BootstrapOptions{
+				Role: "wizard-role", Stack: "TS", Domain: "Payments",
+				Feature: "Add idempotency", ModeProject: "A",
+				ModeAnalysis: "ai-assisted", ModeRubric: "default",
+				OutputDir: "./roles/wizard-role",
+			},
+		},
+	}
+	code := runInterviewBootstrapWithWizard([]string{}, stubRun, stubLauncher, &out, &errBuf)
+	if !stubLauncher.called {
+		t.Fatalf("expected wizard launcher to be called when no flags are present; stderr=%q", errBuf.String())
+	}
+	if code != 0 {
+		t.Errorf("expected exit 0 after wizard+runner success, got %d (stderr=%q)", code, errBuf.String())
+	}
+	if stubRun.gotOpts == nil || stubRun.gotOpts.Role != "wizard-role" {
+		t.Errorf("expected runner invoked with wizard-supplied options, got %+v", stubRun.gotOpts)
+	}
+}
