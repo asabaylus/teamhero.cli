@@ -1,8 +1,10 @@
 import { homedir } from "node:os";
 import {
+	lstatSync,
 	mkdirSync,
 	readdirSync,
 	readFileSync,
+	realpathSync,
 	rmSync,
 	statSync,
 	writeFileSync,
@@ -49,12 +51,17 @@ const DEFAULT_MAX_ATTEMPTS = 3;
 
 /**
  * Resolves `relPath` relative to `rootAbs` and refuses paths that escape the
- * root via `..`, absolute components, or Windows drive letters. The generator
- * client returns file paths from an LLM response, which is untrusted input.
+ * root via `..`, absolute components, drive letters, or symlinks that point
+ * outside the root. The generator client returns file paths from an LLM
+ * response, which is untrusted input.
+ *
+ * Two-stage containment: (1) string-level relative-path resolution catches
+ * obvious traversal; (2) realpath check on the parent directory catches a
+ * symlink planted by a previous attempt that points outside the root.
+ * Without (2), an attacker who can leave `subdir -> /etc` in the output
+ * tree could redirect a later write to `/etc/passwd` via `subdir/passwd`.
  */
 function resolveWithinRoot(rootAbs: string, relPath: string): string {
-	// Reject null bytes outright — they truncate paths in many syscalls and
-	// have been used to bypass extension/path checks (e.g. "evil.png\0.sh").
 	if (relPath.includes("\0")) {
 		throw new Error(
 			`Generated file path contains a null byte, refusing: ${JSON.stringify(relPath)}`,
@@ -72,11 +79,46 @@ function resolveWithinRoot(rootAbs: string, relPath: string): string {
 			`Generated file path escapes output directory, refusing: ${relPath}`,
 		);
 	}
+
+	// Walk path segments from the root toward the target; refuse if any
+	// existing intermediate component is a symlink. This neutralizes a
+	// `subdir -> /etc` symlink planted by a prior generation attempt.
+	let cursor = rootAbs;
+	const parts = rel.split(sep).filter((p) => p.length > 0);
+	// Drop the final segment — it's the file name, which may not exist yet.
+	for (let i = 0; i < parts.length - 1; i++) {
+		cursor = join(cursor, parts[i]);
+		try {
+			const st = lstatSync(cursor);
+			if (st.isSymbolicLink()) {
+				throw new Error(
+					`Generated file path traverses a symlink at ${cursor}, refusing: ${relPath}`,
+				);
+			}
+		} catch (err) {
+			// ENOENT is expected for new directories; rethrow anything else.
+			if (
+				err instanceof Error &&
+				(err as NodeJS.ErrnoException).code !== "ENOENT"
+			) {
+				throw err;
+			}
+		}
+	}
+
 	return target;
 }
 
 function writeGenerated(outputDir: string, project: GeneratedProject): void {
-	const rootAbs = resolve(outputDir);
+	// realpath the root once so subsequent containment math is symlink-stable.
+	// If outputDir itself doesn't exist yet, fall back to its resolved path —
+	// clearOutputDir runs immediately before writeGenerated and creates it.
+	let rootAbs = resolve(outputDir);
+	try {
+		rootAbs = realpathSync(rootAbs);
+	} catch {
+		// not yet created — resolved path is the best we can do
+	}
 	for (const file of project.files) {
 		const target = resolveWithinRoot(rootAbs, file.path);
 		mkdirSync(dirname(target), { recursive: true });
@@ -84,26 +126,72 @@ function writeGenerated(outputDir: string, project: GeneratedProject): void {
 	}
 }
 
+// Known dangerous absolute paths we refuse to recursively delete even when
+// they technically pass the depth and root-segment checks. Adding entries
+// here is preferable to adding new heuristics — it forces an explicit
+// decision for each system-relevant path.
+const DANGEROUS_ROOTS: ReadonlySet<string> = new Set([
+	"/",
+	"/bin",
+	"/boot",
+	"/dev",
+	"/etc",
+	"/home",
+	"/lib",
+	"/lib32",
+	"/lib64",
+	"/mnt",
+	"/opt",
+	"/proc",
+	"/root",
+	"/run",
+	"/sbin",
+	"/srv",
+	"/sys",
+	"/tmp",
+	"/usr",
+	"/usr/local",
+	"/var",
+]);
+
 /**
  * Refuses to clear paths that are obviously dangerous to recursively delete:
- * filesystem roots, the user's home directory, or anything resolving to a
- * single path segment (one mistaken `outputDir: "/"` should not wipe a disk).
+ * filesystem roots, the user's home directory, single-segment paths
+ * (`/foo`), or well-known system directories like `/tmp` and `/var` even
+ * when they technically resolve fine. Subdirectories of those system
+ * directories (`/tmp/my-output`) are permitted — that's where mkdtemp
+ * lives and where tests stage fixtures.
+ *
+ * Stronger than "is this filesystem root?" because a misconfigured
+ * `outputDir: "/tmp"` would previously have been accepted and would have
+ * deleted every other process's tempfiles.
  */
 function assertSafeToClear(outputDir: string): void {
 	const abs = resolve(outputDir);
-	const root = resolve(abs, "/");
-	if (abs === root || abs === sep) {
+	if (abs === sep) {
 		throw new Error(`Refusing to clear filesystem root: ${abs}`);
 	}
+
 	const home = homedir();
 	if (home && abs === resolve(home)) {
 		throw new Error(`Refusing to clear home directory: ${abs}`);
 	}
-	// Refuse a top-level path like /usr, /etc, /home — anything where the
-	// path has no parent beyond the root.
-	const parent = dirname(abs);
-	if (parent === abs) {
-		throw new Error(`Refusing to clear root-level path: ${abs}`);
+
+	if (DANGEROUS_ROOTS.has(abs)) {
+		throw new Error(
+			`Refusing to clear well-known system directory: ${abs}. ` +
+				`Pick an output directory inside your workspace.`,
+		);
+	}
+
+	// Refuse a single-segment absolute path like `/foo` or `/anything`.
+	// Real workspace paths have at least two segments after the root.
+	const parts = abs.split(sep).filter((p) => p.length > 0);
+	if (parts.length < 2) {
+		throw new Error(
+			`Refusing to clear single-segment path: ${abs}. ` +
+				`Output directories must be a subdirectory, not a top-level path.`,
+		);
 	}
 }
 

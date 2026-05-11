@@ -5,7 +5,7 @@
  * mapAuditResultToDiscrepancyReport(), and normalizeRule().
  */
 
-import { afterAll, describe, expect, it, mock } from "bun:test";
+import { describe, expect, it, mock } from "bun:test";
 import type {
 	ContributorDiscrepancy,
 	SectionDiscrepancy,
@@ -19,15 +19,13 @@ import type {
 // Other spec files mock src/lib/env.js with a stub that ignores process.env.
 // mock.module() registrations leak across files when bun test runs without
 // per-file isolation. Re-pin the real getEnv here so this file's env-driven
-// tests work whether or not a prior file left a stub installed.
+// tests work whether or not a prior file left a stub installed. Per
+// CLAUDE.md, do NOT call mock.restore() in afterAll — it undoes the
+// pinning and re-introduces leakage from other files.
 mock.module("../../../src/lib/env.js", () => ({
 	...envMod,
 	getEnv: (key: string) => process.env[key],
 }));
-
-afterAll(() => {
-	mock.restore();
-});
 
 const {
 	buildSectionAuditContexts,

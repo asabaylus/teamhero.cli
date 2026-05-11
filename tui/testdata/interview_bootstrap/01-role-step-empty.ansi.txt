@@ -5,9 +5,9 @@
   ┃ Lowercase, hyphenated — e.g. 'senior-backend' or          │                                    │
   'staff-                                                     │ Role slug: —                       │
   ┃ frontend'                                                 │ Role title: —                      │
-                                                              │ Stack: —                           │
-  enter submit                                                │ Domain: —                          │
-                                                              │ Feature: —                         │
+  ┃ >                                                         │ Stack: —                           │
+                                                              │ Domain: —                          │
+  enter submit                                                │ Feature: —                         │
                                                               │ Time-box: —                        │
                                                               │ Project mode: —                    │
                                                               │ Analysis mode: —                   │

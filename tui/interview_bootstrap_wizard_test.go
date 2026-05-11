@@ -7,28 +7,49 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/huh"
 )
 
-// stubHuhFormRunner returns a huhFormRun stub that succeeds on every form
-// without rendering. Useful for exercising the step-sequence glue without
-// driving a TTY.
-func stubHuhFormRunner(_ *testing.T) func(*huh.Form) error {
-	return func(_ *huh.Form) error { return nil }
-}
-
-// stubTeaProgramRunner returns a runBootstrapTeaProgram stub that skips the
-// real bubbletea program loop and synthesizes a BootstrapWizardResult
-// directly from the model's seeded data. Used by the launcher smoke tests
-// so they exercise the launcher → result plumbing without spinning a TTY
-// or leaking huh cursor-blink goroutines.
-func stubTeaProgramRunner(_ *testing.T, confirmed bool) func(*tea.Program, *interviewBootstrapTeaModel) (*BootstrapWizardResult, error) {
+// stubTeaProgramRunner returns a runBootstrapTeaProgram stub that walks
+// the model through its real advance()/nextStep() transitions in-process,
+// without spinning a real bubbletea event loop or TTY. This exercises the
+// wizard's branching logic (rubric mode, time-box custom sub-step,
+// confirm) so the smoke tests catch transition bugs — a stub that simply
+// flipped `confirmed = true` would pass even if the state machine were
+// broken.
+//
+// The simulation answers "Yes" on the confirm step when `confirmed` is
+// true; for time-box "custom" branches it injects a valid numeric value
+// so the sub-step transitions cleanly to project mode.
+func stubTeaProgramRunner(t *testing.T, confirmed bool) func(*tea.Program, *interviewBootstrapTeaModel) (*BootstrapWizardResult, error) {
 	return func(_ *tea.Program, m *interviewBootstrapTeaModel) (*BootstrapWizardResult, error) {
-		m.data.confirmed = confirmed
+		t.Helper()
+		// Walk advance() until we hit Done or a transition fails. Cap at a
+		// generous step count so a regression that loops never hangs the
+		// test indefinitely (the wizard has ~13 distinct screens).
+		const maxSteps = 32
+		for i := 0; i < maxSteps; i++ {
+			if m.step == ibStepDone {
+				break
+			}
+			// Pre-fill values that the real form would set so validators
+			// don't reject the transition.
+			switch m.step {
+			case ibStepTimeBoxCustom:
+				if m.data.timeBox == "" || m.data.timeBox == "custom" {
+					m.data.timeBox = "90"
+				}
+			case ibStepConfirm:
+				m.data.confirmed = confirmed
+			}
+			m.advance()
+		}
+		if m.step != ibStepDone {
+			t.Fatalf("stub runner exceeded maxSteps before reaching Done (stuck at step %d)", m.step)
+		}
 		return &BootstrapWizardResult{
 			Options:   bootstrapWizardOptionsFromModel(m.data),
-			Confirmed: confirmed,
-			Aborted:   false,
+			Confirmed: m.data.confirmed,
+			Aborted:   m.data.aborted,
 		}, nil
 	}
 }

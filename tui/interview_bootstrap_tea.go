@@ -20,6 +20,10 @@ const (
 	ibStepDomain
 	ibStepFeature
 	ibStepTimeBox
+	// ibStepTimeBoxCustom is a sub-step shown only when the user chooses
+	// "Custom" on the time-box select. It runs the validated minutes-input
+	// form before the wizard advances to project-mode.
+	ibStepTimeBoxCustom
 	ibStepProjectMode
 	ibStepAnalysisMode
 	ibStepRubricMode
@@ -41,10 +45,6 @@ type interviewBootstrapTeaModel struct {
 	highWater interviewBootstrapStep
 	form      *huh.Form
 
-	// Used when the time-box screen chooses "custom" and an inner input
-	// form must run before transitioning to the next step.
-	timeBoxChoice string
-
 	width, height int
 }
 
@@ -54,7 +54,6 @@ func newInterviewBootstrapTeaModel(d BootstrapWizardDefaults) *interviewBootstra
 		step:      ibStepRole,
 		highWater: ibStepRole,
 	}
-	m.timeBoxChoice = m.data.timeBox
 	m.form = m.buildForm()
 	return m
 }
@@ -73,6 +72,14 @@ func (m *interviewBootstrapTeaModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		if m.form != nil {
 			m.form = m.form.WithWidth(m.formWidth())
+			// Forward the resize message so internal viewport/scroll state
+			// inside the form's fields re-layouts immediately rather than
+			// waiting for the next keystroke.
+			form, cmd := m.form.Update(msg)
+			if f, ok := form.(*huh.Form); ok {
+				m.form = f
+			}
+			return m, cmd
 		}
 		return m, nil
 
@@ -149,19 +156,11 @@ func (m *interviewBootstrapTeaModel) formWidth() int {
 	return w * 3 / 5
 }
 
-// advance moves to the next step, accounting for the rubric-mode branch.
-// Returns (nil-cmd, tea.Quit) when the wizard reaches its final state.
+// advance moves to the next step, accounting for the rubric-mode branch
+// and the time-box "custom" sub-step. Returns (model, tea.Quit) when the
+// wizard reaches its final state (Confirm answered).
 func (m *interviewBootstrapTeaModel) advance() (tea.Model, tea.Cmd) {
 	next := m.nextStep(m.step)
-
-	// Time-box screen: if the user picked "custom", chain into an inner
-	// input form on the same step before transitioning.
-	if m.step == ibStepTimeBox && m.timeBoxChoice == "custom" && m.data.timeBox == "custom" {
-		m.data.timeBox = ""
-		m.form = m.buildTimeBoxCustomForm()
-		return m, m.form.Init()
-	}
-
 	if next == ibStepDone {
 		m.step = ibStepDone
 		return m, tea.Quit
@@ -190,6 +189,13 @@ func (m *interviewBootstrapTeaModel) nextStep(cur interviewBootstrapStep) interv
 	case ibStepFeature:
 		return ibStepTimeBox
 	case ibStepTimeBox:
+		// Branch into the custom sub-step only when the user picked
+		// "Custom" on the select. Otherwise skip straight to project mode.
+		if m.data.timeBox == "custom" {
+			return ibStepTimeBoxCustom
+		}
+		return ibStepProjectMode
+	case ibStepTimeBoxCustom:
 		return ibStepProjectMode
 	case ibStepProjectMode:
 		return ibStepAnalysisMode
@@ -268,7 +274,6 @@ func (m *interviewBootstrapTeaModel) buildForm() *huh.Form {
 		)).WithTheme(huh.ThemeCharm()).WithWidth(m.formWidth())
 
 	case ibStepTimeBox:
-		m.timeBoxChoice = d.timeBox
 		return huh.NewForm(huh.NewGroup(
 			huh.NewSelect[string]().
 				Title("Time-box (minutes)").
@@ -280,6 +285,15 @@ func (m *interviewBootstrapTeaModel) buildForm() *huh.Form {
 				).
 				Value(&d.timeBox),
 		)).WithTheme(huh.ThemeCharm()).WithWidth(m.formWidth())
+
+	case ibStepTimeBoxCustom:
+		// The select binds to d.timeBox; arriving here means it's the
+		// literal "custom". Replace it with the empty string so the input
+		// field starts blank rather than showing "custom" as the value.
+		if d.timeBox == "custom" {
+			d.timeBox = ""
+		}
+		return m.buildTimeBoxCustomForm()
 
 	case ibStepProjectMode:
 		return huh.NewForm(huh.NewGroup(
@@ -379,32 +393,35 @@ func (m *interviewBootstrapTeaModel) buildTimeBoxCustomForm() *huh.Form {
 }
 
 // runBootstrapTeaWizard launches the bubbletea program for the bootstrap
-// wizard. Returns the final wizard result. Tests substitute teaProgramRun
-// via runHuhBootstrapWizardTea to drive the model without a TTY.
+// wizard. Production callers get stdin/stdout/alt-screen; tests replace
+// runBootstrapTeaProgram with a stub that drives the model in-process.
 func runBootstrapTeaWizard(d BootstrapWizardDefaults) (*BootstrapWizardResult, error) {
 	model := newInterviewBootstrapTeaModel(d)
-	p := tea.NewProgram(model, tea.WithInput(nil), tea.WithOutput(nil))
-	// The real launcher path uses the alternate-screen + standard input/output;
-	// override via launcher hooks in tests.
+	// No WithInput/WithOutput overrides — bubbletea uses the inherited
+	// stdin/stdout. Passing nil here previously left the program with no
+	// I/O at all and the wizard hung the moment the user pressed a key.
+	p := tea.NewProgram(model, tea.WithAltScreen())
 	return runBootstrapTeaProgram(p, model)
 }
 
-// runBootstrapTeaProgram is the indirection seam for tests.
-var runBootstrapTeaProgram = func(p *tea.Program, m *interviewBootstrapTeaModel) (*BootstrapWizardResult, error) {
+// runBootstrapTeaProgram is the indirection seam for tests. The default
+// implementation runs the real bubbletea event loop; smoke tests in
+// interview_bootstrap_wizard_test.go replace it with a driver that walks
+// the model through advance() transitions in-process.
+var runBootstrapTeaProgram = func(p *tea.Program, _ *interviewBootstrapTeaModel) (*BootstrapWizardResult, error) {
 	finalModel, err := p.Run()
 	if err != nil {
 		return nil, err
 	}
-	if tm, ok := finalModel.(*interviewBootstrapTeaModel); ok {
-		return &BootstrapWizardResult{
-			Options:   bootstrapWizardOptionsFromModel(tm.data),
-			Confirmed: tm.data.confirmed,
-			Aborted:   tm.data.aborted,
-		}, nil
+	tm, ok := finalModel.(*interviewBootstrapTeaModel)
+	if !ok {
+		return nil, fmt.Errorf(
+			"bootstrap tea program returned unexpected model type %T", finalModel,
+		)
 	}
 	return &BootstrapWizardResult{
-		Options:   bootstrapWizardOptionsFromModel(m.data),
-		Confirmed: m.data.confirmed,
-		Aborted:   m.data.aborted,
+		Options:   bootstrapWizardOptionsFromModel(tm.data),
+		Confirmed: tm.data.confirmed,
+		Aborted:   tm.data.aborted,
 	}, nil
 }

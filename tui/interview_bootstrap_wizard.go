@@ -260,9 +260,14 @@ func runInterviewBootstrapWithWizard(
 			return 1
 		}
 		if res == nil || res.Aborted {
+			fmt.Fprintln(stderr, "Wizard aborted. No role was generated.")
 			return 0
 		}
 		if !res.Confirmed {
+			// User reached the confirm screen and chose "Cancel". Surface
+			// that explicitly so the exit isn't indistinguishable from a
+			// successful no-op completion.
+			fmt.Fprintln(stderr, "Wizard cancelled at confirm. No role was generated.")
 			return 0
 		}
 		opts := res.Options

@@ -22,9 +22,12 @@ import type { TranscriptLineEvent } from "../types.js";
  */
 
 const TIMESTAMPED = /^\[(\d{1,2}:\d{2}(?::\d{2})?)\]\s+([^:]+?):\s+(.+)$/;
-// Speaker labels may include digits ("Speaker 1", "Interviewer 2") so allow
-// alphanumerics, spaces, periods, hyphens, and apostrophes in the name.
-const BARE = /^([A-Za-z][\w .'-]*?):\s+(.+)$/;
+// Speaker labels may include digits ("Speaker 1", "Interviewer 2") and
+// non-ASCII letters (e.g. "Étienne", "Ångström", Cyrillic, CJK). \p{L}
+// covers Unicode letters under the /u flag; \p{N} covers numbers in any
+// script. Spaces, periods, hyphens, apostrophes, and underscores are also
+// allowed inside the name.
+const BARE = /^(\p{L}[\p{L}\p{N} .'_-]*?):\s+(.+)$/u;
 
 function toIsoFromHMS(hms: string, sessionStartIso: string): string {
 	const parts = hms.split(":").map(Number);

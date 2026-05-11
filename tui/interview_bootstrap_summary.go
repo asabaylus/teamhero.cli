@@ -97,9 +97,19 @@ func fmtTimeBox(s string) string {
 	return s + " min"
 }
 
+// truncate clips a string to `max` runes and appends "…" when clipped.
+// Operates on runes (not bytes) so multi-byte characters like accented
+// Latin or CJK don't get split mid-codepoint into invalid UTF-8.
 func truncate(s string, max int) string {
-	if max <= 1 || len(s) <= max {
+	if max <= 0 {
+		return ""
+	}
+	runes := []rune(s)
+	if max == 1 {
 		return s
 	}
-	return s[:max-1] + "…"
+	if len(runes) <= max {
+		return s
+	}
+	return string(runes[:max-1]) + "…"
 }

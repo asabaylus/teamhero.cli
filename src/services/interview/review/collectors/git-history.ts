@@ -19,13 +19,22 @@ const realRunner: GitRunner = (args, cwd) =>
 
 const FORMAT = "%H%x09%aI%x09%s";
 
+/**
+ * parseGitHistory builds the git-log argv from constants only, so callers
+ * cannot inject ref or pathspec values that begin with `-` (which git would
+ * parse as flags). If this function is ever extended to accept caller-
+ * supplied refs, inject a literal "--" separator between flags and refs.
+ */
 export function parseGitHistory(
 	repoDir: string,
 	runner: GitRunner = realRunner,
 ): readonly CommitEvent[] {
 	let logOut = "";
 	try {
-		logOut = runner(["log", `--format=${FORMAT}`, "--numstat"], repoDir);
+		// Hard-coded flags only — no user-controlled values reach git. The
+		// "--" terminator is belt-and-braces in case the runner is replaced
+		// by a wrapper that adds positional args later.
+		logOut = runner(["log", `--format=${FORMAT}`, "--numstat", "--"], repoDir);
 	} catch {
 		return [];
 	}

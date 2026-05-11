@@ -43,7 +43,8 @@ export function loadCohort(roleDir: string): readonly CandidateAuditRecord[] {
 			if (
 				typeof ff.candidate !== "string" ||
 				typeof ff.role !== "string" ||
-				typeof ff.date !== "string"
+				typeof ff.date !== "string" ||
+				typeof ff.signed_off !== "boolean"
 			) {
 				continue;
 			}
@@ -58,13 +59,21 @@ export function loadCohort(roleDir: string): readonly CandidateAuditRecord[] {
 	return records;
 }
 
+// escapeMarkdownTableCell sanitizes field values so they don't break the
+// pipe-delimited markdown table layout. A candidate name like
+// "Alice | aka Bob" would otherwise insert an extra column; a name with a
+// newline would terminate the row mid-record.
+function escapeMarkdownTableCell(value: string): string {
+	return value.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
+}
+
 function renderRow(rec: CandidateAuditRecord): string {
 	const fm = rec.frontmatter;
 	const interviewed = fm.session_date ?? fm.date;
 	const signOff = fm.signed_off ? "✅ Reviewed" : "⏳ Pending";
 	const recommendation = fm.signed_off ? (fm.recommendation ?? "") : "—";
 	const audit = `[link](${rec.summaryPath})`;
-	return `| ${fm.candidate} | ${interviewed} | ${signOff} | ${recommendation} | ${audit} |`;
+	return `| ${escapeMarkdownTableCell(fm.candidate)} | ${escapeMarkdownTableCell(interviewed)} | ${signOff} | ${escapeMarkdownTableCell(recommendation)} | ${audit} |`;
 }
 
 export interface CohortSummaryOptions {

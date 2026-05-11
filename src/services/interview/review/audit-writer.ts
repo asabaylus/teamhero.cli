@@ -52,17 +52,37 @@ a reasoning summary in their own words. The TUI rejects empty submissions.
 
 // Quote any YAML scalar that could be misparsed by a YAML reader: contains
 // colons, # comments, leading/trailing whitespace, or starts with a YAML
-// indicator. Within the double-quoted form we also escape control characters
-// — a raw newline in a YAML double-quoted scalar is a parse error in strict
-// YAML 1.2 readers. Candidate names with ":" or "#" otherwise corrupt the
-// audit.json round-trip.
+// indicator. Within the double-quoted form we escape ALL ASCII control
+// characters (C0: \x00–\x1F, plus \x7F) as `\xHH` per YAML 1.2 §5.7 — a
+// raw control character in a double-quoted scalar is a parse error in
+// strict YAML parsers (js-yaml FAILSAFE, libyaml). Candidate names with
+// stray control characters from copy-paste otherwise corrupt the
+// audit.json round-trip silently.
 function escapeYamlDoubleQuoted(value: string): string {
-	return value
-		.replace(/\\/g, "\\\\")
-		.replace(/"/g, '\\"')
-		.replace(/\n/g, "\\n")
-		.replace(/\r/g, "\\r")
-		.replace(/\t/g, "\\t");
+	let out = value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+	out = out.replace(/[\x00-\x1F\x7F]/g, (c) => {
+		switch (c) {
+			case "\n":
+				return "\\n";
+			case "\r":
+				return "\\r";
+			case "\t":
+				return "\\t";
+			case "\0":
+				return "\\0";
+			case "\b":
+				return "\\b";
+			case "\f":
+				return "\\f";
+			case "\v":
+				return "\\v";
+			default: {
+				const hex = c.charCodeAt(0).toString(16).padStart(2, "0");
+				return `\\x${hex}`;
+			}
+		}
+	});
+	return out;
 }
 
 function yamlScalar(value: string): string {
