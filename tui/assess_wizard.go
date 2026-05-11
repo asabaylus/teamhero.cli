@@ -15,7 +15,11 @@ import (
 //  1. Runs the framed scope wizard (matches the report's two-pane layout).
 //  2. Spawns the service runner and drives the Bubble Tea progress display.
 //  3. Round-trips interview questions through huh prompts (one at a time).
-//  4. Opens the tabbed Glamour preview when the audit is written.
+// runAssessInteractive runs an interactive assessment flow: it prompts for scope and settings via a framed wizard, starts the assessment service, streams progress and interview prompts to that service, and opens a preview of the resulting audit when available.
+// 
+// The function prints cancellation and error notes to stderr, attempts to persist the updated assessment configuration (best-effort), and logs a note if preview rendering is unavailable.
+// 
+// It returns an error if the assessment service reports a fatal error or if progress reports an unrecoverable error; otherwise it returns nil.
 func runAssessInteractive(cfg *AssessConfig) error {
 	res, err := runAssessScopeWizard(cfg)
 	if err != nil {
@@ -122,7 +126,9 @@ type AssessWizardResult struct {
 
 // runAssessScopeWizard runs the scope-selection wizard inside a Bubble Tea
 // program. The View() renders the same shell-header + two-pane layout as
-// the report wizard, with the right pane showing renderAssessSummary().
+// runAssessScopeWizard runs a framed, two-pane interactive wizard to collect and confirm assessment scope settings.
+// It returns an AssessWizardResult containing a possibly-updated AssessConfig and flags indicating whether the
+// user confirmed or aborted the wizard. An error is returned if the terminal UI failed to run.
 func runAssessScopeWizard(cfg *AssessConfig) (*AssessWizardResult, error) {
 	cwd, _ := os.Getwd()
 
@@ -152,6 +158,8 @@ func runAssessScopeWizard(cfg *AssessConfig) (*AssessWizardResult, error) {
 	}, nil
 }
 
+// defaultScopeMode returns cfg.Scope.Mode when it is non-empty; otherwise it returns "local-repo".
+// The cwd parameter is accepted for callers' convenience but is not used.
 func defaultScopeMode(cfg *AssessConfig, cwd string) string {
 	if cfg.Scope.Mode != "" {
 		return cfg.Scope.Mode
@@ -160,6 +168,7 @@ func defaultScopeMode(cfg *AssessConfig, cwd string) string {
 	return "local-repo"
 }
 
+// defaultLocalPath returns the configured local path for the assessment scope if set; otherwise it falls back to the provided working directory.
 func defaultLocalPath(cfg *AssessConfig, cwd string) string {
 	if cfg.Scope.LocalPath != "" {
 		return cfg.Scope.LocalPath
@@ -429,7 +438,9 @@ func (m *assessWizardModel) formWidth() int {
 
 // ---------------------------------------------------------------------------
 // Helpers
-// ---------------------------------------------------------------------------
+// validateLocalPath reports an error when the provided path string is empty, does not
+// exist, or exists but is not a directory. It trims surrounding whitespace before
+// performing the checks and returns an explanatory error for each failure case.
 
 func validateLocalPath(s string) error {
 	trimmed := strings.TrimSpace(s)
@@ -446,6 +457,8 @@ func validateLocalPath(s string) error {
 	return nil
 }
 
+// requireNonEmpty returns a validator function that ensures a string is not empty.
+// The returned function trims whitespace and returns an error formatted as "<field> is required" when the result is empty, or nil otherwise.
 func requireNonEmpty(field string) func(string) error {
 	return func(s string) error {
 		if strings.TrimSpace(s) == "" {
@@ -455,6 +468,8 @@ func requireNonEmpty(field string) func(string) error {
 	}
 }
 
+// parseRepoCSV splits s on commas and returns a slice of non-empty, trimmed segments.
+// It trims leading and trailing whitespace from the input and from each segment; empty segments are omitted.
 func parseRepoCSV(s string) []string {
 	parts := strings.Split(strings.TrimSpace(s), ",")
 	out := make([]string, 0, len(parts))

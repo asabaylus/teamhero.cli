@@ -8,6 +8,12 @@ import type {
 	ItemScoreValue,
 } from "./types.js";
 
+/**
+ * Map an artifact evidence tier code to its formatted label.
+ *
+ * @param tier - One of `"gh"`, `"github-mcp"`, or `"git-only"` representing the evidence tier
+ * @returns A human-readable label for `tier` (e.g. `"1: gh"`, `"2: GitHub MCP"`, `"3: git-only"`)
+ */
 function tierLabel(tier: AssessmentArtifact["tier"]): string {
 	switch (tier) {
 		case "gh":
@@ -19,6 +25,12 @@ function tierLabel(tier: AssessmentArtifact["tier"]): string {
 	}
 }
 
+/**
+ * Format an ItemScoreValue into its display string.
+ *
+ * @param score - The score value (may be `1`, `0`, `"n/a"`, or another numeric value)
+ * @returns The display string: `"1"` for `1`, `"0"` for `0`, `"n/a"` for `"n/a"`, and `"0.5"` for any other numeric value
+ */
 function formatScore(score: ItemScoreValue): string {
 	if (score === "n/a") return "n/a";
 	if (score === 1) return "1";
@@ -26,10 +38,25 @@ function formatScore(score: ItemScoreValue): string {
 	return "0.5";
 }
 
+/**
+ * Format a number as a string with a fixed number of decimal places.
+ *
+ * @param num - The number to format
+ * @param digits - The number of digits after the decimal point (defaults to 1)
+ * @returns The numeric value formatted as a string with exactly `digits` digits after the decimal point
+ */
 function fixed(num: number, digits = 1): string {
 	return num.toFixed(digits);
 }
 
+/**
+ * Retrieve the ItemScore object for a specific item ID from a list.
+ *
+ * @param items - Array of item scores to search
+ * @param itemId - The item identifier to find
+ * @returns The matching `ItemScore`
+ * @throws Error if no score for `itemId` is found (message: `Missing score for item <itemId>`)
+ */
 function findItemScore(items: ItemScore[], itemId: number): ItemScore {
 	const score = items.find((s) => s.itemId === itemId);
 	if (!score) {
@@ -38,6 +65,15 @@ function findItemScore(items: ItemScore[], itemId: number): ItemScore {
 	return score;
 }
 
+/**
+ * Builds the Markdown section for a rubric category, including the category header, a table of items with scores and reasons, and a computed subtotal line.
+ *
+ * @param artifact - The assessment artifact containing item scores and category subtotals
+ * @param categoryId - The rubric category identifier to render
+ * @returns A Markdown-formatted string for the category section (header, item table, and subtotal)
+ * @throws Error If the `categoryId` is not defined in `RUBRIC_CATEGORIES` (`Unknown category <categoryId>`)
+ * @throws Error If the artifact has no subtotal for `categoryId` (`Missing subtotal for <categoryId>`)
+ */
 function categoryTable(
 	artifact: AssessmentArtifact,
 	categoryId: CategoryId,
@@ -69,6 +105,12 @@ function categoryTable(
 	return lines.join("\n");
 }
 
+/**
+ * Render a complete Markdown maturity assessment report for an assessment artifact.
+ *
+ * @param artifact - The assessment artifact containing scope, scores, band/tier info, fixes, strengths, adjacent repos, notes, and rubric metadata
+ * @returns The full report as a Markdown-formatted string
+ */
 export function renderAuditMarkdown(artifact: AssessmentArtifact): string {
 	const lines: string[] = [];
 	lines.push(
@@ -159,10 +201,23 @@ export function renderAuditMarkdown(artifact: AssessmentArtifact): string {
 	return lines.join("\n");
 }
 
+/**
+ * Serializes an assessment artifact to a pretty-printed JSON string.
+ *
+ * @param artifact - The assessment artifact to serialize
+ * @returns The artifact as a JSON string formatted with 2-space indentation
+ */
 export function renderAuditJson(artifact: AssessmentArtifact): string {
 	return JSON.stringify(artifact, null, 2);
 }
 
+/**
+ * Ensure the directory containing `filePath` exists, creating it recursively if needed.
+ *
+ * Skips creation when the directory portion is ".", "" or "/".
+ *
+ * @param filePath - The target file path whose parent directory should be ensured
+ */
 async function ensureDir(filePath: string): Promise<void> {
 	const dir = dirname(filePath);
 	if (dir === "." || dir === "" || dir === "/") return;
@@ -175,6 +230,13 @@ export interface WriteAuditOptions {
 	format: "markdown" | "json" | "both";
 }
 
+/**
+ * Writes an assessment artifact to disk in Markdown, JSON, or both formats.
+ *
+ * @param artifact - The assessment data to serialize and write
+ * @param options - Output options including destination path(s) and format
+ * @returns An object with `outputPath` set to the primary file written and `jsonOutputPath` set when a separate JSON file was written. If `options.format` is `"json"`, `outputPath` will point to the JSON file.
+ */
 export async function writeAudit(
 	artifact: AssessmentArtifact,
 	options: WriteAuditOptions,
@@ -211,8 +273,11 @@ export async function writeAudit(
 }
 
 /**
- * Compute the default markdown output path from a scope + date, mirroring the
- * report file convention (`teamhero-report-<org>-<date>.md`).
+ * Build a default Markdown filename for an audit by slugifying the display name and appending the date.
+ *
+ * @param displayName - Source string to slugify: converted to lowercase, runs of non-alphanumeric characters replaced with `-`, and leading/trailing `-` removed
+ * @param date - Date portion to append (used verbatim, e.g. `YYYY-MM-DD`)
+ * @returns A relative path like `./teamhero-maturity-<slug>-<date>.md`
  */
 export function defaultOutputPath(displayName: string, date: string): string {
 	const slug = displayName

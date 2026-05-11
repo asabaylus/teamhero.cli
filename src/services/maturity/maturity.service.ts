@@ -196,7 +196,13 @@ export class MaturityService {
 	}
 }
 
-/** Convenience: quick non-interactive run with default deps. */
+/**
+ * Run an assessment non-interactively using default dependencies.
+ *
+ * @param input - Assessment command input describing scope, tier, and output options
+ * @param overrides - Optional dependency overrides for collectors, scorer, transport, logger, or audit store
+ * @returns The assessment result containing the generated artifact and output path(s)
+ */
 export async function runHeadlessAssessment(
 	input: AssessCommandInput,
 	overrides?: MaturityServiceDeps,

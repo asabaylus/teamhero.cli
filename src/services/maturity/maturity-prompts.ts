@@ -78,6 +78,15 @@ export interface MaturityScoringContext {
 	interviewAnswers: InterviewAnswer[];
 }
 
+/**
+ * Render the full rubric as a Markdown-formatted text block.
+ *
+ * Includes category headings with their formatted weights and, for each rubric item, an item header,
+ * score level explanations for `1.0`, `0.5`, and `0.0`, an optional interview linkage line,
+ * an optional tier-3 cap note, and the item's "Why it matters" text.
+ *
+ * @returns A Markdown string containing the complete rubric organized by category and item.
+ */
 function rubricBlock(): string {
 	const lines: string[] = [];
 	for (const cat of RUBRIC_CATEGORIES) {
@@ -106,6 +115,17 @@ function rubricBlock(): string {
 	return lines.join("\n");
 }
 
+/**
+ * Render deterministic evidence grouped by rubric item into a Markdown string.
+ *
+ * Groups the provided evidence facts by their `itemId` and produces a section for
+ * every rubric item. Each section contains either bullet lines in the form
+ * `- [<signal>] <summary>` for facts or the placeholder
+ * `- (no deterministic evidence collected)` when no facts exist for that item.
+ *
+ * @param evidence - Collected deterministic evidence facts to include
+ * @returns A Markdown-formatted string with a section per rubric item listing its evidence or a placeholder when none is present
+ */
 function evidenceBlock(evidence: EvidenceFact[]): string {
 	const byItem = new Map<number, EvidenceFact[]>();
 	for (const f of evidence) {
@@ -129,11 +149,26 @@ function evidenceBlock(evidence: EvidenceFact[]): string {
 	return lines.join("\n");
 }
 
+/**
+ * Formats interview answers into a Markdown bullet list.
+ *
+ * @param answers - Array of interview answers; each item should contain `questionId` and `value`
+ * @returns `_No interview answers supplied._` if `answers` is empty, otherwise a newline-separated list of `- <questionId>: <value>` lines
+ */
 function interviewBlock(answers: InterviewAnswer[]): string {
 	if (answers.length === 0) return "_No interview answers supplied._";
 	return answers.map((a) => `- ${a.questionId}: ${a.value}`).join("\n");
 }
 
+/**
+ * Builds the full audit prompt used to assess agent maturity, embedding scope, rules,
+ * the full rubric, collected deterministic evidence, and interview answers.
+ *
+ * @param context - Inputs that populate the prompt: scope (mode/displayName), evidence tier,
+ *   adjacent repositories, deterministic evidence facts, and interview answers.
+ * @returns The complete Markdown prompt text instructing the auditor and ending with an
+ *   instruction to return JSON matching the `agent_maturity_assessment` schema.
+ */
 export function buildMaturityPrompt(context: MaturityScoringContext): string {
 	const scopeLine = `${context.scope.mode} | ${context.scope.displayName}`;
 	const adjacentLine =

@@ -27,10 +27,26 @@ interface CollectInput {
 	adjacentRepos: AdjacentRepo[];
 }
 
+/**
+ * Retrieve the repository local filesystem path from a scope descriptor.
+ *
+ * @param scope - The scope descriptor containing contextual data about the repository
+ * @returns The `localPath` string from `scope`, or `null` if it is not set
+ */
 function localPath(scope: ScopeDescriptor): string | null {
 	return scope.localPath ?? null;
 }
 
+/**
+ * Constructs an EvidenceFact object for a rubric item.
+ *
+ * @param itemId - The numeric rubric item identifier (e.g., 1–12)
+ * @param signal - The signal for the fact (`"positive"`, `"neutral"`, or `"negative"`)
+ * @param summary - A short, human-readable summary of the evidence
+ * @param source - Identifier of the evidence source (for example `"evidence-collectors"`)
+ * @param details - Optional additional metadata to attach to the fact
+ * @returns The assembled `EvidenceFact` containing the provided fields; `details` is included only if supplied
+ */
 function fact(
 	itemId: number,
 	signal: EvidenceFact["signal"],
@@ -708,6 +724,14 @@ class HiringCollector implements MaturityProvider {
 	}
 }
 
+/**
+ * Create the default set of evidence collectors for all rubric items in the canonical order.
+ *
+ * @returns An array of `MaturityProvider` instances for items 1 through 12, ordered as:
+ * ReproducibleDevCollector, IntegrationCadenceCollector, TestabilityCollector, ObservabilityCollector,
+ * DesignDisciplineCollector, DeepModulesCollector, AgentContextCollector, SanctionedAiCollector,
+ * HumanReviewCollector, EvalsCollector, BlastRadiusCollector, HiringCollector.
+ */
 export function defaultCollectors(): MaturityProvider[] {
 	return [
 		new ReproducibleDevCollector(),
@@ -725,6 +749,16 @@ export function defaultCollectors(): MaturityProvider[] {
 	];
 }
 
+/**
+ * Run each maturity collector in order and aggregate their emitted evidence facts.
+ *
+ * If a collector throws, its error is caught and a single neutral `EvidenceFact` is appended
+ * for that item with the error message as the summary.
+ *
+ * @param collectors - Array of maturity collectors to execute
+ * @param input - Collection input (scope and tier) supplied to each collector
+ * @returns The concatenated list of `EvidenceFact` objects produced by all collectors, in execution order
+ */
 export async function runAllCollectors(
 	collectors: MaturityProvider[],
 	input: CollectInput,

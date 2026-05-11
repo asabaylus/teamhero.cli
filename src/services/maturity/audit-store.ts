@@ -33,9 +33,12 @@ export class FileSystemAuditStore implements AuditStore {
 }
 
 /**
- * Parse the `## Org-level answers` section of CONFIG.md. Heading mapping
- * comes from interview.md verbatim.
- */
+ * Extracts org-level interview answers from a CONFIG.md document.
+ *
+ * Parses the "## Org-level answers" section, reading each `###` question heading and its following lines as the answer value.
+ *
+ * @param text - Full contents of a CONFIG.md file
+ * @returns An array of `InterviewAnswer` objects for recognized questions. Headings are matched case-insensitively to known interview questions; multi-line answers are preserved and trimmed; empty answers and unknown headings are ignored.
 export function parseConfigMd(text: string): InterviewAnswer[] {
 	const answers: InterviewAnswer[] = [];
 	const lines = text.split(/\r?\n/);
@@ -83,6 +86,12 @@ export function parseConfigMd(text: string): InterviewAnswer[] {
 	return answers;
 }
 
+/**
+ * Finds the interview question id whose config heading matches the given heading (case-insensitive).
+ *
+ * @param heading - The heading text to match against question config headings.
+ * @returns The matching `InterviewQuestionId` if found, `null` otherwise.
+ */
 function matchQuestionByHeading(heading: string): InterviewQuestionId | null {
 	const q = INTERVIEW_QUESTIONS.find(
 		(q) => q.configHeading.toLowerCase() === heading.toLowerCase(),
@@ -90,6 +99,13 @@ function matchQuestionByHeading(heading: string): InterviewQuestionId | null {
 	return q?.id ?? null;
 }
 
+/**
+ * Render the contents of CONFIG.md's "Org-level answers" section from provided answers.
+ *
+ * @param answers - Collected interview answers to include in the document
+ * @param today - Date string written to the `last_updated` line
+ * @returns A CONFIG.md-formatted string containing the header, `last_updated: {today}`, and one `### {question}` section per interview question; unanswered questions are rendered as `unknown`
+ */
 export function renderConfigMd(
 	answers: InterviewAnswer[],
 	today: string,
@@ -109,8 +125,10 @@ export function renderConfigMd(
 }
 
 /**
- * Read pre-supplied interview answers from a JSON file (used by --interview-answers
- * in headless mode). Format: { "q1": "...", "q2": "...", ... }.
+ * Load pre-supplied interview answers from a JSON file for headless mode.
+ *
+ * @param path - Filesystem path to a JSON file shaped like `{ "q1": "…", "q2": "…", … }`
+ * @returns An array of `InterviewAnswer` for entries whose question IDs are recognized; unrecognized IDs are skipped.
  */
 export async function readAnswersJson(
 	path: string,

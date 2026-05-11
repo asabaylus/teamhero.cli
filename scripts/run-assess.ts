@@ -43,6 +43,13 @@ const emit: JsonLineEmitter = (event) => {
 	process.stdout.write(`${JSON.stringify(event)}\n`);
 };
 
+/**
+ * Emit a standardized progress event for the current audit step.
+ *
+ * @param step - Identifier or name of the progress step
+ * @param status - Progress state: `active`, `complete`, or `failed`
+ * @param message - Human-readable status message
+ */
 function emitProgress(
 	step: string,
 	status: "active" | "complete" | "failed",
@@ -52,7 +59,14 @@ function emitProgress(
 }
 
 // readConfigLine + interview answers share a single stdin reader so the
-// stdin pipe doesn't get half-consumed by an async iterator and then closed.
+/**
+ * Load interview answers from a JSON file on disk.
+ *
+ * Attempts to read and parse interview answers from the filesystem; if reading or parsing fails the function logs a warning and returns an empty array.
+ *
+ * @param path - Filesystem path to the answers JSON file
+ * @returns An array of parsed `InterviewAnswer` objects, or an empty array if the file could not be read or parsed
+ */
 
 async function loadInterviewAnswersFromFile(
 	path: string,
@@ -67,6 +81,15 @@ async function loadInterviewAnswersFromFile(
 	}
 }
 
+/**
+ * Run the headless maturity-assessment flow driven by a single JSON config line on stdin.
+ *
+ * Reads an `AssessCommandInput` object from the first stdin line, configures the assessment
+ * (interactive interview transport or preloaded answers, optional filesystem audit store,
+ * and the AI scorer), executes the assessment, and emits progress, result, and error events
+ * as JSON-lines on stdout while logging to stderr. Exits the process with code `0` on success
+ * or `1` on error or malformed/missing input.
+ */
 async function main(): Promise<void> {
 	const logger = createConsola({ defaults: { tag: "maturity" } });
 

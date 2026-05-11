@@ -8,6 +8,10 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// printAssessUsage prints the usage and help message for the `teamhero assess` subcommand to stderr.
+// 
+// The message describes the assessment's purpose and outputs, saved configuration location,
+// scope and run flags (including headless and interview options), examples, and exit codes.
 func printAssessUsage() {
 	fmt.Fprintf(os.Stderr, `Usage: teamhero assess [flags]
 
@@ -55,7 +59,11 @@ Exit codes:
 }
 
 // runAssess is the entry point for the "assess" subcommand. It dispatches to
-// either the headless run loop or the interactive wizard based on environment.
+// runAssess dispatches the `assess` subcommand behavior.
+// If `--show-assess-config` is set, it prints the saved assess configuration (exits with status 1 if none) and returns nil.
+// Otherwise it loads or initializes the config, applies flag overrides, and fills defaults.
+// In headless mode it verifies that minimal scope is present (exits with status 1 if missing) and runs the headless assessment, returning any error from that run.
+// In interactive mode it runs the interactive assessment and returns any error from that run.
 func runAssess() error {
 	if *flagAssessShowConfig {
 		cfg, err := LoadAssessConfig()
@@ -83,6 +91,8 @@ func runAssess() error {
 	return runAssessInteractive(&cfg)
 }
 
+// loadOrInitAssessConfig returns a previously saved AssessConfig if one exists.
+// If no saved config is available or loading it fails, it returns the DefaultAssessConfig().
 func loadOrInitAssessConfig() AssessConfig {
 	saved, _ := LoadAssessConfig()
 	if saved != nil {
@@ -92,7 +102,7 @@ func loadOrInitAssessConfig() AssessConfig {
 }
 
 // runAssessHeadless drives the assess service runner without any TTY UI.
-// Interview answers must come from --interview-answers or a CONFIG.md file.
+// command to fail.
 func runAssessHeadless(cfg AssessConfig) error {
 	cfg.Mode = "headless"
 	cfg.InteractiveInterview = false

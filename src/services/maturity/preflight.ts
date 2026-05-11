@@ -5,12 +5,13 @@ import { getEnv } from "../../lib/env.js";
 import type { EvidenceTier } from "./types.js";
 
 /**
- * Detects which evidence-fidelity tier we can operate at.
+ * Choose the evidence-fidelity tier the system should operate at.
  *
- * Order:
- *  1. `gh` CLI in PATH and authenticated → "gh"
- *  2. Hint env var TEAMHERO_GITHUB_MCP=1 (set by the Go TUI when an MCP is wired) → "github-mcp"
- *  3. Anything else → "git-only"
+ * Detection precedence (highest → lowest): explicit `override` (unless `"auto"`), authenticated `gh` CLI, `TEAMHERO_GITHUB_MCP="1"`, then git-only fallback.
+ *
+ * @param cwd - Working directory used when probing for a Git repository
+ * @param override - Explicit tier to use or `"auto"` to perform detection
+ * @returns The selected evidence tier: `'gh'`, `'github-mcp'`, or `'git-only'`
  */
 export async function detectTier(
 	cwd: string,
@@ -27,6 +28,12 @@ export async function detectTier(
 	return "git-only";
 }
 
+/**
+ * Determines whether the given directory appears to be a Git repository by checking for a `.git` entry.
+ *
+ * @param cwd - Filesystem path to the directory to inspect
+ * @returns `true` if a `.git` entry exists and is a file or directory, `false` otherwise
+ */
 async function isGitRepo(cwd: string): Promise<boolean> {
 	try {
 		const s = await stat(join(cwd, ".git"));
@@ -36,6 +43,11 @@ async function isGitRepo(cwd: string): Promise<boolean> {
 	}
 }
 
+/**
+ * Detects whether the GitHub CLI is installed and currently authenticated.
+ *
+ * @returns `true` if the `gh` CLI is present and reports an authenticated session, `false` otherwise.
+ */
 async function ghIsAuthenticated(): Promise<boolean> {
 	return new Promise<boolean>((resolve) => {
 		const child = spawn("gh", ["auth", "status"], {
@@ -46,6 +58,12 @@ async function ghIsAuthenticated(): Promise<boolean> {
 	});
 }
 
+/**
+ * Provide a human-readable label for an evidence-fidelity tier.
+ *
+ * @param tier - The evidence tier to describe (`"gh"`, `"github-mcp"`, or `"git-only"`)
+ * @returns A descriptive label for `tier` indicating its name and relative fidelity.
+ */
 export function describeTier(tier: EvidenceTier): string {
 	switch (tier) {
 		case "gh":

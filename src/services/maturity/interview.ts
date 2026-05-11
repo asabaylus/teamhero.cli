@@ -109,10 +109,23 @@ const UNKNOWN_TOKENS = new Set(
 	),
 );
 
+/**
+ * Determine whether an answer string represents "unknown" or "not applicable".
+ *
+ * @param value - The raw answer text to classify (may include surrounding whitespace or mixed case)
+ * @returns `true` if `value` matches a known unknown/not-applicable token (case- and whitespace-insensitive), `false` otherwise
+ */
 export function isUnknownAnswer(value: string): boolean {
 	return UNKNOWN_TOKENS.has(value.trim().toLowerCase());
 }
 
+/**
+ * Retrieve the interview question object for the given question identifier.
+ *
+ * @param id - The interview question id (e.g., `"q1"` through `"q7"`) to look up
+ * @returns The matching `InterviewQuestion` for `id`
+ * @throws Error if no question with the supplied `id` exists
+ */
 export function getQuestion(id: InterviewQuestionId): InterviewQuestion {
 	const q = INTERVIEW_QUESTIONS.find((q) => q.id === id);
 	if (!q) {

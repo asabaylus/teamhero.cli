@@ -98,6 +98,12 @@ var canonicalAssessSteps = []string{
 	"complete",
 }
 
+// newAssessProgressModel creates an assessProgressModel configured for the TUI run.
+//
+// The returned model is initialized with a styled spinner, a progress bar (width derived
+// from terminal width), two viewports (content and shell) sized for the terminal, and
+// populated fields: cfg, title, canonical expected steps, totalQuestions, sendAnswer,
+// and initial width/height.
 func newAssessProgressModel(
 	title string,
 	cfg *AssessConfig,
@@ -675,7 +681,7 @@ type AssessProgressResult struct {
 // don't release the terminal — so the framed two-pane layout is continuous.
 //
 // sendAnswer is invoked when each embedded interview form completes. It
-// must write the answer JSON line back to the runner's stdin.
+// an error message if the display/runtime failed, and whether the run was cancelled.
 func RunAssessProgressDisplay(
 	title string,
 	cfg *AssessConfig,
@@ -710,6 +716,11 @@ func RunAssessProgressDisplay(
 	}
 }
 
+// assessStepElapsed returns a formatted elapsed-time string for the given step.
+// If the step has no start time, it returns an empty string. If the step has a
+// finish time, it returns the duration from start to finish. If the step is
+// still running, it returns the elapsed duration only after at least 3 seconds
+// have passed since the start; otherwise it returns an empty string.
 func assessStepElapsed(s assessStepState, now time.Time) string {
 	if s.startedAt.IsZero() {
 		return ""
@@ -724,7 +735,8 @@ func assessStepElapsed(s assessStepState, now time.Time) string {
 }
 
 // humanizeStep maps the lower-kebab step name to a label that fits the
-// existing report's tone (capitalized verb-phrases).
+// humanizeStep maps a canonical step key to a human-readable, capitalized label.
+// If the step is unknown, it returns the input unchanged.
 func humanizeStep(step string) string {
 	switch step {
 	case "startup":

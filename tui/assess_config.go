@@ -29,13 +29,16 @@ type AssessScope struct {
 	DisplayName string   `json:"displayName"`
 }
 
-// assessConfigPath returns ~/.config/teamhero/assess-config.json (XDG-compliant).
+// assessConfigPath returns the full path to the XDG-compliant assess-config.json file
+// inside the application's configuration directory.
 func assessConfigPath() string {
 	return filepath.Join(configDir(), "assess-config.json")
 }
 
 // LoadAssessConfig reads the saved assess configuration. Returns nil with no
-// error if the file does not exist.
+// LoadAssessConfig reads the saved assess configuration from the user's config directory and returns it.
+// If the config file does not exist it returns (nil, nil).
+// If reading the file or decoding the JSON fails it returns a non-nil error.
 func LoadAssessConfig() (*AssessConfig, error) {
 	data, err := os.ReadFile(assessConfigPath())
 	if err != nil {
@@ -51,7 +54,9 @@ func LoadAssessConfig() (*AssessConfig, error) {
 	return &cfg, nil
 }
 
-// SaveAssessConfig persists the assess configuration to disk.
+// SaveAssessConfig writes cfg to the persistent assess configuration file.
+// It creates the parent directory if necessary, writes the configuration as
+// indented JSON with file mode 0600, and returns any error encountered.
 func SaveAssessConfig(cfg *AssessConfig) error {
 	if err := os.MkdirAll(filepath.Dir(assessConfigPath()), 0o755); err != nil {
 		return err
@@ -63,7 +68,9 @@ func SaveAssessConfig(cfg *AssessConfig) error {
 	return os.WriteFile(assessConfigPath(), data, 0o600)
 }
 
-// DefaultAssessConfig returns a sensible starting config for a new user.
+// DefaultAssessConfig builds a sensible starting AssessConfig configured for a local repository.
+// The returned config uses the current working directory as Scope.LocalPath and Scope.DisplayName,
+// sets Scope.Mode to "local-repo", EvidenceTier to "auto", and OutputFormat to "both".
 func DefaultAssessConfig() AssessConfig {
 	cwd, _ := os.Getwd()
 	return AssessConfig{

@@ -28,6 +28,13 @@ export interface MaturityAIScorerOptions {
 
 const TIER3_CAPPED = new Set([2, 3, 9, 11]);
 
+/**
+ * Convert a score string produced by the AI into a typed `ItemScoreValue`.
+ *
+ * @param raw - The raw score string (expected: `"0"`, `"1"`, `"0.5"`, or `"n/a"`).
+ * @returns `0`, `1`, `0.5`, or `"n/a"` corresponding to the input string.
+ * @throws Error if `raw` is not one of the expected strings.
+ */
 function parseScore(raw: string): ItemScoreValue {
 	if (raw === "0") return 0;
 	if (raw === "1") return 1;
@@ -37,9 +44,15 @@ function parseScore(raw: string): ItemScoreValue {
 }
 
 /**
- * Enforce tier-3 caps: if an item is in TIER3_CAPPED and the AI awarded 1.0
- * on a git-only audit, downgrade to 0.5 and append a note. We do this
- * post-hoc so the AI's reasoning is preserved but the rubric is honored.
+ * Apply tier-3 capping rules to item scores for git-only audits.
+ *
+ * For `tier === "git-only"`, any item whose `itemId` is in `TIER3_CAPPED` and
+ * whose score equals `1` will be downgraded to `0.5` and have a marker
+ * appended to `whyThisScore`. Returns the adjusted items and explanatory notes.
+ *
+ * @param items - The list of item scores to process
+ * @param tier - The audit tier; caps are applied only when equal to `"git-only"`
+ * @returns An object containing `items` (the possibly modified scores) and `notes` (explanations for any caps applied)
  */
 function applyTier3Caps(
 	items: ItemScore[],
@@ -64,9 +77,9 @@ function applyTier3Caps(
 }
 
 /**
- * Validate that the AI returned exactly 12 items covering ids 1..12.
- * Adds neutral 0/0.5/1 placeholders for any missing items so the audit
- * always renders all rows.
+ * Ensures the returned item list includes every rubric item (IDs 1–12) by adding neutral placeholders for any missing entries.
+ *
+ * @returns An object with `items`: the original items augmented with placeholder `ItemScore` entries for missing rubric IDs (sorted by `itemId`), and `missing`: an array of rubric IDs that were absent from the input.
  */
 function ensureAllItems(items: ItemScore[]): {
 	items: ItemScore[];

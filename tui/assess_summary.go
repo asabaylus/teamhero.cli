@@ -11,7 +11,12 @@ import (
 //
 // Each field shows a value when it has been resolved, "—" (dim) otherwise.
 // The "Assessment Setup" header includes an AI badge on the right when an
-// AI model has been selected (matches the report's "Report Setup" header).
+// renderAssessSummary renders a right-pane, bordered summary of an assessment configuration sized to the provided width.
+// 
+// The rendered box contains labeled fields for Scope, Target, Display name, Evidence tier, Output format, Output path,
+// Interview answers, and Mode. If cfg is nil the box contains "No configuration". A minimum width of 20 is enforced.
+// Empty or whitespace-only values are shown as a dim em dash ("—"). When cfg.DryRun is true a right-aligned "dry-run"
+// badge is shown and is placed on the same header line if there is sufficient space.
 func renderAssessSummary(cfg *AssessConfig, width int) string {
 	if width < 20 {
 		width = 20
@@ -89,6 +94,9 @@ func renderAssessSummary(cfg *AssessConfig, width int) string {
 	return boxStyle.Width(innerWidth).Render(content)
 }
 
+// fmtAssessScopeMode converts the assessment scope mode in cfg into a human-readable label.
+// It maps "org" to "GitHub org", "local-repo" to "Local repository", and "both" to "Org + local checkout".
+// For any other mode it returns an empty string.
 func fmtAssessScopeMode(cfg *AssessConfig) string {
 	switch cfg.Scope.Mode {
 	case "org":
@@ -101,6 +109,12 @@ func fmtAssessScopeMode(cfg *AssessConfig) string {
 	return ""
 }
 
+// fmtAssessTarget returns a human-readable target string based on cfg.Scope.Mode.
+// For "org" it returns "" when Org is empty, the Org name when no repos are listed,
+// or "Org (repos...)" when repos are present (repos rendered compactly inside parentheses).
+// For "local-repo" it returns cfg.Scope.LocalPath.
+// For "both" it joins any non-empty Org and LocalPath with " · ".
+// For any other mode it returns an empty string.
 func fmtAssessTarget(cfg *AssessConfig) string {
 	switch cfg.Scope.Mode {
 	case "org":
@@ -126,6 +140,10 @@ func fmtAssessTarget(cfg *AssessConfig) string {
 	return ""
 }
 
+// fmtAssessTier converts an evidence tier identifier into a human-readable label.
+// It maps "" and "auto" to "auto-detect", "gh" to "1 — gh CLI", "github-mcp" to
+// "2 — GitHub MCP", and "git-only" to "3 — git-only". For any other input it
+// returns the original tier string unchanged.
 func fmtAssessTier(tier string) string {
 	switch tier {
 	case "", "auto":
@@ -140,6 +158,9 @@ func fmtAssessTier(tier string) string {
 	return tier
 }
 
+// fmtAssessOutputFormat returns a user-facing label for an output format key.
+// It maps the empty string to "both", "both" to "both (md + json)", and preserves
+// "markdown" and "json" as-is. For any other input it returns the input unchanged.
 func fmtAssessOutputFormat(format string) string {
 	switch format {
 	case "":
@@ -154,6 +175,8 @@ func fmtAssessOutputFormat(format string) string {
 	return format
 }
 
+// fmtAssessAnswersFile provides a display string for the interview answers file.
+// If path is empty it returns "interactive"; otherwise it returns the provided path.
 func fmtAssessAnswersFile(path string) string {
 	if path == "" {
 		return "interactive"
@@ -161,6 +184,9 @@ func fmtAssessAnswersFile(path string) string {
 	return path
 }
 
+// fmtAssessRunMode determines the assessment run mode based on the provided configuration.
+// If cfg.Mode is non-empty that value is used; otherwise it returns "interactive" when
+// cfg.InteractiveInterview is true and "headless" otherwise.
 func fmtAssessRunMode(cfg *AssessConfig) string {
 	if cfg.Mode != "" {
 		return cfg.Mode
