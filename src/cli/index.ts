@@ -144,7 +144,7 @@ export function createCli(
 		.version(VERSION);
 
 	program
-		.command("report")
+		.command("report [args...]")
 		.description("Generate a developer contribution report")
 		.helpOption(false) // Let the Go TUI binary handle --help
 		.allowUnknownOption() // Pass through any flags to the TUI binary
@@ -166,7 +166,7 @@ export function createCli(
 		});
 
 	program
-		.command("setup")
+		.command("setup [args...]")
 		.description("Configure credentials and preferences")
 		.helpOption(false)
 		.allowUnknownOption()
@@ -178,7 +178,7 @@ export function createCli(
 		});
 
 	program
-		.command("doctor")
+		.command("doctor [args...]")
 		.description("Validate installation health")
 		.helpOption(false)
 		.allowUnknownOption()
@@ -190,7 +190,7 @@ export function createCli(
 		});
 
 	program
-		.command("interview")
+		.command("interview [args...]")
 		.description(
 			"Review candidate AI-collaboration interviews (bootstrap, review, cohort)",
 		)
