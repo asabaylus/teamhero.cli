@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
 import { extname, join } from "node:path";
 
 export interface ValidationResult {
@@ -23,9 +23,12 @@ function walk(dir: string, out: string[] = []): string[] {
 	for (const entry of readdirSync(dir)) {
 		if (entry === "node_modules" || entry === ".git") continue;
 		const full = join(dir, entry);
-		const s = statSync(full);
+		// lstat (not stat) so we don't follow symlinks — an attacker-controlled
+		// generator output with a cycle would otherwise hang the validator.
+		const s = lstatSync(full);
+		if (s.isSymbolicLink()) continue;
 		if (s.isDirectory()) walk(full, out);
-		else out.push(full);
+		else if (s.isFile()) out.push(full);
 	}
 	return out;
 }

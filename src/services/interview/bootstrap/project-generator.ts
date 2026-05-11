@@ -1,3 +1,4 @@
+import { homedir } from "node:os";
 import {
 	mkdirSync,
 	readdirSync,
@@ -6,7 +7,7 @@ import {
 	statSync,
 	writeFileSync,
 } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
 	validateModeAProject,
 	validateModeBProject,
@@ -46,15 +47,61 @@ export interface GenerateResult {
 
 const DEFAULT_MAX_ATTEMPTS = 3;
 
+/**
+ * Resolves `relPath` relative to `rootAbs` and refuses paths that escape the
+ * root via `..`, absolute components, or Windows drive letters. The generator
+ * client returns file paths from an LLM response, which is untrusted input.
+ */
+function resolveWithinRoot(rootAbs: string, relPath: string): string {
+	if (isAbsolute(relPath)) {
+		throw new Error(
+			`Generated file path is absolute, refusing: ${relPath}`,
+		);
+	}
+	const target = resolve(rootAbs, relPath);
+	const rel = relative(rootAbs, target);
+	if (rel.startsWith("..") || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+		throw new Error(
+			`Generated file path escapes output directory, refusing: ${relPath}`,
+		);
+	}
+	return target;
+}
+
 function writeGenerated(outputDir: string, project: GeneratedProject): void {
+	const rootAbs = resolve(outputDir);
 	for (const file of project.files) {
-		const target = join(outputDir, file.path);
+		const target = resolveWithinRoot(rootAbs, file.path);
 		mkdirSync(dirname(target), { recursive: true });
 		writeFileSync(target, file.content, "utf8");
 	}
 }
 
+/**
+ * Refuses to clear paths that are obviously dangerous to recursively delete:
+ * filesystem roots, the user's home directory, or anything resolving to a
+ * single path segment (one mistaken `outputDir: "/"` should not wipe a disk).
+ */
+function assertSafeToClear(outputDir: string): void {
+	const abs = resolve(outputDir);
+	const root = resolve(abs, "/");
+	if (abs === root || abs === sep) {
+		throw new Error(`Refusing to clear filesystem root: ${abs}`);
+	}
+	const home = homedir();
+	if (home && abs === resolve(home)) {
+		throw new Error(`Refusing to clear home directory: ${abs}`);
+	}
+	// Refuse a top-level path like /usr, /etc, /home — anything where the
+	// path has no parent beyond the root.
+	const parent = dirname(abs);
+	if (parent === abs) {
+		throw new Error(`Refusing to clear root-level path: ${abs}`);
+	}
+}
+
 function clearOutputDir(outputDir: string): void {
+	assertSafeToClear(outputDir);
 	rmSync(outputDir, { recursive: true, force: true });
 	mkdirSync(outputDir, { recursive: true });
 }
@@ -128,5 +175,3 @@ export function validateGenerated(config: RoleConfig): ValidationResult {
 	return validateOutput(config, config.outputDir);
 }
 
-// Silence the unused-import in some isolations
-export { relative as _relative };

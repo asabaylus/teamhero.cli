@@ -22,7 +22,9 @@ import type { TranscriptLineEvent } from "../types.js";
  */
 
 const TIMESTAMPED = /^\[(\d{1,2}:\d{2}(?::\d{2})?)\]\s+([^:]+?):\s+(.+)$/;
-const BARE = /^([A-Za-z][A-Za-z .'-]+?):\s+(.+)$/;
+// Speaker labels may include digits ("Speaker 1", "Interviewer 2") so allow
+// alphanumerics, spaces, periods, hyphens, and apostrophes in the name.
+const BARE = /^([A-Za-z][\w .'-]*?):\s+(.+)$/;
 
 function toIsoFromHMS(hms: string, sessionStartIso: string): string {
 	const parts = hms.split(":").map(Number);
@@ -33,7 +35,11 @@ function toIsoFromHMS(hms: string, sessionStartIso: string): string {
 		totalSeconds = parts[0] * 60 + parts[1];
 	}
 	const base = new Date(sessionStartIso).getTime();
-	return new Date(base + totalSeconds * 1000).toISOString();
+	// An invalid sessionStartIso would make `base` NaN and crash toISOString().
+	// Fall back to the unix epoch so the transcript still parses with relative
+	// offsets, instead of aborting the entire review.
+	const safeBase = Number.isFinite(base) ? base : 0;
+	return new Date(safeBase + totalSeconds * 1000).toISOString();
 }
 
 export interface TranscriptParseOptions {
@@ -48,7 +54,11 @@ export function parseTranscript(
 	const body = readFileSync(path, "utf8");
 	const lines = body.split("\n");
 	const result: TranscriptLineEvent[] = [];
-	const sessionStart = options.sessionStartIso ?? "1970-01-01T00:00:00.000Z";
+	const rawSessionStart =
+		options.sessionStartIso ?? "1970-01-01T00:00:00.000Z";
+	const sessionStart = Number.isFinite(new Date(rawSessionStart).getTime())
+		? rawSessionStart
+		: "1970-01-01T00:00:00.000Z";
 
 	for (const raw of lines) {
 		const line = raw.trim();

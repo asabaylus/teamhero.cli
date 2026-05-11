@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -145,20 +147,27 @@ func TestBootstrapWizard_OptionsRoundTrip_CustomRubricCarriesPrompt(t *testing.T
 }
 
 func TestBootstrapWizard_OptionsRoundTrip_JDRubricCarriesPath(t *testing.T) {
+	// Create a real JD file so the existence check inside
+	// ValidateBootstrapOptions passes.
+	jd := filepath.Join(t.TempDir(), "jd.md")
+	if err := os.WriteFile(jd, []byte("# JD"), 0o644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
 	m := newBootstrapWizardModel(BootstrapWizardDefaults{})
 	m.role = "x"
 	m.stack = "x"
 	m.domain = "x"
 	m.feature = "x"
 	m.modeRubric = "default+jd"
-	m.jdPath = "/path/to/jd.md"
+	m.jdPath = jd
 	m.outputDir = "x"
 
 	opts := bootstrapWizardOptionsFromModel(m)
 	if msg := ValidateBootstrapOptions(opts); msg != "" {
 		t.Fatalf("validation gate rejected jd-rubric options: %q", msg)
 	}
-	if opts.JDPath != "/path/to/jd.md" {
+	if opts.JDPath != jd {
 		t.Errorf("JDPath should be forwarded to options")
 	}
 }

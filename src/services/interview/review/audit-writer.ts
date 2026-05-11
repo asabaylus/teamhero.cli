@@ -50,26 +50,53 @@ a reasoning summary in their own words. The TUI rejects empty submissions.
 > simply restate the AI's observations — give your own read._
 `;
 
+// Quote any YAML scalar that could be misparsed by a YAML reader: contains
+// colons, # comments, leading/trailing whitespace, or starts with a YAML
+// indicator. We use double quotes and escape embedded backslashes/quotes —
+// candidate names with ":" or "#" otherwise corrupt the audit.json round-trip.
+function yamlScalar(value: string): string {
+	if (
+		value.length === 0 ||
+		/[:#\n\r\t"\\]/.test(value) ||
+		/^[\s\-?\[\]{},&*!|>'%@`]/.test(value) ||
+		value.trim() !== value
+	) {
+		const escaped = value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+		return `"${escaped}"`;
+	}
+	return value;
+}
+
+function yamlTag(value: string): string {
+	if (/[:,\[\]{}#&*!|>'"%@`\s]/.test(value)) {
+		const escaped = value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+		return `"${escaped}"`;
+	}
+	return value;
+}
+
 function yaml(value: AuditFrontmatter): string {
 	const lines: string[] = ["---"];
-	lines.push(`tags: [${value.tags.join(", ")}]`);
-	lines.push(`candidate: ${value.candidate}`);
-	lines.push(`role: ${value.role}`);
-	lines.push(`date: ${value.date}`);
-	lines.push(`rubric_version: ${value.rubric_version}`);
-	lines.push(`rubric_mode: ${value.rubric_mode}`);
+	lines.push(`tags: [${value.tags.map(yamlTag).join(", ")}]`);
+	lines.push(`candidate: ${yamlScalar(value.candidate)}`);
+	lines.push(`role: ${yamlScalar(value.role)}`);
+	lines.push(`date: ${yamlScalar(value.date)}`);
+	lines.push(`rubric_version: ${yamlScalar(value.rubric_version)}`);
+	lines.push(`rubric_mode: ${yamlScalar(value.rubric_mode)}`);
 	lines.push(`signed_off: ${value.signed_off}`);
 	if (value.recommendation !== undefined) {
-		lines.push(`recommendation: ${value.recommendation}`);
+		lines.push(`recommendation: ${yamlScalar(value.recommendation)}`);
 	}
 	if (value.session_recording_url !== undefined) {
-		lines.push(`session_recording_url: ${value.session_recording_url}`);
+		lines.push(
+			`session_recording_url: ${yamlScalar(value.session_recording_url)}`,
+		);
 	}
 	if (value.session_platform !== undefined) {
-		lines.push(`session_platform: ${value.session_platform}`);
+		lines.push(`session_platform: ${yamlScalar(value.session_platform)}`);
 	}
 	if (value.session_date !== undefined) {
-		lines.push(`session_date: ${value.session_date}`);
+		lines.push(`session_date: ${yamlScalar(value.session_date)}`);
 	}
 	lines.push("---");
 	return lines.join("\n");

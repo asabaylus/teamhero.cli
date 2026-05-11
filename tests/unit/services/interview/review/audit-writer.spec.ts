@@ -133,7 +133,12 @@ describe("renderSummary", () => {
 			}),
 			outputDir: "/tmp/x",
 		});
-		expect(body).toContain("session_recording_url: https://zoom.us/rec/xyz");
+		// URL is quoted because it contains characters (`:`, `/`) that YAML
+		// parsers can mishandle in bare scalars. Quoting makes the audit.json
+		// round-trip safe even when the URL has colons, hashes, etc.
+		expect(body).toContain(
+			`session_recording_url: "https://zoom.us/rec/xyz"`,
+		);
 		expect(body).toContain("session_platform: zoom");
 	});
 });

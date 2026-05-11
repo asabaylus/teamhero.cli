@@ -85,7 +85,13 @@ func (m *interviewProgressModel) applyEvent(evt GenericEvent) {
 			m.messages[evt.Step] = evt.Message
 		}
 	case "update":
-		// keep running, just record message for tooltip-style display
+		// keep running, just record message for tooltip-style display.
+		// If we haven't seen the matching "start" yet (some emitters skip
+		// straight to update), promote the phase to running so the UI
+		// reflects activity instead of leaving the phase pending.
+		if m.status[evt.Step] == interviewPhasePending {
+			m.status[evt.Step] = interviewPhaseRunning
+		}
 		if evt.Message != "" {
 			m.messages[evt.Step] = evt.Message
 		}

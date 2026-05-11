@@ -7,7 +7,9 @@
 import { consola } from "consola";
 import { config as loadDotenv } from "dotenv";
 
-loadDotenv({ override: true });
+// Do not override: CI/production env vars (real OPENAI_API_KEY, etc.) must
+// win over anything that happens to be in a local .env.
+loadDotenv();
 
 import { OpenAIGeneratorClient } from "../src/services/interview/bootstrap/openai-generator-client.js";
 import { runBootstrap } from "../src/services/interview/bootstrap/orchestrator.js";
@@ -79,6 +81,22 @@ function buildConfig(flags: ParsedFlags): RoleConfig | string {
 	if (!flags.outputDir) return "Missing required flag --output-dir";
 
 	const timeBox = Number.parseInt(flags.timeBox ?? "90", 10);
+	if (!Number.isFinite(timeBox)) {
+		return `--time-box must be an integer number of minutes (got ${String(flags.timeBox)})`;
+	}
+
+	const validModeProjects = ["A", "B"];
+	if (!validModeProjects.includes(flags.modeProject)) {
+		return `--mode-project must be one of ${validModeProjects.join("/")} (got ${flags.modeProject})`;
+	}
+	const validModeAnalyses = ["ai-assisted", "human-only"];
+	if (!validModeAnalyses.includes(flags.modeAnalysis)) {
+		return `--mode-analysis must be one of ${validModeAnalyses.join("/")} (got ${flags.modeAnalysis})`;
+	}
+	const validModeRubrics = ["default", "custom", "default+jd"];
+	if (!validModeRubrics.includes(flags.modeRubric)) {
+		return `--mode-rubric must be one of ${validModeRubrics.join("/")} (got ${flags.modeRubric})`;
+	}
 
 	const config: RoleConfig = {
 		roleSlug: flags.role,

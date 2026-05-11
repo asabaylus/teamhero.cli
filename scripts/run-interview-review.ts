@@ -4,7 +4,9 @@
 import { consola } from "consola";
 import { config as loadDotenv } from "dotenv";
 
-loadDotenv({ override: true });
+// Do not override: CI/production env vars (real OPENAI_API_KEY, etc.) must
+// win over anything that happens to be in a local .env.
+loadDotenv();
 
 import { OpenAIObserverClient } from "../src/services/interview/review/ai-observer.js";
 import { reviewCandidate } from "../src/services/interview/review/review-orchestrator.js";

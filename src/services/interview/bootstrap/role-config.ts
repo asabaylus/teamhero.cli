@@ -122,5 +122,24 @@ export function readRoleConfig(dir: string): RoleConfig | null {
 	const path = join(dir, ROLE_CONFIG_FILENAME);
 	if (!existsSync(path)) return null;
 	const body = readFileSync(path, "utf8");
-	return JSON.parse(body) as RoleConfig;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(body);
+	} catch (err) {
+		const reason = err instanceof Error ? err.message : String(err);
+		throw new Error(`Malformed role-config.json at ${path}: ${reason}`);
+	}
+	if (!parsed || typeof parsed !== "object") {
+		throw new Error(
+			`Malformed role-config.json at ${path}: top-level value is not an object`,
+		);
+	}
+	const candidate = parsed as RoleConfig;
+	const validation = validateRoleConfig(candidate);
+	if (!validation.ok) {
+		throw new Error(
+			`Invalid role-config.json at ${path}: ${validation.failures.join("; ")}`,
+		);
+	}
+	return candidate;
 }

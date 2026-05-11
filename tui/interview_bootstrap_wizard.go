@@ -246,8 +246,14 @@ func runInterviewBootstrapWithWizard(
 	launcher BootstrapWizardLauncher,
 	stdout, stderr io.Writer,
 ) int {
-	// No flags at all → interactive wizard.
+	// No flags at all → interactive wizard, but only when stdin is a TTY.
+	// Running an interactive huh.Form against piped/CI stdin hangs forever
+	// or fails confusingly; we'd rather print a clear message.
 	if len(args) == 0 {
+		if !isStdinTTY() {
+			fmt.Fprintln(stderr, "teamhero interview bootstrap: no flags supplied and stdin is not a TTY; cannot launch the interactive wizard. Pass --headless and the required flags, or run from an interactive terminal.")
+			return 1
+		}
 		res, err := launcher.Launch()
 		if err != nil {
 			fmt.Fprintf(stderr, "wizard failed: %v\n", err)
@@ -260,6 +266,10 @@ func runInterviewBootstrapWithWizard(
 			return 0
 		}
 		opts := res.Options
+		if opts == nil {
+			fmt.Fprintln(stderr, "wizard returned no options; aborting")
+			return 1
+		}
 		if msg := ValidateBootstrapOptions(opts); msg != "" {
 			fmt.Fprintln(stderr, msg)
 			return 1
@@ -269,4 +279,15 @@ func runInterviewBootstrapWithWizard(
 
 	// Otherwise fall through to the existing headless dispatch.
 	return runInterviewBootstrap(args, runner, stdout, stderr)
+}
+
+// isStdinTTY reports whether os.Stdin is a real terminal. Returns false on
+// piped input, CI runners, or any error reading the fd. Tests override this
+// via the package-level var below.
+var isStdinTTY = func() bool {
+	fi, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+	return (fi.Mode() & os.ModeCharDevice) != 0
 }

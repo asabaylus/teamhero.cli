@@ -15,24 +15,44 @@ export type TestRunner = (
 	repoDir: string,
 ) => { readonly passed: number; readonly failed: number; readonly output: string };
 
+// Wall-clock cap on a candidate test run. Beyond this the spawn is killed
+// and the extractor reports a timeout rather than hanging the entire grader
+// (e.g., on a candidate's runaway watch-mode invocation or infinite loop).
+const TEST_TIMEOUT_MS = 5 * 60_000;
+
+function summarizeSpawnError(err: Error | undefined): string {
+	if (!err) return "";
+	const code = (err as NodeJS.ErrnoException).code;
+	if (code === "ETIMEDOUT") return "Test run timed out and was killed.";
+	if (code === "ENOENT") return `Test runner not found: ${err.message}`;
+	return err.message;
+}
+
 const realRunner: TestRunner = (repoDir) => {
 	if (existsSync(join(repoDir, "go.mod"))) {
 		const r = spawnSync("go", ["test", "./..."], {
 			cwd: repoDir,
 			encoding: "utf8",
+			timeout: TEST_TIMEOUT_MS,
+			killSignal: "SIGTERM",
 		});
+		const errSummary = summarizeSpawnError(r.error);
+		const output = `${r.stdout ?? ""}\n${r.stderr ?? ""}${errSummary ? `\n${errSummary}` : ""}`;
 		return {
 			passed: countMatches(r.stdout ?? "", /^ok\s+/gm),
 			failed: countMatches(r.stdout ?? "", /^FAIL\s+/gm),
-			output: `${r.stdout ?? ""}\n${r.stderr ?? ""}`,
+			output,
 		};
 	}
 	if (existsSync(join(repoDir, "package.json"))) {
 		const r = spawnSync("bun", ["test"], {
 			cwd: repoDir,
 			encoding: "utf8",
+			timeout: TEST_TIMEOUT_MS,
+			killSignal: "SIGTERM",
 		});
-		const combined = `${r.stdout ?? ""}\n${r.stderr ?? ""}`;
+		const errSummary = summarizeSpawnError(r.error);
+		const combined = `${r.stdout ?? ""}\n${r.stderr ?? ""}${errSummary ? `\n${errSummary}` : ""}`;
 		const passMatch = combined.match(/(\d+)\s+pass\b/);
 		const failMatch = combined.match(/(\d+)\s+fail\b/);
 		return {

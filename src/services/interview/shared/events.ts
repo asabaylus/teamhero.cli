@@ -27,6 +27,13 @@ export function serializeInterviewEvent(event: InterviewEvent): string {
 	return `${JSON.stringify(event)}\n`;
 }
 
+const VALID_STATUSES: readonly InterviewProgressEvent["status"][] = [
+	"start",
+	"update",
+	"done",
+	"error",
+];
+
 export function parseInterviewEvent(line: string): InterviewEvent | null {
 	let value: unknown;
 	try {
@@ -35,8 +42,26 @@ export function parseInterviewEvent(line: string): InterviewEvent | null {
 		return null;
 	}
 	if (!value || typeof value !== "object") return null;
-	const type = (value as { type?: unknown }).type;
+	const obj = value as Record<string, unknown>;
+	const type = obj.type;
 	if (typeof type !== "string") return null;
 	if (!KNOWN_EVENT_TYPES.includes(type as InterviewEvent["type"])) return null;
+
+	if (type === "progress") {
+		if (typeof obj.step !== "string" || obj.step.length === 0) return null;
+		if (
+			typeof obj.status !== "string" ||
+			!VALID_STATUSES.includes(obj.status as InterviewProgressEvent["status"])
+		) {
+			return null;
+		}
+		if (obj.message !== undefined && typeof obj.message !== "string") {
+			return null;
+		}
+		if (obj.progress !== undefined && typeof obj.progress !== "number") {
+			return null;
+		}
+	}
+
 	return value as InterviewEvent;
 }

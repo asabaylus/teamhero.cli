@@ -13,7 +13,9 @@
 #
 # Works on macOS, Linux, and WSL (POSIX-compatible; uses awk + grep).
 
-set -u
+# Note: `set -u` lives inside the direct-exec block at the bottom of this file
+# rather than at the top level, because sourcing this script with `set -u`
+# would leak nounset into the caller's shell.
 
 # extract_section <file> <heading> — prints the body that follows a given
 # "## Heading" line up to (but not including) the next "## " heading or EOF.
@@ -68,8 +70,10 @@ check_privacy_release_signed() {
 }
 
 # When invoked directly (not sourced), run the check on $1 and exit with the
-# function's return code.
+# function's return code. nounset is enabled here, scoped to this block, so
+# callers that source this library don't inherit it.
 if [ "${BASH_SOURCE[0]:-$0}" = "$0" ]; then
+    set -u
     check_privacy_release_signed "${1:-}"
     exit $?
 fi

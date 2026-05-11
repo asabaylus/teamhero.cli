@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import {
 	cpSync,
 	existsSync,
@@ -42,7 +42,9 @@ export type Cloner = (
 ) => void;
 
 const defaultCloner: Cloner = (repoUrl, destDir) => {
-	execSync(`git clone --depth=50 '${repoUrl}' '${destDir}'`, {
+	// execFileSync passes args directly to the spawned process — no shell, so
+	// repoUrl cannot inject shell metacharacters or break out of quoting.
+	execFileSync("git", ["clone", "--depth=50", "--", repoUrl, destDir], {
 		stdio: "inherit",
 	});
 };
@@ -82,6 +84,13 @@ function slug(name: string): string {
 
 function todayIso(): string {
 	return new Date().toISOString().slice(0, 10);
+}
+
+// Compact timestamp suffix (HHMMSS UTC) appended to candidate_id so two
+// reviews of the same candidate on the same day land in distinct directories
+// instead of silently overwriting each other.
+function timeSuffix(): string {
+	return new Date().toISOString().slice(11, 19).replace(/:/g, "");
 }
 
 function mergeEvents(streams: readonly (readonly EvidenceEvent[])[]): readonly EvidenceEvent[] {
@@ -191,7 +200,7 @@ export async function reviewCandidate(
 
 		const result: ReviewResult = {
 			rubric_version: getRubricVersion(),
-			candidate_id: `${slug(input.candidateName)}-${todayIso()}`,
+			candidate_id: `${slug(input.candidateName)}-${todayIso()}-${timeSuffix()}`,
 			role_slug: roleConfig.roleSlug,
 			observed_at: new Date().toISOString(),
 			observations,

@@ -124,8 +124,13 @@ func ValidateBootstrapOptions(opts *BootstrapOptions) string {
 	if opts.ModeRubric == "custom" && strings.TrimSpace(opts.CustomPrompt) == "" {
 		return "--mode-rubric 'custom' requires --custom-prompt"
 	}
-	if opts.ModeRubric == "default+jd" && strings.TrimSpace(opts.JDPath) == "" {
-		return "--mode-rubric 'default+jd' requires --jd-path"
+	if opts.ModeRubric == "default+jd" {
+		if strings.TrimSpace(opts.JDPath) == "" {
+			return "--mode-rubric 'default+jd' requires --jd-path"
+		}
+		if _, err := os.Stat(opts.JDPath); err != nil {
+			return fmt.Sprintf("--jd-path does not exist: %s", opts.JDPath)
+		}
 	}
 	return ""
 }

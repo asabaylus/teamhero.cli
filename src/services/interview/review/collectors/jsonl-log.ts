@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import type { PromptEvent, ToolUseEvent } from "../types.js";
 
 /**
@@ -26,7 +26,18 @@ interface LogLine {
 }
 
 export function parseInterviewLog(path: string): InterviewLogParseResult {
-	const body = readFileSync(path, "utf8");
+	// Missing log is normal: candidate may have skipped Claude Code, or the
+	// hooks never produced a line. Treat it as "no evidence" rather than
+	// aborting the review.
+	if (!existsSync(path)) {
+		return { prompts: [], toolUses: [] };
+	}
+	let body: string;
+	try {
+		body = readFileSync(path, "utf8");
+	} catch {
+		return { prompts: [], toolUses: [] };
+	}
 	const lines = body.split("\n").filter((l) => l.trim().length > 0);
 	const prompts: PromptEvent[] = [];
 	const toolUses: ToolUseEvent[] = [];

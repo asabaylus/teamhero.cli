@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import type { CommitEvent } from "../types.js";
 
 /**
@@ -12,7 +12,7 @@ import type { CommitEvent } from "../types.js";
 export type GitRunner = (args: string[], cwd: string) => string;
 
 const realRunner: GitRunner = (args, cwd) =>
-	execSync(`git ${args.map((a) => `'${a.replace(/'/g, "'\\''")}'`).join(" ")}`, {
+	execFileSync("git", args, {
 		cwd,
 		encoding: "utf8",
 	});

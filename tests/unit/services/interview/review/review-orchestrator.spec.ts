@@ -195,7 +195,9 @@ describe("reviewCandidate orchestrator", () => {
 			);
 			expect(outcome.ok).toBe(true);
 			const summary = readFileSync(outcome.outputs?.summaryPath ?? "", "utf8");
-			expect(summary).toContain("session_recording_url: https://zoom.us/rec/secret-xyz");
+			expect(summary).toContain(
+				`session_recording_url: "https://zoom.us/rec/secret-xyz"`,
+			);
 			// Below the frontmatter, the URL must not appear (verifies it didn't leak
 			// into the LLM observer's narrative prose).
 			const belowFrontmatter = summary.split(/^---$/m).slice(2).join("");

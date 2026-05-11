@@ -56,8 +56,10 @@ function writeModeAFixture(
 		);
 	}
 
-	// Pad LOC to target if necessary
-	const currentLoc = o.deepModuleCount * 100 + (o.withFailingTests ? 5 : 0);
+	// Pad LOC to target if necessary. Test files are excluded from the LOC
+	// count by the validator (TEST_NAME_PATTERN), so we only count deep
+	// modules here.
+	const currentLoc = o.deepModuleCount * 100;
 	const remaining = o.linesOfCode - currentLoc;
 	if (remaining > 0) {
 		writeFileSync(

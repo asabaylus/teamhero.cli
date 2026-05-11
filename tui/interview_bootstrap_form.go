@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/huh"
 )
@@ -260,7 +261,7 @@ func summarizeBootstrapModel(m bootstrapWizardModel) string {
 
 func nonEmpty(field string) func(string) error {
 	return func(s string) error {
-		if s == "" {
+		if strings.TrimSpace(s) == "" {
 			return fmt.Errorf("%s is required", field)
 		}
 		return nil

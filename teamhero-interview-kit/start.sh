@@ -54,11 +54,11 @@ if ! grep -q '"PreToolUse"' "$HOOKS_FILE"; then
     exit 1
 fi
 
-# Indicate we passed the gate so end.sh can verify the kit was started.
-mkdir -p "$REPO_ROOT/.interview-state"
-date -u +%FT%TZ > "$REPO_ROOT/.interview-state/started-at"
-
 if [ "${SKIP_RECORD:-0}" = "1" ]; then
+    # We still write started-at in this path since there's no preflight
+    # that could fail after this point.
+    mkdir -p "$REPO_ROOT/.interview-state"
+    date -u +%FT%TZ > "$REPO_ROOT/.interview-state/started-at"
     echo "✓ Privacy gate passed. SKIP_RECORD=1 — not starting asciinema."
     exit 0
 fi
@@ -77,6 +77,12 @@ Then re-run ./start.sh.
 EOF
     exit 1
 fi
+
+# Mark "started" only after asciinema preflight passes. Writing it earlier
+# would leave a stale marker behind if preflight failed, and end.sh would
+# then mistakenly think a session was completed.
+mkdir -p "$REPO_ROOT/.interview-state"
+date -u +%FT%TZ > "$REPO_ROOT/.interview-state/started-at"
 
 CAST_PATH="$REPO_ROOT/terminal.cast"
 echo "✓ Privacy gate passed."

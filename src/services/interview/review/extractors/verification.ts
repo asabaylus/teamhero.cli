@@ -55,9 +55,10 @@ export function extractVerification(
 	);
 	const reads = commands.filter((c) => matches(c.command, READ_PATTERNS));
 
-	// Interleaving: how often a test run is immediately preceded by a prompt
-	// within the last 30 seconds. A simple proxy for "verification follows
-	// generation".
+	// Interleaving: how often a test run follows a prompt within 30 seconds.
+	// A simple proxy for "verification follows generation". Compares ISO
+	// timestamps as epoch ms instead of just adjacency in the merged stream.
+	const PROMPT_TEST_WINDOW_MS = 30_000;
 	const merged = [...prompts, ...testRuns].sort((a, b) =>
 		a.timestamp.localeCompare(b.timestamp),
 	);
@@ -65,7 +66,10 @@ export function extractVerification(
 	for (let i = 1; i < merged.length; i++) {
 		const cur = merged[i];
 		const prev = merged[i - 1];
-		if (cur.type === "command" && prev.type === "prompt") {
+		if (cur.type !== "command" || prev.type !== "prompt") continue;
+		const dt =
+			new Date(cur.timestamp).getTime() - new Date(prev.timestamp).getTime();
+		if (Number.isFinite(dt) && dt >= 0 && dt <= PROMPT_TEST_WINDOW_MS) {
 			interleavedAfterPrompt += 1;
 		}
 	}

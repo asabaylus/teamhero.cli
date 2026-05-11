@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { AuditFrontmatter } from "../assess/audit-writer.js";
+import type { AuditFrontmatter } from "../review/audit-writer.js";
 
 /**
  * Cohort summary module.
@@ -36,9 +36,19 @@ export function loadCohort(roleDir: string): readonly CandidateAuditRecord[] {
 		if (!existsSync(auditJson)) continue;
 		try {
 			const body = readFileSync(auditJson, "utf8");
-			const parsed = JSON.parse(body) as { frontmatter: AuditFrontmatter };
+			const parsed = JSON.parse(body) as unknown;
+			const fm = (parsed as { frontmatter?: unknown } | null)?.frontmatter;
+			if (!fm || typeof fm !== "object") continue;
+			const ff = fm as Partial<AuditFrontmatter>;
+			if (
+				typeof ff.candidate !== "string" ||
+				typeof ff.role !== "string" ||
+				typeof ff.date !== "string"
+			) {
+				continue;
+			}
 			records.push({
-				frontmatter: parsed.frontmatter,
+				frontmatter: fm as AuditFrontmatter,
 				summaryPath: join(entry, "summary.md"),
 			});
 		} catch {
