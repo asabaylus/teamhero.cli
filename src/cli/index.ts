@@ -154,7 +154,7 @@ export function createCli(
 				reportArgIndex >= 0 ? process.argv.slice(reportArgIndex + 1) : [];
 
 			// Reject subcommands that are top-level — don't allow `teamhero report doctor`.
-			const subcommands = ["doctor", "setup"];
+			const subcommands = ["doctor", "setup", "interview"];
 			if (argsToPass.length > 0 && subcommands.includes(argsToPass[0])) {
 				deps.logger.error(
 					`Unknown argument: ${argsToPass[0]}. Did you mean \`teamhero ${argsToPass[0]}\`?`,

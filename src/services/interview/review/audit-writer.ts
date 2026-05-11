@@ -52,8 +52,19 @@ a reasoning summary in their own words. The TUI rejects empty submissions.
 
 // Quote any YAML scalar that could be misparsed by a YAML reader: contains
 // colons, # comments, leading/trailing whitespace, or starts with a YAML
-// indicator. We use double quotes and escape embedded backslashes/quotes —
-// candidate names with ":" or "#" otherwise corrupt the audit.json round-trip.
+// indicator. Within the double-quoted form we also escape control characters
+// — a raw newline in a YAML double-quoted scalar is a parse error in strict
+// YAML 1.2 readers. Candidate names with ":" or "#" otherwise corrupt the
+// audit.json round-trip.
+function escapeYamlDoubleQuoted(value: string): string {
+	return value
+		.replace(/\\/g, "\\\\")
+		.replace(/"/g, '\\"')
+		.replace(/\n/g, "\\n")
+		.replace(/\r/g, "\\r")
+		.replace(/\t/g, "\\t");
+}
+
 function yamlScalar(value: string): string {
 	if (
 		value.length === 0 ||
@@ -61,16 +72,14 @@ function yamlScalar(value: string): string {
 		/^[\s\-?\[\]{},&*!|>'%@`]/.test(value) ||
 		value.trim() !== value
 	) {
-		const escaped = value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-		return `"${escaped}"`;
+		return `"${escapeYamlDoubleQuoted(value)}"`;
 	}
 	return value;
 }
 
 function yamlTag(value: string): string {
 	if (/[:,\[\]{}#&*!|>'"%@`\s]/.test(value)) {
-		const escaped = value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-		return `"${escaped}"`;
+		return `"${escapeYamlDoubleQuoted(value)}"`;
 	}
 	return value;
 }
