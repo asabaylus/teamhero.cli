@@ -29,7 +29,9 @@ func runInterview(args []string, out io.Writer) int {
 	switch verb {
 	case "bootstrap":
 		return runInterviewBootstrap(rest, bunBootstrapRunner{}, out, out)
-	case "grade", "cohort":
+	case "grade":
+		return runInterviewGrade(rest, bunGradeRunner{}, out, out)
+	case "cohort":
 		fmt.Fprintf(out, "teamhero interview %s: not yet implemented\n", verb)
 		return 1
 	default:

@@ -27,14 +27,13 @@ func TestRunInterview_BootstrapVerb_RequiresFlags(t *testing.T) {
 	}
 }
 
-func TestRunInterview_GradeVerb_NotYetImplemented(t *testing.T) {
+func TestRunInterview_GradeVerb_RequiresFlags(t *testing.T) {
+	// grade is implemented in Slice 4; with no flags it should reject
+	// (--candidate and either --repo or --local-repo-path are required).
 	var out bytes.Buffer
 	code := runInterview([]string{"grade"}, &out)
 	if code == 0 {
-		t.Errorf("grade stub should return non-zero, got %d", code)
-	}
-	if !strings.Contains(out.String(), "not yet implemented") {
-		t.Errorf("expected 'not yet implemented' in output, got %q", out.String())
+		t.Errorf("grade without flags should return non-zero, got %d", code)
 	}
 }
 
