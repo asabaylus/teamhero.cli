@@ -1,4 +1,7 @@
 import { describe, expect, it } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { extractRiskAwareness } from "../../../../../src/services/interview/assess/extractors/risk-awareness.js";
 import { extractTestPass } from "../../../../../src/services/interview/assess/extractors/test-pass.js";
 import { extractThroughput } from "../../../../../src/services/interview/assess/extractors/throughput.js";
@@ -112,6 +115,17 @@ describe("test-pass extractor", () => {
 			output: "",
 		}));
 		expect(m.facts.find((f) => f.label === "Pass rate")?.value).toBe("n/a");
+	});
+
+	it("falls through to the default real runner on a directory without go.mod or package.json", () => {
+		const dir = mkdtempSync(join(tmpdir(), "iv-tp-"));
+		try {
+			const m = extractTestPass(dir);
+			expect(m.dimension_id).toBe("test-pass");
+			expect(m.facts.find((f) => f.label === "Pass rate")?.value).toBe("n/a");
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
 	});
 });
 

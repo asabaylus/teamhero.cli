@@ -6,6 +6,7 @@ import {
 	type GeneratorClient,
 	type GeneratedProject,
 	generateProject,
+	validateGenerated,
 } from "../../../../../src/services/interview/bootstrap/project-generator.js";
 import type { RoleConfig } from "../../../../../src/services/interview/bootstrap/role-config.js";
 
@@ -153,6 +154,34 @@ describe("generateProject (Mode A)", () => {
 			} finally {
 				rmSync(kitSrc, { recursive: true, force: true });
 			}
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("validateGenerated", () => {
+	it("re-runs validation against an already-written output dir (Mode A)", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "iv-gen-"));
+		try {
+			const client = clientReturning(stubModeAProject());
+			const cfg = role({ outputDir: dir });
+			const result = await generateProject(cfg, client);
+			expect(result.ok).toBe(true);
+			const revalidation = validateGenerated(cfg);
+			expect(revalidation.ok).toBe(true);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("returns the failure list when the output dir is malformed", () => {
+		const dir = mkdtempSync(join(tmpdir(), "iv-gen-"));
+		try {
+			const cfg = role({ outputDir: dir, projectMode: "B" });
+			const result = validateGenerated(cfg);
+			expect(result.ok).toBe(false);
+			expect(result.failures.length).toBeGreaterThan(0);
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}

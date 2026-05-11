@@ -7,6 +7,7 @@ import {
 	humanOnlyObservations,
 	INTERVIEWER_BIAS_GUARD,
 	OBSERVATION_RESPONSE_SCHEMA,
+	OpenAIObserverClient,
 	rejectIfScored,
 } from "../../../../../src/services/interview/assess/ai-observer.js";
 import type { RoleConfig } from "../../../../../src/services/interview/bootstrap/role-config.js";
@@ -162,6 +163,127 @@ describe("rejectIfScored", () => {
 				],
 			}),
 		).not.toThrow();
+	});
+});
+
+describe("summarizeEvents (indirect via buildObserverPrompt)", () => {
+	it("renders all event types — prompt, tool-use, command, commit, transcript", () => {
+		const events: EvidenceEvent[] = [
+			{
+				type: "prompt",
+				timestamp: "2026-05-10T10:00:00Z",
+				source: "interview.log",
+				text: "design the API",
+			},
+			{
+				type: "tool-use",
+				timestamp: "2026-05-10T10:00:30Z",
+				source: "interview.log",
+				tool: "Edit",
+			},
+			{
+				type: "command",
+				timestamp: "2026-05-10T10:01:00Z",
+				source: "terminal.cast",
+				command: "bun test",
+			},
+			{
+				type: "commit",
+				timestamp: "2026-05-10T10:02:00Z",
+				source: "git",
+				sha: "abc1234",
+				message: "initial",
+				insertions: 10,
+				deletions: 2,
+			},
+			{
+				type: "transcript-line",
+				timestamp: "2026-05-10T10:03:00Z",
+				source: "transcript",
+				speaker: "Interviewer",
+				text: "How are you thinking about this?",
+			},
+		];
+		const prompt = buildObserverPrompt({ config: role(), events });
+		expect(prompt.input).toContain("PROMPT: design the API");
+		expect(prompt.input).toContain("TOOL: Edit");
+		expect(prompt.input).toContain("$ bun test");
+		expect(prompt.input).toContain("COMMIT abc1234");
+		expect(prompt.input).toContain("(transcript) Interviewer:");
+	});
+
+	it("shows '(no events recorded)' when given an empty event list", () => {
+		const prompt = buildObserverPrompt({ config: role(), events: [] });
+		expect(prompt.input).toContain("(no events recorded)");
+	});
+});
+
+describe("OpenAIObserverClient", () => {
+	it("calls the OpenAI Responses API, parses output_text, and rejects scored responses", async () => {
+		const fakeOpenAI = {
+			responses: {
+				create: async () => ({
+					output_text: JSON.stringify({
+						observations: [
+							{
+								dimension_id: "upfront-design",
+								observation: "Candidate sketched the API first.",
+								reasoning: "First prompt described data flow.",
+								evidence_excerpts: [
+									{
+										source: "interview.log",
+										content: "design the API",
+									},
+								],
+							},
+						],
+					}),
+				}),
+			},
+		};
+		const client = new OpenAIObserverClient(
+			fakeOpenAI as unknown as ConstructorParameters<typeof OpenAIObserverClient>[0],
+		);
+		const result = await client.observe({
+			instructions: "test",
+			input: "test",
+		});
+		expect(result.observations).toHaveLength(1);
+		expect(result.observations[0].dimension_id).toBe("upfront-design");
+	});
+
+	it("throws when output_text is missing", async () => {
+		const fakeOpenAI = {
+			responses: {
+				create: async () => ({}),
+			},
+		};
+		const client = new OpenAIObserverClient(
+			fakeOpenAI as unknown as ConstructorParameters<typeof OpenAIObserverClient>[0],
+		);
+		await expect(
+			client.observe({ instructions: "test", input: "test" }),
+		).rejects.toThrow(/no output_text/);
+	});
+
+	it("rejects scored responses returned by the API (defense-in-depth)", async () => {
+		const fakeOpenAI = {
+			responses: {
+				create: async () => ({
+					output_text: JSON.stringify({
+						observations: [
+							{ dimension_id: "upfront-design", score: 0.7 },
+						],
+					}),
+				}),
+			},
+		};
+		const client = new OpenAIObserverClient(
+			fakeOpenAI as unknown as ConstructorParameters<typeof OpenAIObserverClient>[0],
+		);
+		await expect(
+			client.observe({ instructions: "test", input: "test" }),
+		).rejects.toThrow(/forbidden field 'score'/);
 	});
 });
 
