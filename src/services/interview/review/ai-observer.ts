@@ -189,16 +189,33 @@ ${interviewerNotes ? `\nInterviewer notes (situational context only; remember th
 	return { instructions, input: userText };
 }
 
+/**
+ * Walk the response tree and throw if any object literally contains a key
+ * whose name matches a forbidden scoring field. Earlier versions of this
+ * function scanned the serialized JSON with a regex, which produced
+ * false positives when an evidence excerpt happened to contain a string
+ * like `"score": 7/10` inside a code comment. Inspecting object keys
+ * directly is the precise check.
+ */
 export function rejectIfScored(response: unknown): void {
-	const s = JSON.stringify(response);
-	for (const field of FORBIDDEN_FIELDS) {
-		if (new RegExp(`"${field}"\\s*:`).test(s)) {
-			throw new Error(
-				`AI observer response contained forbidden field '${field}'. ` +
-					"This rubric is observation-only; numerical scoring is rejected at the schema and validator layers.",
-			);
+	const forbidden = new Set(FORBIDDEN_FIELDS);
+	const visit = (node: unknown): void => {
+		if (node === null || typeof node !== "object") return;
+		if (Array.isArray(node)) {
+			for (const item of node) visit(item);
+			return;
 		}
-	}
+		for (const key of Object.keys(node as Record<string, unknown>)) {
+			if (forbidden.has(key)) {
+				throw new Error(
+					`AI observer response contained forbidden field '${key}'. ` +
+						"This rubric is observation-only; numerical scoring is rejected at the schema and validator layers.",
+				);
+			}
+			visit((node as Record<string, unknown>)[key]);
+		}
+	};
+	visit(response);
 }
 
 export interface ObserverClient {

@@ -56,6 +56,12 @@ async function main() {
 		consola.error("Need either --repo <url> or --local-repo-path <dir>");
 		process.exit(1);
 	}
+	if (flags.repo && flags.localRepoPath) {
+		consola.error(
+			"--repo and --local-repo-path are mutually exclusive; supply exactly one.",
+		);
+		process.exit(1);
+	}
 	const result = await reviewCandidate(
 		{
 			repoUrl: flags.repo ?? "",

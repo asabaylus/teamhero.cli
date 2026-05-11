@@ -371,6 +371,14 @@ func (m *interviewBootstrapTeaModel) buildForm() *huh.Form {
 		)).WithTheme(huh.ThemeCharm()).WithWidth(m.formWidth())
 
 	case ibStepConfirm:
+		// Default to affirmative — after 13 screens of input the user almost
+		// always wants to commit. huh.Confirm uses the initial value of the
+		// bound variable to pick which button has focus, so without this
+		// pre-set the user lands on "Cancel" and a stray Enter cancels the
+		// whole wizard. Reported by a user who completed all steps, hit
+		// Enter on confirm, and got "Wizard cancelled at confirm" instead
+		// of a generated project.
+		d.confirmed = true
 		return huh.NewForm(huh.NewGroup(
 			huh.NewConfirm().
 				Title("Ready to bootstrap?").

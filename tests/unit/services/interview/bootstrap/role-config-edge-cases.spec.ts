@@ -196,7 +196,7 @@ describe("writeRoleConfig — persistence edge cases", () => {
 		}
 	});
 
-	it("stores optional jdPath and customPrompt when present", () => {
+	it("stores optional jdPath when present", () => {
 		const dir = mkdtempSync(join(tmpdir(), "iv-rc-optionals-"));
 		const jdDir = mkdtempSync(join(tmpdir(), "iv-jd-"));
 		try {
@@ -213,6 +213,24 @@ describe("writeRoleConfig — persistence edge cases", () => {
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 			rmSync(jdDir, { recursive: true, force: true });
+		}
+	});
+
+	it("stores optional customPrompt when present", () => {
+		const dir = mkdtempSync(join(tmpdir(), "iv-rc-custom-"));
+		try {
+			const cfg: RoleConfig = {
+				...baseConfig(),
+				rubricMode: "custom",
+				customPrompt: "Score primarily on architectural decisions",
+			};
+			writeRoleConfig(dir, cfg);
+			const read = readRoleConfig(dir);
+			expect(read?.customPrompt).toBe(
+				"Score primarily on architectural decisions",
+			);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
 		}
 	});
 });

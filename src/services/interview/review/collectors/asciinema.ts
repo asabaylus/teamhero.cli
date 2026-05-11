@@ -60,31 +60,60 @@ export function parseAsciinemaCast(path: string): AsciinemaParseResult {
 	// Walk the input stream and reconstruct commands. When the user types
 	// printable characters they appear as "i" events; the shell echoes them
 	// back as "o" events. We focus on "i" events for what the user *typed*.
+	//
+	// evt.data is usually a single character for interactive shells but
+	// can be a multi-character chunk on paste or rapid input. Iterate over
+	// every character so a payload like "npm test\r" submits the buffered
+	// command instead of being captured as one literal blob.
 	let buffer = "";
 	let lastKeyDelta = 0;
 	for (const evt of events) {
 		if (evt.kind !== "i") continue;
-		const data = evt.data;
-		if (data === "\r" || data === "\n") {
-			if (buffer.trim().length > 0) {
-				commands.push({
-					type: "command",
-					timestamp: isoFromUnix(baseEpoch + evt.delta),
-					source: "terminal.cast",
-					command: buffer,
-					pauseSecondsBeforeEnter: Math.max(0, evt.delta - lastKeyDelta),
-				});
+		const chunk = evt.data;
+		for (let i = 0; i < chunk.length; i++) {
+			const ch = chunk[i];
+			// CSI / ANSI escape sequence: ESC [ ... letter. Skip the whole
+			// sequence as a unit so per-char iteration doesn't accidentally
+			// buffer the bracket and letter as printable characters.
+			if (ch === "\x1b") {
+				let j = i + 1;
+				if (j < chunk.length && chunk[j] === "[") {
+					j++;
+					while (j < chunk.length) {
+						const c = chunk.charCodeAt(j);
+						if ((c >= 0x40 && c <= 0x7e)) {
+							j++;
+							break;
+						}
+						j++;
+					}
+				} else {
+					// Two-byte escape (ESC + 1 char) or lone ESC; skip one more
+					// char defensively if available.
+					if (j < chunk.length) j++;
+				}
+				i = j - 1;
+				continue;
 			}
-			buffer = "";
-		} else if (data === "" || data === "\b") {
-			// Backspace
-			buffer = buffer.slice(0, -1);
-			lastKeyDelta = evt.delta;
-		} else if (data.charCodeAt(0) >= 32 || data === "\t") {
-			buffer += data;
-			lastKeyDelta = evt.delta;
-		} else {
-			// Control codes: arrows, escape sequences, etc. Skip silently.
+			if (ch === "\r" || ch === "\n") {
+				if (buffer.trim().length > 0) {
+					commands.push({
+						type: "command",
+						timestamp: isoFromUnix(baseEpoch + evt.delta),
+						source: "terminal.cast",
+						command: buffer,
+						pauseSecondsBeforeEnter: Math.max(0, evt.delta - lastKeyDelta),
+					});
+				}
+				buffer = "";
+			} else if (ch === "" || ch === "\b") {
+				buffer = buffer.slice(0, -1);
+				lastKeyDelta = evt.delta;
+			} else if (ch.charCodeAt(0) >= 32 || ch === "\t") {
+				buffer += ch;
+				lastKeyDelta = evt.delta;
+			}
+			// Else: lone control codes â skip silently.
 		}
 	}
 

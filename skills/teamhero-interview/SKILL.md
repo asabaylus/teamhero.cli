@@ -75,10 +75,12 @@ When user says: "set up an interview for a senior backend role", "create a
 new role", "I need a coding project for candidates", "bootstrap a hiring
 round" → run bootstrap.
 
-#### `teamhero interview review <repo-url>`
-Reviews a single candidate's submitted repository.
+#### `teamhero interview review --candidate <name> --repo <url>`
+Reviews a single candidate's submitted repository. The repo can also be
+supplied positionally (`teamhero interview review --candidate "Jane" <url>`)
+or as a local path (`--local-repo-path <dir>` instead of `--repo`).
 
-```
+```bash
 teamhero interview review --candidate "Jane Doe" --repo <url> \
   [--transcript <file>] [--interviewer-notes <file>] \
   [--session-recording-url <url>] [--session-platform zoom|teams|meet|other] \

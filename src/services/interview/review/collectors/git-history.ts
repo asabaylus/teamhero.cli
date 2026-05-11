@@ -35,7 +35,23 @@ export function parseGitHistory(
 		// "--" terminator is belt-and-braces in case the runner is replaced
 		// by a wrapper that adds positional args later.
 		logOut = runner(["log", `--format=${FORMAT}`, "--numstat", "--"], repoDir);
-	} catch {
+	} catch (err) {
+		// Distinguish "no git history" (empty repo, freshly init'd) from
+		// genuine failures (binary missing, permission denied). The former
+		// is expected when a candidate's project is a Mode A scaffold; the
+		// latter should at least be logged so it doesn't disappear into a
+		// silent empty result.
+		const message = err instanceof Error ? err.message : String(err);
+		const benign =
+			/does not have any commits|fatal: your current branch .* does not have/i.test(
+				message,
+			);
+		if (!benign) {
+			// Use stderr so the caller sees the failure even though we still
+			// return an empty list — consistent with the rest of the
+			// collector layer's "degrade to empty" contract.
+			process.stderr.write(`[git-history] ${message}\n`);
+		}
 		return [];
 	}
 	const result: CommitEvent[] = [];
