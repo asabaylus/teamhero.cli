@@ -9,7 +9,7 @@
 	},
 	"scripts": {
 		"build": "tsup && cd tui && go build -o teamhero-tui .",
-		"build:service": "bun build --compile --outfile=teamhero-service scripts/run-report.ts",
+		"build:service": "bun build --compile --outfile=teamhero-service scripts/service.ts",
 		"test": "bash scripts/run-tests.sh",
 		"test:fast": "bun test",
 		"test:watch": "bun test --watch",

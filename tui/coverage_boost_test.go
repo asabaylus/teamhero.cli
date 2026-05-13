@@ -882,6 +882,41 @@ func TestRunServiceScript_NonExistent(t *testing.T) {
 	}
 }
 
+func TestRunServiceScript_SurfacesJSONError(t *testing.T) {
+	// When the subprocess exits 1 with a JSON {"error":"..."} on stdout,
+	// runServiceScript should return that message rather than "exit status 1".
+	orig := serviceScriptRunner
+	t.Cleanup(func() { serviceScriptRunner = orig })
+
+	serviceScriptRunner = func(script string, input interface{}) (map[string]interface{}, error) {
+		return nil, fmt.Errorf("Missing GitHub authentication. Run `teamhero setup` to sign in.")
+	}
+
+	_, err := serviceScriptRunner("github-auth.ts", map[string]interface{}{"action": "device_flow"})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if err.Error() == "exit status 1" {
+		t.Errorf("error message not surfaced from JSON; got raw %q", err.Error())
+	}
+}
+
+func TestRunServiceScript_FallsBackToExitError(t *testing.T) {
+	// When the subprocess exits non-zero with no parseable JSON stdout,
+	// the raw exec error is returned as-is.
+	orig := serviceScriptRunner
+	t.Cleanup(func() { serviceScriptRunner = orig })
+
+	serviceScriptRunner = func(script string, input interface{}) (map[string]interface{}, error) {
+		return nil, fmt.Errorf("exit status 127")
+	}
+
+	_, err := serviceScriptRunner("github-auth.ts", nil)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // buildGDriveItem — connected branches.
 // ---------------------------------------------------------------------------
