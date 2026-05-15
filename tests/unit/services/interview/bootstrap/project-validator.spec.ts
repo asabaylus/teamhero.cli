@@ -159,6 +159,85 @@ describe("project-validator (Mode A)", () => {
 			rmSync(dir, { recursive: true, force: true });
 		}
 	});
+
+	it("counts C# (.cs) files toward LOC and treats *Tests.cs as test files", () => {
+		// Regression: validator originally hardcoded SOURCE_EXTS to TS/Go and
+		// reported 35 LOC for a 400+ LOC C# project, because .cs wasn't counted
+		// at all. The interview command takes role.stack as input — the
+		// validator must not assume the team's own stack.
+		const dir = makeTempProject();
+		try {
+			writeFileSync(join(dir, "README.md"), "# Project\n");
+			writeFileSync(join(dir, "GLOSSARY.md"), "# Glossary\n");
+			mkdirSync(join(dir, "src"), { recursive: true });
+			mkdirSync(join(dir, "tests"), { recursive: true });
+
+			const deep = Array.from(
+				{ length: 100 },
+				(_, k) => `public static class Helper${k} { public static int V = ${k}; }`,
+			).join("\n");
+			writeFileSync(join(dir, "src", "DeepA.cs"), deep);
+			writeFileSync(join(dir, "src", "DeepB.cs"), deep);
+
+			// Pad to land in the 400-700 LOC window.
+			writeFileSync(
+				join(dir, "src", "Pad.cs"),
+				Array.from({ length: 250 }, (_, k) => `// line ${k}`).join("\n"),
+			);
+
+			// xUnit skipped test — must be detected even though the file name is
+			// *Tests.cs rather than *.spec.ts.
+			writeFileSync(
+				join(dir, "tests", "FeatureTests.cs"),
+				`using Xunit;\npublic class FeatureTests {\n  [Fact(Skip = "not yet implemented")]\n  public void Pending() {}\n}\n`,
+			);
+
+			const result = validateModeAProject(dir);
+			expect(result.failures).toEqual([]);
+			expect(result.ok).toBe(true);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("counts .vue and recognises pytest skip markers", () => {
+		const dir = makeTempProject();
+		try {
+			writeFileSync(join(dir, "README.md"), "# Project\n");
+			writeFileSync(join(dir, "GLOSSARY.md"), "# Glossary\n");
+			mkdirSync(join(dir, "src"), { recursive: true });
+			mkdirSync(join(dir, "tests"), { recursive: true });
+
+			const vueBody = Array.from(
+				{ length: 100 },
+				(_, k) => `<!-- comment ${k} -->`,
+			).join("\n");
+			writeFileSync(join(dir, "src", "DeepView.vue"), vueBody);
+
+			const pyBody = Array.from(
+				{ length: 100 },
+				(_, k) => `def fn_${k}(): return ${k}`,
+			).join("\n");
+			writeFileSync(join(dir, "src", "deep_module.py"), pyBody);
+
+			// Pad to land in window.
+			writeFileSync(
+				join(dir, "src", "pad.py"),
+				Array.from({ length: 250 }, (_, k) => `# line ${k}`).join("\n"),
+			);
+
+			writeFileSync(
+				join(dir, "tests", "test_feature.py"),
+				`import pytest\n@pytest.mark.skip(reason="not yet implemented")\ndef test_pending():\n    pass\n`,
+			);
+
+			const result = validateModeAProject(dir);
+			expect(result.failures).toEqual([]);
+			expect(result.ok).toBe(true);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
 });
 
 describe("project-validator (Mode B)", () => {

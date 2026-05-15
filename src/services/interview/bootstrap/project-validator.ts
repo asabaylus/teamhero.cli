@@ -15,8 +15,33 @@ const DEEP_MODULE_MIN_LINES = 80;
 /** Minimum required deep modules. Anti-sprawl signal. */
 const MODE_A_MIN_DEEP_MODULES = 2;
 
-const SOURCE_EXTS = new Set([".ts", ".tsx", ".js", ".jsx", ".go"]);
-const TEST_NAME_PATTERN = /\.(spec|test)\.[a-z]+$/i;
+// Source extensions span the languages a candidate role can be evaluated in,
+// not just the languages this CLI happens to be written in. Adding a language
+// here lets the LOC/deep-module counts include it; ship a matching test
+// pattern in TEST_NAME_PATTERN and SKIPPED_TEST_PATTERNS if the language has a
+// non-JS test convention.
+const SOURCE_EXTS = new Set([
+	// JS/TS family
+	".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".vue", ".svelte",
+	// JVM
+	".java", ".kt", ".kts", ".scala", ".groovy",
+	// .NET
+	".cs", ".fs", ".vb",
+	// Systems
+	".go", ".rs", ".c", ".cc", ".cpp", ".cxx", ".h", ".hpp", ".hh",
+	// Dynamic
+	".py", ".rb", ".php",
+	// Mobile / Apple
+	".swift", ".m", ".mm",
+	// Functional / niche
+	".ex", ".exs", ".erl", ".clj", ".cljs", ".ml", ".mli",
+]);
+
+// Test files are identified BOTH by Node-style suffixes (foo.spec.ts) AND by
+// language conventions where suffix-naming doesn't apply (FooTests.cs,
+// foo_test.go, test_foo.py, FooSpec.scala, etc.).
+const TEST_NAME_PATTERN =
+	/(?:\.(?:spec|test)\.[a-z]+$|(?:Tests?|Specs?)\.(?:cs|fs|vb|java|kt|scala)$|_test\.(?:go|py|rb)$|(?:^|[\\/])test_[^/\\]+\.py$|_spec\.rb$)/i;
 
 function walk(dir: string, out: string[] = []): string[] {
 	if (!existsSync(dir)) return out;
@@ -72,12 +97,31 @@ export function validateModeAProject(dir: string): ValidationResult {
 	const hasFailingTest = testFiles.some((f) => {
 		const body = readFileSync(f, "utf8");
 		return (
+			// JS/TS — bun/jest/vitest/mocha
 			/\bdescribe\.skip\b/.test(body) ||
 			/\bit\.skip\b/.test(body) ||
 			/\bxit\b/.test(body) ||
 			/\bxdescribe\b/.test(body) ||
+			// Go
 			/\bt\.Skip\b/.test(body) ||
-			/not yet implemented/i.test(body)
+			// xUnit / NUnit / MSTest (Skip attribute)
+			/\[\s*Fact\s*\(\s*Skip\s*=/i.test(body) ||
+			/\[\s*Theory\s*\(\s*Skip\s*=/i.test(body) ||
+			/\[\s*Ignore\b/i.test(body) ||
+			// JUnit 5 / JUnit 4
+			/@\s*Disabled\b/.test(body) ||
+			/@\s*Ignore\b/.test(body) ||
+			// pytest / unittest
+			/@\s*pytest\.mark\.skip\b/.test(body) ||
+			/@\s*unittest\.skip\b/.test(body) ||
+			// RSpec — pending / xit
+			/\bpending\b/.test(body) ||
+			// Rust
+			/#\[\s*ignore\b/.test(body) ||
+			// Universal "TODO"/"not yet implemented" sentinel for any framework
+			/not yet implemented/i.test(body) ||
+			/\bNotImplementedException\b/.test(body) ||
+			/\braise\s+NotImplementedError\b/.test(body)
 		);
 	});
 	if (!hasFailingTest) {
