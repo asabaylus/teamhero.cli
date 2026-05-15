@@ -36,8 +36,6 @@ github.com/charmbracelet/x/cellbuf v0.0.15 h1:ur3pZy0o6z/R7EylET877CBxaiE1Sp1GMx
 github.com/charmbracelet/x/cellbuf v0.0.15/go.mod h1:J1YVbR7MUuEGIFPCaaZ96KDl5NoS0DAWkskup+mOY+Q=
 github.com/charmbracelet/x/conpty v0.2.0 h1:eKtA2hm34qNfgJCDp/M6Dc0gLy7e07YEK4qAdNGOvVY=
 github.com/charmbracelet/x/conpty v0.2.0/go.mod h1:fexgUnVrZgw8scD49f6VSi0Ggj9GWYIrpedRthAwW/8=
-github.com/charmbracelet/x/exp/golden v0.0.0-20260330094520-2dce04b6f8a4 h1:KUnGB9CyCFWFXb3DysCYnQknFYa+AzdrR37VehWYI8U=
-github.com/charmbracelet/x/exp/golden v0.0.0-20260330094520-2dce04b6f8a4/go.mod h1:6fMpcW6iwN/kX+xJ52eqVWsDiBTe0UJD24JLoHFe+P0=
 github.com/charmbracelet/x/exp/golden v0.0.0-20260511003329-c066bcf2349a h1:L06IdBUJRwDjS2ja7e8HFCnAyH4OktJHRyQiZ9FBRYg=
 github.com/charmbracelet/x/exp/golden v0.0.0-20260511003329-c066bcf2349a/go.mod h1:6fMpcW6iwN/kX+xJ52eqVWsDiBTe0UJD24JLoHFe+P0=
 github.com/charmbracelet/x/exp/slice v0.0.0-20260330094520-2dce04b6f8a4 h1:VSd4zShIAf/4FgEDFJpapEcAPrc7h3dyyN7V9JlJpQw=

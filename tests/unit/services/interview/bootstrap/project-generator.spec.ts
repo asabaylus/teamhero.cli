@@ -32,7 +32,7 @@ function stubModeAProject(loc = 500, withFailingTest = true): GeneratedProject {
 		(_, k) => `export const v${k} = ${k};`,
 	).join("\n");
 	const files = [
-		{ path: "CLAUDE.md", content: "# Project\nCandidate context.\n" },
+		{ path: "README.md", content: "# Project\nWhat you're building: a thing.\n" },
 		{ path: "GLOSSARY.md", content: "# Glossary\n- term: definition\n" },
 		{ path: "src/deep-one.ts", content: padLines },
 		{ path: "src/deep-two.ts", content: padLines },
@@ -86,7 +86,7 @@ describe("generateProject (Mode A)", () => {
 			const client = clientReturning(stubModeAProject());
 			const result = await generateProject(role({ outputDir: dir }), client);
 			expect(result.ok).toBe(true);
-			expect(existsSync(join(dir, "CLAUDE.md"))).toBe(true);
+			expect(existsSync(join(dir, "README.md"))).toBe(true);
 			expect(existsSync(join(dir, "GLOSSARY.md"))).toBe(true);
 			expect(existsSync(join(dir, "src", "deep-one.ts"))).toBe(true);
 			expect(result.attempts).toBe(1);
@@ -98,9 +98,9 @@ describe("generateProject (Mode A)", () => {
 	it("retries up to 3 times when validation fails, then succeeds on a later attempt", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "iv-gen-"));
 		try {
-			// First two attempts return malformed projects (no CLAUDE.md), third succeeds
+			// First two attempts return malformed projects (no README.md), third succeeds
 			const malformed: GeneratedProject = {
-				files: [{ path: "README.md", content: "incomplete" }],
+				files: [{ path: "NOTES.md", content: "incomplete" }],
 			};
 			const client = clientReturning(
 				malformed,
@@ -119,7 +119,7 @@ describe("generateProject (Mode A)", () => {
 		const dir = mkdtempSync(join(tmpdir(), "iv-gen-"));
 		try {
 			const malformed: GeneratedProject = {
-				files: [{ path: "README.md", content: "incomplete" }],
+				files: [{ path: "NOTES.md", content: "incomplete" }],
 			};
 			const client = clientReturning(malformed, malformed, malformed);
 			const result = await generateProject(role({ outputDir: dir }), client);
@@ -151,6 +151,41 @@ describe("generateProject (Mode A)", () => {
 				expect(result.ok).toBe(true);
 				expect(existsSync(join(dir, "start.sh"))).toBe(true);
 				expect(existsSync(join(dir, ".claude", "settings.json"))).toBe(true);
+			} finally {
+				rmSync(kitSrc, { recursive: true, force: true });
+			}
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("substitutes {{TIME_BOX}} placeholders when copying kit templates", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "iv-gen-tb-"));
+		try {
+			const client = clientReturning(stubModeAProject());
+			const kitSrc = mkdtempSync(join(tmpdir(), "iv-kit-tb-"));
+			const { writeFileSync } = await import("node:fs");
+			writeFileSync(
+				join(kitSrc, "INTERVIEW_RULES.md"),
+				"# Rules\n\nTime-box: **`{{TIME_BOX}}`** minutes.\n",
+			);
+			writeFileSync(
+				join(kitSrc, "no-template.md"),
+				"This file has no placeholders.\n",
+			);
+			try {
+				const result = await generateProject(
+					role({ outputDir: dir, timeBoxMinutes: 75 }),
+					client,
+					{ kitTemplateDir: kitSrc },
+				);
+				expect(result.ok).toBe(true);
+				const body = readFileSync(join(dir, "INTERVIEW_RULES.md"), "utf8");
+				expect(body).toContain("**`75`** minutes");
+				expect(body).not.toContain("{{TIME_BOX}}");
+				// Files without placeholders should pass through unchanged.
+				const untouched = readFileSync(join(dir, "no-template.md"), "utf8");
+				expect(untouched).toBe("This file has no placeholders.\n");
 			} finally {
 				rmSync(kitSrc, { recursive: true, force: true });
 			}

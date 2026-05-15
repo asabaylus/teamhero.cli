@@ -16,7 +16,7 @@ function modeAStub(loc = 500): GeneratedProject {
 		(_, k) => `export const v${k} = ${k};`,
 	).join("\n");
 	const files = [
-		{ path: "CLAUDE.md", content: "# Project\n" },
+		{ path: "README.md", content: "# Project\n" },
 		{ path: "GLOSSARY.md", content: "# Glossary\n" },
 		{ path: "src/a.ts", content: padLines },
 		{ path: "src/b.ts", content: padLines },
@@ -71,7 +71,7 @@ describe("runBootstrap", () => {
 			});
 			expect(result.ok).toBe(true);
 			expect(existsSync(join(dir, "role-config.json"))).toBe(true);
-			expect(existsSync(join(dir, "CLAUDE.md"))).toBe(true);
+			expect(existsSync(join(dir, "README.md"))).toBe(true);
 			const persisted = readRoleConfig(dir);
 			expect(persisted?.roleSlug).toBe("senior-backend");
 		} finally {

@@ -13,6 +13,7 @@
                                                               │ Analysis mode: —                   │
                                                               │ Rubric: —                          │
                                                               │ Output dir: —                      │
+                                                              │ Project prompt: —                  │
                                                               ╰────────────────────────────────────╯
                                                                                                     
 enter continue • ctrl+c quit                                                                        

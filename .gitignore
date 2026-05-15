@@ -66,6 +66,11 @@ dist/
 teamhero-report-*
 docs/maintenance_results.md
 
+# Interview kit scaffolds — `teamhero interview bootstrap` defaults to
+# ./roles/<slug>, so without this users will inadvertently commit candidate
+# evaluation artifacts into the project root.
+roles/
+
 # Cache
 out
 claude-plugin/bin/

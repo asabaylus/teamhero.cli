@@ -18,6 +18,11 @@ export interface RoleConfig {
 	readonly outputDir: string;
 	readonly customPrompt?: string;
 	readonly jdPath?: string;
+	// projectPrompt is the proctor's free-form addendum that gets appended
+	// to the project-generation prompt sent to OpenAI. Distinct from
+	// customPrompt, which is rubric-mode-only. Empty or undefined = no
+	// addendum. Trusted free-form text — no schema beyond "string".
+	readonly projectPrompt?: string;
 }
 
 export interface RoleConfigValidationResult {

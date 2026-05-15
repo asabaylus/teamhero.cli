@@ -32,7 +32,7 @@ function validModeAProject(): GeneratedProject {
 	).join("\n");
 	return {
 		files: [
-			{ path: "CLAUDE.md", content: "# Project\n" },
+			{ path: "README.md", content: "# Project\n" },
 			{ path: "GLOSSARY.md", content: "# Glossary\n" },
 			{ path: "src/deep-one.ts", content: padLines },
 			{ path: "src/deep-two.ts", content: padLines },
@@ -200,15 +200,17 @@ describe("generateProject — kit template conflict resolution", () => {
 		const dir = mkdtempSync(join(tmpdir(), "iv-kit-prio-"));
 		const kitDir = mkdtempSync(join(tmpdir(), "iv-kit-src-"));
 		try {
-			// The generator writes CLAUDE.md with "Generator content"
+			// The generator writes GLOSSARY.md with "Generator content"
+			// (using GLOSSARY rather than README so we don't model the AI
+			// authoring something it must not author per the new contract).
 			const overriddenProject: GeneratedProject = {
 				files: [
-					...validModeAProject().files.filter(f => f.path !== "CLAUDE.md"),
-					{ path: "CLAUDE.md", content: "Generator content\n" },
+					...validModeAProject().files.filter(f => f.path !== "GLOSSARY.md"),
+					{ path: "GLOSSARY.md", content: "Generator content\n" },
 				],
 			};
-			// The kit also has CLAUDE.md with "Kit content" — kit wins
-			writeFileSync(join(kitDir, "CLAUDE.md"), "Kit content\n");
+			// The kit also has GLOSSARY.md with "Kit content" — kit wins
+			writeFileSync(join(kitDir, "GLOSSARY.md"), "Kit content\n");
 
 			const result = await generateProject(
 				role({ outputDir: dir }),
@@ -216,7 +218,7 @@ describe("generateProject — kit template conflict resolution", () => {
 				{ kitTemplateDir: kitDir },
 			);
 			expect(result.ok).toBe(true);
-			const content = readFileSync(join(dir, "CLAUDE.md"), "utf8");
+			const content = readFileSync(join(dir, "GLOSSARY.md"), "utf8");
 			expect(content).toBe("Kit content\n");
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
@@ -235,7 +237,7 @@ describe("generateProject — retry passes previous failures to the client", () 
 					callLog.push({ attempt: input.attempt, previousFailures: input.previousFailures });
 					if (input.attempt < 2) {
 						// Return a malformed project on first attempt
-						return { files: [{ path: "README.md", content: "incomplete" }] };
+						return { files: [{ path: "NOTES.md", content: "incomplete" }] };
 					}
 					return validModeAProject();
 				},

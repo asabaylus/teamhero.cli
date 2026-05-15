@@ -130,10 +130,47 @@ func TestBootstrapWizard_NextState_JDPathThenOutputDir(t *testing.T) {
 	}
 }
 
-func TestBootstrapWizard_NextState_OutputDirThenConfirm(t *testing.T) {
+func TestBootstrapWizard_NextState_OutputDirThenPromptSource(t *testing.T) {
 	m := newBootstrapWizardModel(BootstrapWizardDefaults{})
-	if next := bootstrapWizardNextState(wsBootstrapOutputDir, m); next != wsBootstrapConfirm {
-		t.Errorf("output-dir should advance to confirm, got %v", next)
+	if next := bootstrapWizardNextState(wsBootstrapOutputDir, m); next != wsBootstrapPromptSource {
+		t.Errorf("output-dir should advance to prompt-source, got %v", next)
+	}
+}
+
+func TestBootstrapWizard_NextState_PromptSourceCustomThenProjectPrompt(t *testing.T) {
+	m := newBootstrapWizardModel(BootstrapWizardDefaults{})
+	m.promptSource = "custom"
+	if next := bootstrapWizardNextState(wsBootstrapPromptSource, m); next != wsBootstrapProjectPrompt {
+		t.Errorf("prompt-source=custom should advance to project-prompt, got %v", next)
+	}
+}
+
+func TestBootstrapWizard_NextState_PromptSourceSuggestThenFetching(t *testing.T) {
+	m := newBootstrapWizardModel(BootstrapWizardDefaults{})
+	m.promptSource = "suggest"
+	if next := bootstrapWizardNextState(wsBootstrapPromptSource, m); next != wsBootstrapIdeaFetching {
+		t.Errorf("prompt-source=suggest should advance to idea-fetching, got %v", next)
+	}
+}
+
+func TestBootstrapWizard_NextState_IdeaFetchingThenSelect(t *testing.T) {
+	m := newBootstrapWizardModel(BootstrapWizardDefaults{})
+	if next := bootstrapWizardNextState(wsBootstrapIdeaFetching, m); next != wsBootstrapIdeaSelect {
+		t.Errorf("idea-fetching should advance to idea-select, got %v", next)
+	}
+}
+
+func TestBootstrapWizard_NextState_IdeaSelectThenConfirm(t *testing.T) {
+	m := newBootstrapWizardModel(BootstrapWizardDefaults{})
+	if next := bootstrapWizardNextState(wsBootstrapIdeaSelect, m); next != wsBootstrapConfirm {
+		t.Errorf("idea-select should advance to confirm, got %v", next)
+	}
+}
+
+func TestBootstrapWizard_NextState_ProjectPromptThenConfirm(t *testing.T) {
+	m := newBootstrapWizardModel(BootstrapWizardDefaults{})
+	if next := bootstrapWizardNextState(wsBootstrapProjectPrompt, m); next != wsBootstrapConfirm {
+		t.Errorf("project-prompt should advance to confirm, got %v", next)
 	}
 }
 

@@ -6,7 +6,15 @@ import (
 	"testing"
 )
 
-func TestRunInterview_NoVerb_PrintsUsageAndReturnsNonZero(t *testing.T) {
+func TestRunInterview_NoVerb_NoTTY_PrintsUsageAndReturnsNonZero(t *testing.T) {
+	// Pin stdin-is-TTY to false so the non-interactive fallback path is
+	// exercised regardless of whether the developer runs `go test` from a
+	// terminal or from CI. Without this pin a TTY developer's run would
+	// drop into the huh picker and hang.
+	origTTY := isStdinTTY
+	t.Cleanup(func() { isStdinTTY = origTTY })
+	isStdinTTY = func() bool { return false }
+
 	var out bytes.Buffer
 	code := runInterview(nil, &out)
 	if code == 0 {
@@ -16,6 +24,78 @@ func TestRunInterview_NoVerb_PrintsUsageAndReturnsNonZero(t *testing.T) {
 		t.Errorf("expected usage output, got empty buffer")
 	}
 }
+
+func TestRunInterview_NoVerb_TTY_DispatchesPickedVerb(t *testing.T) {
+	// Stub the picker so the dispatcher runs without touching a real TTY,
+	// then assert that the chosen verb actually reached its handler. The
+	// "cohort" verb without flags hits ValidateCohortOptions and returns
+	// the "missing required flag" path — that's our proof of dispatch.
+	origTTY := isStdinTTY
+	origPicker := interviewVerbPicker
+	t.Cleanup(func() {
+		isStdinTTY = origTTY
+		interviewVerbPicker = origPicker
+	})
+	isStdinTTY = func() bool { return true }
+	interviewVerbPicker = func() (string, error) { return "cohort", nil }
+
+	var out bytes.Buffer
+	code := runInterview(nil, &out)
+	if code == 0 {
+		t.Errorf("picked verb with no flags should return non-zero, got %d", code)
+	}
+	if out.Len() == 0 {
+		t.Errorf("expected dispatch to write something to the output buffer")
+	}
+}
+
+func TestRunInterview_NoVerb_TTY_CancelReturnsZero(t *testing.T) {
+	// Picker returning an empty verb == user picked "Cancel" or aborted.
+	// That's not a failure, just nothing-to-do. Exit 0 with no error noise.
+	origTTY := isStdinTTY
+	origPicker := interviewVerbPicker
+	t.Cleanup(func() {
+		isStdinTTY = origTTY
+		interviewVerbPicker = origPicker
+	})
+	isStdinTTY = func() bool { return true }
+	interviewVerbPicker = func() (string, error) { return "", nil }
+
+	var out bytes.Buffer
+	code := runInterview(nil, &out)
+	if code != 0 {
+		t.Errorf("cancel should exit 0, got %d", code)
+	}
+	if out.Len() != 0 {
+		t.Errorf("cancel should not write to output, got %q", out.String())
+	}
+}
+
+func TestRunInterview_NoVerb_TTY_PickerErrorReturnsNonZero(t *testing.T) {
+	origTTY := isStdinTTY
+	origPicker := interviewVerbPicker
+	t.Cleanup(func() {
+		isStdinTTY = origTTY
+		interviewVerbPicker = origPicker
+	})
+	isStdinTTY = func() bool { return true }
+	interviewVerbPicker = func() (string, error) {
+		return "", &pickerErr{msg: "boom"}
+	}
+
+	var out bytes.Buffer
+	code := runInterview(nil, &out)
+	if code == 0 {
+		t.Errorf("picker error should return non-zero, got %d", code)
+	}
+	if !strings.Contains(out.String(), "boom") {
+		t.Errorf("expected picker error in output, got %q", out.String())
+	}
+}
+
+type pickerErr struct{ msg string }
+
+func (e *pickerErr) Error() string { return e.msg }
 
 func TestRunInterview_BootstrapVerb_RequiresFlags(t *testing.T) {
 	// `bootstrap` with no flags drops into the interactive wizard on a TTY

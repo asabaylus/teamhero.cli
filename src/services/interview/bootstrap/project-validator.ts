@@ -42,8 +42,13 @@ function countLines(file: string): number {
 export function validateModeAProject(dir: string): ValidationResult {
 	const failures: string[] = [];
 
-	if (!existsSync(join(dir, "CLAUDE.md"))) {
-		failures.push("Missing CLAUDE.md at project root.");
+	// README.md is the *candidate-facing* brief — written by the AI generator
+	// to explain what the candidate is building, the time-box, and how to
+	// run the existing tests. Agent operating guidance lives in the kit's
+	// AGENTS.md / .claude/CLAUDE.md, not the AI-authored output, so the
+	// model can't leak proctor instructions to the candidate through it.
+	if (!existsSync(join(dir, "README.md"))) {
+		failures.push("Missing README.md at project root (candidate-facing brief).");
 	}
 	if (!existsSync(join(dir, "GLOSSARY.md"))) {
 		failures.push("Missing GLOSSARY.md at project root.");

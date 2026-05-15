@@ -37,8 +37,11 @@ interface ParsedFlags {
 	modeRubric?: string;
 	jdPath?: string;
 	customPrompt?: string;
+	projectPrompt?: string;
 	outputDir?: string;
 	kitDir?: string;
+	model?: string;
+	maxAttempts?: string;
 }
 
 const FLAGS: readonly FlagSpec[] = [
@@ -53,8 +56,11 @@ const FLAGS: readonly FlagSpec[] = [
 	{ flag: "--mode-rubric", target: "modeRubric" },
 	{ flag: "--jd-path", target: "jdPath" },
 	{ flag: "--custom-prompt", target: "customPrompt" },
+	{ flag: "--project-prompt", target: "projectPrompt" },
 	{ flag: "--output-dir", target: "outputDir" },
 	{ flag: "--kit-dir", target: "kitDir" },
+	{ flag: "--model", target: "model" },
+	{ flag: "--max-attempts", target: "maxAttempts" },
 ];
 
 function parseArgs(argv: readonly string[]): ParsedFlags {
@@ -111,6 +117,7 @@ function buildConfig(flags: ParsedFlags): RoleConfig | string {
 		outputDir: flags.outputDir,
 		...(flags.jdPath ? { jdPath: flags.jdPath } : {}),
 		...(flags.customPrompt ? { customPrompt: flags.customPrompt } : {}),
+		...(flags.projectPrompt ? { projectPrompt: flags.projectPrompt } : {}),
 	};
 	return config;
 }
@@ -122,9 +129,13 @@ async function main() {
 		consola.error(built);
 		process.exit(1);
 	}
+	const maxAttempts = flags.maxAttempts
+		? Number.parseInt(flags.maxAttempts, 10)
+		: undefined;
 	const result = await runBootstrap(built, {
-		client: new OpenAIGeneratorClient(),
+		client: new OpenAIGeneratorClient(undefined, flags.model),
 		kitTemplateDir: flags.kitDir,
+		...(Number.isFinite(maxAttempts) ? { maxAttempts } : {}),
 	});
 	if (!result.ok) {
 		consola.error("Bootstrap failed:");

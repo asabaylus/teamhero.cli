@@ -16,6 +16,7 @@
                                                               │ Analysis mode: ai-assisted         │
                                                               │ Rubric: default                    │
                                                               │ Output dir: —                      │
+                                                              │ Project prompt: —                  │
                                                               ╰────────────────────────────────────╯
                                                                                                     
 enter continue • ctrl+c quit                                                                        

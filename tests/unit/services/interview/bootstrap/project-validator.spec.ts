@@ -14,7 +14,7 @@ function makeTempProject(): string {
 function writeModeAFixture(
 	dir: string,
 	opts: {
-		withClaudeMd?: boolean;
+		withReadme?: boolean;
 		withGlossary?: boolean;
 		deepModuleCount?: number;
 		shallowModuleCount?: number;
@@ -23,7 +23,7 @@ function writeModeAFixture(
 	} = {},
 ): void {
 	const o = {
-		withClaudeMd: true,
+		withReadme: true,
 		withGlossary: true,
 		deepModuleCount: 2,
 		shallowModuleCount: 0,
@@ -32,7 +32,7 @@ function writeModeAFixture(
 		...opts,
 	};
 
-	if (o.withClaudeMd) writeFileSync(join(dir, "CLAUDE.md"), "# Project\n");
+	if (o.withReadme) writeFileSync(join(dir, "README.md"), "# Project\n");
 	if (o.withGlossary) writeFileSync(join(dir, "GLOSSARY.md"), "# Glossary\n");
 
 	mkdirSync(join(dir, "src"), { recursive: true });
@@ -70,7 +70,7 @@ function writeModeAFixture(
 }
 
 describe("project-validator (Mode A)", () => {
-	it("passes when project has CLAUDE.md, GLOSSARY.md, 2+ deep modules, failing tests, LOC in range", () => {
+	it("passes when project has README.md, GLOSSARY.md, 2+ deep modules, failing tests, LOC in range", () => {
 		const dir = makeTempProject();
 		try {
 			writeModeAFixture(dir);
@@ -82,13 +82,13 @@ describe("project-validator (Mode A)", () => {
 		}
 	});
 
-	it("fails when CLAUDE.md is missing", () => {
+	it("fails when README.md is missing", () => {
 		const dir = makeTempProject();
 		try {
-			writeModeAFixture(dir, { withClaudeMd: false });
+			writeModeAFixture(dir, { withReadme: false });
 			const result = validateModeAProject(dir);
 			expect(result.ok).toBe(false);
-			expect(result.failures.some((f) => /CLAUDE\.md/i.test(f))).toBe(true);
+			expect(result.failures.some((f) => /README\.md/i.test(f))).toBe(true);
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}

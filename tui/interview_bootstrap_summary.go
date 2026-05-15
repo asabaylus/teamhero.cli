@@ -46,6 +46,11 @@ func renderInterviewBootstrapSummary(
 		rubricValue = "custom (" + truncate(m.customPrompt, 24) + ")"
 	}
 
+	projectPromptValue := "(default)"
+	if strings.TrimSpace(m.projectPrompt) != "" {
+		projectPromptValue = truncate(m.projectPrompt, 28)
+	}
+
 	entries := []entry{
 		{"Role slug", m.role, ibStepRole},
 		{"Role title", m.roleTitle, ibStepRoleTitle},
@@ -57,6 +62,7 @@ func renderInterviewBootstrapSummary(
 		{"Analysis mode", m.modeAnalysis, ibStepAnalysisMode},
 		{"Rubric", rubricValue, ibStepRubricMode},
 		{"Output dir", m.outputDir, ibStepOutputDir},
+		{"Project prompt", projectPromptValue, ibStepProjectPrompt},
 	}
 
 	lines := []string{

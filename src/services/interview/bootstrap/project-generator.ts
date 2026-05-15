@@ -201,17 +201,43 @@ function clearOutputDir(outputDir: string): void {
 	mkdirSync(outputDir, { recursive: true });
 }
 
-function copyDir(src: string, dest: string): void {
+/**
+ * Recursively copies `src` into `dest`, substituting `{{KEY}}` tokens in
+ * every file body using `vars`. The substitution is intentionally
+ * minimal — single `String.replaceAll` per key, no escaping or
+ * conditionals — so the kit's template grammar is "the literal text
+ * that appears in the source files."
+ *
+ * Files that don't contain any placeholder pay only one read+write, no
+ * regex compilation per file.
+ */
+function copyDir(
+	src: string,
+	dest: string,
+	vars: Readonly<Record<string, string>> = {},
+): void {
+	const tokenKeys = Object.keys(vars);
 	for (const entry of readdirSync(src)) {
 		const s = join(src, entry);
 		const d = join(dest, entry);
 		const st = statSync(s);
 		if (st.isDirectory()) {
 			mkdirSync(d, { recursive: true });
-			copyDir(s, d);
+			copyDir(s, d, vars);
 		} else {
 			mkdirSync(dirname(d), { recursive: true });
-			writeFileSync(d, readFileSync(s));
+			if (tokenKeys.length === 0) {
+				writeFileSync(d, readFileSync(s));
+				continue;
+			}
+			// readFileSync as utf8 — template files (.md, .sh, .json) are text.
+			// If the kit ever includes a binary asset we'll need to whitelist
+			// extensions; today there are none.
+			let body = readFileSync(s, "utf8");
+			for (const key of tokenKeys) {
+				body = body.replaceAll(`{{${key}}}`, vars[key]);
+			}
+			writeFileSync(d, body);
 		}
 	}
 }
@@ -244,8 +270,13 @@ export async function generateProject(
 
 		// Copy kit templates after the generated files so kit files take precedence
 		// when paths overlap (intentional: kit is the canonical wiring).
+		// {{TIME_BOX}} placeholders in kit text files are substituted with the
+		// configured minutes — INTERVIEW_RULES.md reads this so candidates see
+		// a real number instead of the literal placeholder.
 		if (options.kitTemplateDir) {
-			copyDir(options.kitTemplateDir, config.outputDir);
+			copyDir(options.kitTemplateDir, config.outputDir, {
+				TIME_BOX: String(config.timeBoxMinutes),
+			});
 		}
 
 		const validation = validateOutput(config, config.outputDir);

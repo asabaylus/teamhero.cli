@@ -12,22 +12,26 @@ import (
 
 // BootstrapOptions are the headless flags accepted by `teamhero interview bootstrap`.
 type BootstrapOptions struct {
-	Role         string
-	RoleTitle    string
-	Stack        string
-	Domain       string
-	Feature      string
-	TimeBox      string
-	ModeProject  string
-	ModeAnalysis string
-	ModeRubric   string
-	JDPath       string
-	CustomPrompt string
-	OutputDir    string
-	KitDir       string
-	Headless     bool
-	NoConfirm    bool
-	Foreground   bool
+	Role          string
+	RoleTitle     string
+	Stack         string
+	Domain        string
+	Feature       string
+	TimeBox       string
+	ModeProject   string
+	ModeAnalysis  string
+	ModeRubric    string
+	JDPath        string
+	CustomPrompt  string
+	// ProjectPrompt is the proctor's free-form addendum to the AI
+	// project-generation prompt. Optional. Distinct from CustomPrompt
+	// (which is rubric-mode-only).
+	ProjectPrompt string
+	OutputDir     string
+	KitDir        string
+	Headless      bool
+	NoConfirm     bool
+	Foreground    bool
 }
 
 // ParseBootstrapFlags parses headless flags from the args following `bootstrap`.
@@ -46,7 +50,8 @@ func ParseBootstrapFlags(args []string) (*BootstrapOptions, string) {
 			opts.Foreground = true
 		case "--role", "--role-title", "--stack", "--domain", "--feature",
 			"--time-box", "--mode-project", "--mode-analysis", "--mode-rubric",
-			"--jd-path", "--custom-prompt", "--output-dir", "--kit-dir":
+			"--jd-path", "--custom-prompt", "--project-prompt",
+			"--output-dir", "--kit-dir":
 			if i+1 >= len(args) {
 				return nil, fmt.Sprintf("flag %s requires a value", a)
 			}
@@ -74,6 +79,8 @@ func ParseBootstrapFlags(args []string) (*BootstrapOptions, string) {
 				opts.JDPath = val
 			case "--custom-prompt":
 				opts.CustomPrompt = val
+			case "--project-prompt":
+				opts.ProjectPrompt = val
 			case "--output-dir":
 				opts.OutputDir = val
 			case "--kit-dir":
@@ -166,6 +173,9 @@ func (bunBootstrapRunner) Run(opts *BootstrapOptions, stdout, stderr io.Writer) 
 	}
 	if opts.CustomPrompt != "" {
 		args = append(args, "--custom-prompt", opts.CustomPrompt)
+	}
+	if opts.ProjectPrompt != "" {
+		args = append(args, "--project-prompt", opts.ProjectPrompt)
 	}
 	if opts.KitDir != "" {
 		args = append(args, "--kit-dir", opts.KitDir)

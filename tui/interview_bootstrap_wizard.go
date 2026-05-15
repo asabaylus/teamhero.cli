@@ -28,6 +28,22 @@ const (
 	wsBootstrapCustomPrompt
 	wsBootstrapJDPath
 	wsBootstrapOutputDir
+	// wsBootstrapPromptSource asks how the proctor wants to supply the
+	// project-generation prompt: "custom" (they type one) or "suggest"
+	// (ChatGPT proposes ideas they pick from). Drives the branch into
+	// either wsBootstrapProjectPrompt or wsBootstrapIdeaFetching.
+	wsBootstrapPromptSource
+	// wsBootstrapProjectPrompt is the optional proctor-facing prompt that
+	// gets appended to the AI project-generation prompt.
+	wsBootstrapProjectPrompt
+	// wsBootstrapIdeaFetching is a transient spinner state while the
+	// wizard calls OpenAI to enumerate candidate ideas. No user input —
+	// reaches wsBootstrapIdeaSelect on success or surfaces the error on
+	// the confirm screen.
+	wsBootstrapIdeaFetching
+	// wsBootstrapIdeaSelect presents the fetched ideas as a huh.Select.
+	// The chosen idea's title+blurb populates projectPrompt downstream.
+	wsBootstrapIdeaSelect
 	wsBootstrapConfirm
 	wsBootstrapDone
 )
@@ -53,18 +69,34 @@ type BootstrapWizardDefaults struct {
 type bootstrapWizardModel struct {
 	state bootstrapWizardState
 
-	role         string
-	roleTitle    string
-	stack        string
-	domain       string
-	feature      string
-	timeBox      string
-	modeProject  string
-	modeAnalysis string
-	modeRubric   string
-	customPrompt string
-	jdPath       string
-	outputDir    string
+	role          string
+	roleTitle     string
+	stack         string
+	domain        string
+	feature       string
+	timeBox       string
+	modeProject   string
+	modeAnalysis  string
+	modeRubric    string
+	customPrompt  string
+	projectPrompt string
+	jdPath        string
+	outputDir     string
+
+	// promptSource selects how the project-generation prompt is supplied:
+	// "custom" — proctor types a prompt at wsBootstrapProjectPrompt.
+	// "suggest" — wizard fetches ideas, proctor picks one at
+	//            wsBootstrapIdeaSelect; the chosen idea populates
+	//            projectPrompt before the main generator runs.
+	// Default "custom" so headless callers (who skip the picker) behave
+	// identically to the pre-Step-4.5 wizard.
+	promptSource string
+
+	// ideas is populated by the Idea-fetch step when promptSource ==
+	// "suggest". ideaSelected indexes into ideas; -1 means none yet.
+	ideas         []ProjectIdea
+	ideaSelected  int
+	ideaFetchErr  string
 
 	confirmed bool
 	aborted   bool
@@ -85,6 +117,8 @@ func newBootstrapWizardModel(d BootstrapWizardDefaults) bootstrapWizardModel {
 		modeAnalysis: firstNonEmptyStr(d.ModeAnalysis, "ai-assisted"),
 		modeRubric:   firstNonEmptyStr(d.ModeRubric, "default"),
 		outputDir:    firstNonEmptyStr(d.OutputDir, "./roles/role"),
+		promptSource: "custom",
+		ideaSelected: -1,
 	}
 	return m
 }
@@ -123,6 +157,17 @@ func bootstrapWizardNextState(cur bootstrapWizardState, m bootstrapWizardModel) 
 	case wsBootstrapJDPath:
 		return wsBootstrapOutputDir
 	case wsBootstrapOutputDir:
+		return wsBootstrapPromptSource
+	case wsBootstrapPromptSource:
+		if m.promptSource == "suggest" {
+			return wsBootstrapIdeaFetching
+		}
+		return wsBootstrapProjectPrompt
+	case wsBootstrapProjectPrompt:
+		return wsBootstrapConfirm
+	case wsBootstrapIdeaFetching:
+		return wsBootstrapIdeaSelect
+	case wsBootstrapIdeaSelect:
 		return wsBootstrapConfirm
 	case wsBootstrapConfirm:
 		return wsBootstrapDone
@@ -137,19 +182,20 @@ func bootstrapWizardNextState(cur bootstrapWizardState, m bootstrapWizardModel) 
 // validator is the shared gate between headless and interactive paths.
 func bootstrapWizardOptionsFromModel(m bootstrapWizardModel) *BootstrapOptions {
 	return &BootstrapOptions{
-		Role:         m.role,
-		RoleTitle:    m.roleTitle,
-		Stack:        m.stack,
-		Domain:       m.domain,
-		Feature:      m.feature,
-		TimeBox:      m.timeBox,
-		ModeProject:  m.modeProject,
-		ModeAnalysis: m.modeAnalysis,
-		ModeRubric:   m.modeRubric,
-		CustomPrompt: m.customPrompt,
-		JDPath:       m.jdPath,
-		OutputDir:    m.outputDir,
-		Headless:     true, // the runner always speaks the headless protocol
+		Role:          m.role,
+		RoleTitle:     m.roleTitle,
+		Stack:         m.stack,
+		Domain:        m.domain,
+		Feature:       m.feature,
+		TimeBox:       m.timeBox,
+		ModeProject:   m.modeProject,
+		ModeAnalysis:  m.modeAnalysis,
+		ModeRubric:    m.modeRubric,
+		CustomPrompt:  m.customPrompt,
+		ProjectPrompt: m.projectPrompt,
+		JDPath:        m.jdPath,
+		OutputDir:     m.outputDir,
+		Headless:      true, // the runner always speaks the headless protocol
 	}
 }
 
@@ -279,7 +325,18 @@ func runInterviewBootstrapWithWizard(
 			fmt.Fprintln(stderr, msg)
 			return 1
 		}
-		return runner.Run(opts, stdout, stderr)
+		// Interactive path: hand off to the bubbletea generate screen so the
+		// user sees a spinner during the bun subprocess and lands on a
+		// persistent result view (with a clickable output path) afterward,
+		// rather than the TUI exiting silently the moment generation ends.
+		code := runBootstrapGenerate(runner, opts, stdout, stderr)
+		if code == 0 {
+			// Offer GitHub publish only after successful generation, and
+			// only when the user already configured a GitHub token via
+			// `teamhero setup` (silent skip otherwise — no nag).
+			offerPublishToGitHub(opts, stdout, stderr)
+		}
+		return code
 	}
 
 	// Otherwise fall through to the existing headless dispatch.

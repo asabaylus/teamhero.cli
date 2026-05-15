@@ -45,6 +45,23 @@ func TestParseBootstrapFlags_MissingValueErrors(t *testing.T) {
 	}
 }
 
+func TestParseBootstrapFlags_ProjectPrompt(t *testing.T) {
+	// --project-prompt is the new proctor-customizable project-generation
+	// addendum. Distinct from --custom-prompt (which is rubric-mode only).
+	opts, parseErr := ParseBootstrapFlags([]string{
+		"--project-prompt", "Use Postgres and emphasize idempotency.",
+	})
+	if parseErr != "" {
+		t.Fatalf("unexpected parse error: %s", parseErr)
+	}
+	if opts.ProjectPrompt != "Use Postgres and emphasize idempotency." {
+		t.Errorf("project-prompt: got %q", opts.ProjectPrompt)
+	}
+	if opts.CustomPrompt != "" {
+		t.Errorf("--project-prompt should NOT populate CustomPrompt (got %q)", opts.CustomPrompt)
+	}
+}
+
 func TestParseBootstrapFlags_UnknownFlagErrors(t *testing.T) {
 	_, parseErr := ParseBootstrapFlags([]string{"--what-is-this"})
 	if parseErr == "" {
@@ -243,6 +260,14 @@ func TestRunInterviewBootstrap_NoFlagsInvokesWizard(t *testing.T) {
 				OutputDir: "./roles/wizard-role",
 			},
 		},
+	}
+	// Skip the real tea program — invoke the runner inline so this test stays
+	// fast and headless. The bubbletea generate-screen has its own coverage in
+	// interview_bootstrap_generate_test.go.
+	orig := runBootstrapGenerate
+	t.Cleanup(func() { runBootstrapGenerate = orig })
+	runBootstrapGenerate = func(runner BootstrapRunner, opts *BootstrapOptions, stdout, stderr io.Writer) int {
+		return runner.Run(opts, stdout, stderr)
 	}
 	code := runInterviewBootstrapWithWizard([]string{}, stubRun, stubLauncher, &out, &errBuf)
 	if !stubLauncher.called {

@@ -25,7 +25,7 @@ function role(overrides: Partial<RoleConfig> = {}): RoleConfig {
  */
 function fakeOpenAI(
 	outputFiles: Array<{ path: string; content: string }> = [
-		{ path: "CLAUDE.md", content: "# Project\n" },
+		{ path: "README.md", content: "# Project\n" },
 	],
 	capturedPrompts?: { calls: Array<{ input: string; model: string }> },
 ) {
@@ -50,13 +50,13 @@ function fakeOpenAI(
 describe("OpenAIGeneratorClient.generate", () => {
 	it("returns the files array from the API response", async () => {
 		const files = [
-			{ path: "CLAUDE.md", content: "# Project\n" },
+			{ path: "README.md", content: "# Project\n" },
 			{ path: "src/main.ts", content: "export const x = 1;\n" },
 		];
 		const client = new OpenAIGeneratorClient(fakeOpenAI(files) as never);
 		const result = await client.generate({ config: role(), attempt: 1 });
 		expect(result.files).toHaveLength(2);
-		expect(result.files[0].path).toBe("CLAUDE.md");
+		expect(result.files[0].path).toBe("README.md");
 		expect(result.files[1].path).toBe("src/main.ts");
 	});
 
@@ -89,9 +89,30 @@ describe("OpenAIGeneratorClient.generate", () => {
 		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
 		await client.generate({ config: role({ projectMode: "A" }), attempt: 1 });
 		const prompt = captured.calls[0].input;
-		expect(prompt).toContain("CLAUDE.md");
+		expect(prompt).toContain("README.md");
 		expect(prompt).toContain("GLOSSARY.md");
 		expect(prompt).toContain("deep module");
+	});
+
+	it("explicitly forbids the AI from authoring CLAUDE.md or AGENTS.md (Mode A)", async () => {
+		// The prompt MUST tell the model not to write agent-facing files; those
+		// are owned by the kit. Otherwise the model hallucinates "Agent guidance"
+		// blocks that the candidate's agent then reads at run time.
+		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
+		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
+		await client.generate({ config: role({ projectMode: "A" }), attempt: 1 });
+		const prompt = captured.calls[0].input;
+		expect(prompt).toMatch(/DO NOT (generate|write).*CLAUDE\.md/i);
+		expect(prompt).toMatch(/DO NOT (generate|write).*AGENTS\.md/i);
+	});
+
+	it("explicitly forbids the AI from authoring CLAUDE.md or AGENTS.md (Mode B)", async () => {
+		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
+		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
+		await client.generate({ config: role({ projectMode: "B" }), attempt: 1 });
+		const prompt = captured.calls[0].input;
+		expect(prompt).toMatch(/DO NOT (generate|write).*CLAUDE\.md/i);
+		expect(prompt).toMatch(/DO NOT (generate|write).*AGENTS\.md/i);
 	});
 
 	it("includes Mode B brief requirements in prompt for projectMode=B", async () => {
@@ -121,10 +142,10 @@ describe("OpenAIGeneratorClient.generate", () => {
 		await client.generate({
 			config: role(),
 			attempt: 2,
-			previousFailures: ["Missing CLAUDE.md at project root.", "LOC out of range: 150 lines"],
+			previousFailures: ["Missing README.md at project root.", "LOC out of range: 150 lines"],
 		});
 		const prompt = captured.calls[0].input;
-		expect(prompt).toContain("Missing CLAUDE.md");
+		expect(prompt).toContain("Missing README.md");
 		expect(prompt).toContain("LOC out of range");
 	});
 
@@ -159,6 +180,41 @@ describe("OpenAIGeneratorClient.generate", () => {
 		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
 		await client.generate({ config: role({ timeBoxMinutes: 60 }), attempt: 1 });
 		expect(captured.calls[0].input).toContain("60");
+	});
+
+	it("appends projectPrompt as a proctor addendum after the rubric", async () => {
+		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
+		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
+		await client.generate({
+			config: role({ projectPrompt: "Use Postgres and emphasize idempotency." }),
+			attempt: 1,
+		});
+		const prompt = captured.calls[0].input;
+		expect(prompt).toContain("Additional instructions from the hiring manager");
+		expect(prompt).toContain("Use Postgres and emphasize idempotency.");
+		// Must appear after the rubric block so structural requirements remain
+		// authoritative — anchor the assertion to the rubric header.
+		const rubricIdx = prompt.indexOf("Rubric (interview-reviewer");
+		const addendumIdx = prompt.indexOf("Additional instructions from the hiring manager");
+		expect(rubricIdx).toBeGreaterThan(-1);
+		expect(addendumIdx).toBeGreaterThan(rubricIdx);
+	});
+
+	it("omits the proctor addendum entirely when projectPrompt is empty", async () => {
+		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
+		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
+		await client.generate({ config: role(), attempt: 1 });
+		expect(captured.calls[0].input).not.toContain("Additional instructions from the hiring manager");
+	});
+
+	it("omits the proctor addendum when projectPrompt is whitespace-only", async () => {
+		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
+		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
+		await client.generate({
+			config: role({ projectPrompt: "   \n\t  " }),
+			attempt: 1,
+		});
+		expect(captured.calls[0].input).not.toContain("Additional instructions from the hiring manager");
 	});
 });
 
