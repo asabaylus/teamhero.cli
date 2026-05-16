@@ -145,9 +145,9 @@ func TestInterviewBootstrap_View_AdvancesPastRubricStep_ShowsCustomTruncatedInSu
 // ---------------------------------------------------------------------------
 
 func TestInterviewBootstrap_JDProvidedYes_RoutesToJDPath(t *testing.T) {
-	// JD attachment is now its own branch, decoupled from rubric mode.
-	// jdProvided=yes from the Domain → JD-provided step lands on the
-	// JD-path input.
+	// JD attachment is now its own branch sitting between Stack and
+	// Domain. jdProvided=yes routes through the path + influence pair
+	// AND skips Domain entirely (the JD describes the domain).
 	m := newInterviewBootstrapTeaModel(BootstrapWizardDefaults{})
 	m.data.jdProvided = "yes"
 	m.step = ibStepJDProvided
@@ -156,12 +156,14 @@ func TestInterviewBootstrap_JDProvidedYes_RoutesToJDPath(t *testing.T) {
 	}
 }
 
-func TestInterviewBootstrap_JDProvidedNo_SkipsJDBranch(t *testing.T) {
+func TestInterviewBootstrap_JDProvidedNo_RoutesToDomain(t *testing.T) {
+	// jdProvided=no flows into Domain so the proctor can type the
+	// business context explicitly. With a JD, Domain is skipped.
 	m := newInterviewBootstrapTeaModel(BootstrapWizardDefaults{})
 	m.data.jdProvided = "no"
 	m.step = ibStepJDProvided
-	if next := m.nextStep(m.step); next != ibStepFeatureSource {
-		t.Fatalf("jdProvided=no should skip directly to feature-source, got %v", next)
+	if next := m.nextStep(m.step); next != ibStepDomain {
+		t.Fatalf("jdProvided=no should advance to Domain, got %v", next)
 	}
 }
 
@@ -173,11 +175,22 @@ func TestInterviewBootstrap_JDPath_RoutesToInfluencesProject(t *testing.T) {
 	}
 }
 
-func TestInterviewBootstrap_JDInfluencesProject_RoutesToFeatureSource(t *testing.T) {
+func TestInterviewBootstrap_JDInfluencesProject_SkipsDomainGoesToFeatureSource(t *testing.T) {
+	// With a JD attached, the wizard skips the Domain question.
 	m := newInterviewBootstrapTeaModel(BootstrapWizardDefaults{})
 	m.step = ibStepJDInfluencesProject
 	if next := m.nextStep(m.step); next != ibStepFeatureSource {
-		t.Fatalf("influences-project should advance to feature-source, got %v", next)
+		t.Fatalf("influences-project should skip Domain and advance to feature-source, got %v", next)
+	}
+}
+
+func TestInterviewBootstrap_Domain_RoutesToFeatureSource(t *testing.T) {
+	// When the JD branch was declined, Domain rejoins the main flow
+	// at feature-source.
+	m := newInterviewBootstrapTeaModel(BootstrapWizardDefaults{})
+	m.step = ibStepDomain
+	if next := m.nextStep(m.step); next != ibStepFeatureSource {
+		t.Fatalf("domain (no-JD branch) should advance to feature-source, got %v", next)
 	}
 }
 
@@ -343,14 +356,14 @@ func TestInterviewBootstrap_CommitSelectedIdea_WritesToFeature(t *testing.T) {
 	}
 }
 
-// TestInterviewBootstrap_NextStep_DomainRoutesToJDProvided ensures the
-// JD-provided gate sits between Domain and the rest of the flow in the
-// tea state machine.
-func TestInterviewBootstrap_NextStep_DomainRoutesToJDProvided(t *testing.T) {
+// TestInterviewBootstrap_NextStep_StackRoutesToJDProvided ensures the
+// JD-provided gate sits between Stack and Domain (Domain is then asked
+// only when no JD was attached).
+func TestInterviewBootstrap_NextStep_StackRoutesToJDProvided(t *testing.T) {
 	m := newInterviewBootstrapTeaModel(BootstrapWizardDefaults{})
-	m.step = ibStepDomain
+	m.step = ibStepStack
 	if next := m.nextStep(m.step); next != ibStepJDProvided {
-		t.Fatalf("domain should advance to jd-provided, got %v", next)
+		t.Fatalf("stack should advance to jd-provided, got %v", next)
 	}
 }
 

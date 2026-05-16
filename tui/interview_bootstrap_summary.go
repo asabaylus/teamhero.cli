@@ -64,13 +64,21 @@ func renderInterviewBootstrapSummary(
 		}
 	}
 
+	// Entry order mirrors the wizard's step order: JD comes BEFORE
+	// Domain because the JD describes the business domain. When a JD
+	// is attached, the wizard skips Domain entirely — the row will
+	// render with a "—" placeholder.
+	domainValue := m.domain
+	if m.jdProvided == "yes" && strings.TrimSpace(m.domain) == "" {
+		domainValue = "(from JD)"
+	}
 	entries := []entry{
 		{"Role slug", m.role, ibStepRole},
 		{"Role title", m.roleTitle, ibStepRoleTitle},
 		{"Stack", m.stack, ibStepStack},
-		{"Domain", m.domain, ibStepDomain},
 		{"JD attached", jdValue, ibStepJDProvided},
 		{"JD usage", jdInfluenceValue, ibStepJDInfluencesProject},
+		{"Domain", domainValue, ibStepDomain},
 		{"Feature source", fmtFeatureSource(m.featureSource), ibStepFeatureSource},
 		{"Feature", truncate(m.feature, 28), ibStepFeature},
 		{"Time-box", fmtTimeBox(m.timeBox), ibStepTimeBox},

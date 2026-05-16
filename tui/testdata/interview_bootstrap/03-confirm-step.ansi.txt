@@ -6,9 +6,9 @@
   ┃   Yes, generate the role     Cancel                       │ Role slug: senior-backend          │
                                                               │ Role title: —                      │
   ←/→ toggle • enter submit • y Yes, generate the role …      │ Stack: Go                          │
-                                                              │ Domain: Payments                   │
                                                               │ JD attached: none                  │
                                                               │ JD usage: —                        │
+                                                              │ Domain: Payments                   │
                                                               │ Feature source: typed by proctor   │
                                                               │ Feature: ledger entry-point        │
                                                               │ Time-box: 60 min                   │

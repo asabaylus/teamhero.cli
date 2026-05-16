@@ -119,12 +119,18 @@ func ValidateBootstrapOptions(opts *BootstrapOptions) string {
 	required := map[string]string{
 		"--role":          opts.Role,
 		"--stack":         opts.Stack,
-		"--domain":        opts.Domain,
 		"--feature":       opts.Feature,
 		"--mode-project":  opts.ModeProject,
 		"--mode-analysis": opts.ModeAnalysis,
 		"--mode-rubric":   opts.ModeRubric,
 		"--output-dir":    opts.OutputDir,
+	}
+	// --domain is required UNLESS a --jd-path is supplied. The job
+	// description, when attached, describes the business domain;
+	// forcing the proctor to also type it as a separate flag is
+	// redundant and error-prone.
+	if strings.TrimSpace(opts.JDPath) == "" && strings.TrimSpace(opts.Domain) == "" {
+		required["--domain"] = ""
 	}
 	missing := []string{}
 	for flag, val := range required {

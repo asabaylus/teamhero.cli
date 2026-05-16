@@ -131,11 +131,14 @@ func TestBootstrapWizard_NextState_JDProvidedYesRoutesToPath(t *testing.T) {
 	}
 }
 
-func TestBootstrapWizard_NextState_JDProvidedNoSkipsJDBranch(t *testing.T) {
+func TestBootstrapWizard_NextState_JDProvidedNoRoutesToDomain(t *testing.T) {
+	// JD-not-provided path: ask Domain explicitly. With a JD attached
+	// the JD describes the domain and Domain is skipped (covered by
+	// TestBootstrapWizard_NextState_JDInfluenceRoutesToFeatureSource).
 	m := newBootstrapWizardModel(BootstrapWizardDefaults{})
 	m.jdProvided = "no"
-	if next := bootstrapWizardNextState(wsBootstrapJDProvided, m); next != wsBootstrapFeatureSource {
-		t.Errorf("jdProvided=no should skip both JD steps, got %v", next)
+	if next := bootstrapWizardNextState(wsBootstrapJDProvided, m); next != wsBootstrapDomain {
+		t.Errorf("jdProvided=no should ask Domain explicitly, got %v", next)
 	}
 }
 
@@ -147,9 +150,21 @@ func TestBootstrapWizard_NextState_JDPathRoutesToInfluenceQuestion(t *testing.T)
 }
 
 func TestBootstrapWizard_NextState_JDInfluenceRoutesToFeatureSource(t *testing.T) {
+	// With a JD attached, the wizard SKIPS the Domain question because
+	// the JD describes the business domain. The next step after the
+	// influence toggle is feature-source.
 	m := newBootstrapWizardModel(BootstrapWizardDefaults{})
 	if next := bootstrapWizardNextState(wsBootstrapJDInfluencesProject, m); next != wsBootstrapFeatureSource {
-		t.Errorf("jd-influences-project should advance to feature-source, got %v", next)
+		t.Errorf("jd-influences-project should skip Domain and advance to feature-source, got %v", next)
+	}
+}
+
+func TestBootstrapWizard_NextState_DomainRoutesToFeatureSource(t *testing.T) {
+	// When the JD branch was declined, Domain is asked and flows back
+	// into the main pipeline at feature-source.
+	m := newBootstrapWizardModel(BootstrapWizardDefaults{})
+	if next := bootstrapWizardNextState(wsBootstrapDomain, m); next != wsBootstrapFeatureSource {
+		t.Errorf("domain (no-JD branch) should advance to feature-source, got %v", next)
 	}
 }
 
@@ -170,13 +185,13 @@ func TestBootstrapWizard_NextState_OutputDirThenConfirm(t *testing.T) {
 	}
 }
 
-func TestBootstrapWizard_NextState_DomainThenJDProvided(t *testing.T) {
-	// The standalone JD branch sits between Domain and Feature source —
-	// asking about the JD early so the project-generation prompt has
-	// access to it when feature ideas are suggested.
+func TestBootstrapWizard_NextState_StackThenJDProvided(t *testing.T) {
+	// The JD branch sits BEFORE Domain — a JD describes the business
+	// domain, so asking for the JD first lets Domain be skipped when
+	// one is attached. Stack still comes from the proctor regardless.
 	m := newBootstrapWizardModel(BootstrapWizardDefaults{})
-	if next := bootstrapWizardNextState(wsBootstrapDomain, m); next != wsBootstrapJDProvided {
-		t.Errorf("domain should advance to jd-provided, got %v", next)
+	if next := bootstrapWizardNextState(wsBootstrapStack, m); next != wsBootstrapJDProvided {
+		t.Errorf("stack should advance to jd-provided, got %v", next)
 	}
 }
 

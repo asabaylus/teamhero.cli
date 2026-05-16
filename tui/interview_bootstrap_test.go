@@ -205,6 +205,44 @@ func TestValidateBootstrapOptions_StackByCandidateAllowedWithModeB(t *testing.T)
 	}
 }
 
+func TestValidateBootstrapOptions_DomainOptionalWhenJDAttached(t *testing.T) {
+	// A JD describes the business domain, so requiring --domain on
+	// top of --jd-path is redundant. The validator drops the domain
+	// requirement when a JD is supplied — the OpenAI prompt falls back
+	// to the JD's body for domain context, and the wizard skips the
+	// Domain question entirely on the JD-yes branch.
+	jd := t.TempDir() + "/jd.md"
+	if err := os.WriteFile(jd, []byte("# JD"), 0o644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	opts := &BootstrapOptions{
+		Role: "x", Stack: "x", Feature: "x", OutputDir: "x",
+		ModeProject: "A", ModeAnalysis: "ai-assisted", ModeRubric: "default",
+		JDPath: jd,
+		// Domain intentionally omitted.
+	}
+	if msg := ValidateBootstrapOptions(opts); msg != "" {
+		t.Fatalf("expected validation pass with JD-but-no-domain, got %q", msg)
+	}
+}
+
+func TestValidateBootstrapOptions_DomainRequiredWhenNoJD(t *testing.T) {
+	// Without a JD attached, the proctor must name the domain
+	// explicitly — otherwise the AI has no business context at all.
+	opts := &BootstrapOptions{
+		Role: "x", Stack: "x", Feature: "x", OutputDir: "x",
+		ModeProject: "A", ModeAnalysis: "ai-assisted", ModeRubric: "default",
+		// Domain and JDPath both omitted.
+	}
+	msg := ValidateBootstrapOptions(opts)
+	if msg == "" {
+		t.Fatal("expected validation error: domain required when no JD")
+	}
+	if !strings.Contains(msg, "--domain") {
+		t.Errorf("error should mention --domain; got %q", msg)
+	}
+}
+
 func TestValidateBootstrapOptions_HappyPath(t *testing.T) {
 	opts := &BootstrapOptions{
 		Role: "x", Stack: "x", Domain: "x", Feature: "x", OutputDir: "x",

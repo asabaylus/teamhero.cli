@@ -7,9 +7,9 @@
   ┃ > ./interviews/senior-backend                             │ Role title: Senior Backend         │
                                                               │ Engineer                           │
   enter submit                                                │ Stack: Go                          │
-                                                              │ Domain: Payments                   │
                                                               │ JD attached: none                  │
                                                               │ JD usage: —                        │
+                                                              │ Domain: Payments                   │
                                                               │ Feature source: typed by proctor   │
                                                               │ Feature: build a ledger entry-     │
                                                               │ point                              │

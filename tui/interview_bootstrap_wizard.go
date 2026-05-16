@@ -19,22 +19,27 @@ const (
 	wsBootstrapRole bootstrapWizardState = iota
 	wsBootstrapRoleTitle
 	wsBootstrapStack
-	wsBootstrapDomain
-	// wsBootstrapJDProvided is the yes/no step that asks the hiring
-	// manager whether they have a job description to attach. The JD is
-	// now collected as a standalone input rather than being smuggled in
-	// via a "default+jd" rubric value. When provided, two more
-	// downstream steps follow (path + influences-project toggle); when
-	// declined the wizard skips both.
+	// wsBootstrapJDProvided sits BEFORE Domain because a job
+	// description, when supplied, describes the business domain — so
+	// asking the proctor to repeat that under Domain is wasted input.
+	// When jdProvided=yes the wizard takes the JD path/influence branch
+	// AND skips the Domain step entirely; the AI infers domain from
+	// the JD context block. When no JD is attached, the wizard falls
+	// through to the original Domain question.
 	wsBootstrapJDProvided
 	wsBootstrapJDPath
 	// wsBootstrapJDInfluencesProject asks whether the JD should also
 	// shape the AI's project-generation prompt (in addition to
-	// informing the post-interview rubric analysis). When true the
-	// generator reads the JD body and tailors the project's
-	// complexity and domain accordingly — e.g., a junior healthtech
-	// JD nudges toward an EHR-flavoured feature.
+	// informing the post-interview observer). When true the generator
+	// reads the JD body and tailors the project's complexity and
+	// domain accordingly — e.g., a junior healthtech JD nudges toward
+	// an EHR-flavoured feature.
 	wsBootstrapJDInfluencesProject
+	// wsBootstrapDomain is the explicit-domain step, reached only when
+	// no JD was attached. With a JD attached the wizard skips this and
+	// the role config carries an empty domain field; validators on
+	// both Go and TS sides allow that.
+	wsBootstrapDomain
 	// wsBootstrapFeatureSource is the either/or step that drives whether
 	// the proctor types the feature description themselves or lets the
 	// AI suggest project ideas. Replaces the old late-stage
@@ -171,17 +176,19 @@ func bootstrapWizardNextState(cur bootstrapWizardState, m bootstrapWizardModel) 
 	case wsBootstrapRoleTitle:
 		return wsBootstrapStack
 	case wsBootstrapStack:
-		return wsBootstrapDomain
-	case wsBootstrapDomain:
 		return wsBootstrapJDProvided
 	case wsBootstrapJDProvided:
 		if m.jdProvided == "yes" {
 			return wsBootstrapJDPath
 		}
-		return wsBootstrapFeatureSource
+		// No JD attached → ask Domain explicitly. With a JD, we skip
+		// it; the AI derives domain from the JD context.
+		return wsBootstrapDomain
 	case wsBootstrapJDPath:
 		return wsBootstrapJDInfluencesProject
 	case wsBootstrapJDInfluencesProject:
+		return wsBootstrapFeatureSource
+	case wsBootstrapDomain:
 		return wsBootstrapFeatureSource
 	case wsBootstrapFeatureSource:
 		if m.featureSource == "suggest" {

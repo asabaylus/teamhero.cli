@@ -200,6 +200,29 @@ describe("OpenAIGeneratorClient.generate", () => {
 		expect(prompt).not.toMatch(/candidate selects their own tech stack/);
 	});
 
+	it("renders 'Domain: infer from the job description' when domain is empty (JD-supplied path)", async () => {
+		// The wizard skips the Domain question when a JD is attached
+		// (the JD describes the domain). The prompt must NOT render a
+		// bare "Domain: ." — instead it tells the model to derive the
+		// domain from the JD context block.
+		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
+		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
+		await client.generate({ config: role({ domain: "" }), attempt: 1 });
+		const prompt = captured.calls[0].input;
+		expect(prompt).toMatch(/Domain:\s+infer from the job description/i);
+		expect(prompt).not.toMatch(/Domain:\s*\./);
+	});
+
+	it("renders explicit 'Domain: X.' when the proctor supplied a domain", async () => {
+		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
+		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
+		await client.generate({
+			config: role({ domain: "Payments" }),
+			attempt: 1,
+		});
+		expect(captured.calls[0].input).toMatch(/Domain:\s+Payments\./);
+	});
+
 	it("injects JD content into the generation prompt when jdInfluencesProject is true", async () => {
 		// The user's example: a junior healthtech JD should nudge the
 		// generator toward an EHR-flavoured feature. The mechanism is

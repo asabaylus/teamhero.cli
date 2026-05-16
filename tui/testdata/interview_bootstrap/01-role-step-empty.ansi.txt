@@ -6,9 +6,9 @@
   ┃ candidate.                                                │ Role slug: —                       │
   ┃ >                                                         │ Role title: —                      │
                                                               │ Stack: —                           │
-  enter submit                                                │ Domain: —                          │
-                                                              │ JD attached: —                     │
+  enter submit                                                │ JD attached: —                     │
                                                               │ JD usage: —                        │
+                                                              │ Domain: —                          │
                                                               │ Feature source: —                  │
                                                               │ Feature: —                         │
                                                               │ Time-box: —                        │

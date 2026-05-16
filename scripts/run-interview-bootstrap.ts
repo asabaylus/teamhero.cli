@@ -92,7 +92,12 @@ function parseArgs(argv: readonly string[]): ParsedFlags {
 function buildConfig(flags: ParsedFlags): RoleConfig | string {
 	if (!flags.role) return "Missing required flag --role";
 	if (!flags.stack) return "Missing required flag --stack";
-	if (!flags.domain) return "Missing required flag --domain";
+	// --domain is required UNLESS --jd-path is supplied. The JD
+	// describes the business domain; the OpenAI prompt and role-config
+	// validator both accept an empty domain when a JD is attached.
+	if (!flags.domain && !flags.jdPath) {
+		return "Missing required flag --domain (or attach a --jd-path so the JD can describe the domain)";
+	}
 	if (!flags.feature) return "Missing required flag --feature";
 	if (!flags.modeProject) return "Missing required flag --mode-project";
 	if (!flags.modeAnalysis) return "Missing required flag --mode-analysis";
@@ -129,7 +134,9 @@ function buildConfig(flags: ParsedFlags): RoleConfig | string {
 		roleSlug: flags.role,
 		roleTitle: flags.roleTitle ?? flags.role,
 		stack: flags.stack,
-		domain: flags.domain,
+		// Empty domain is allowed when --jd-path is supplied; the
+		// OpenAI prompt and the validator both fall back to the JD.
+		domain: flags.domain ?? "",
 		featureDescription: flags.feature,
 		timeBoxMinutes: timeBox,
 		projectMode: flags.modeProject as ProjectMode,

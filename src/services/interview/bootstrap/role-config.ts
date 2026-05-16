@@ -65,9 +65,17 @@ export function validateRoleConfig(
 	requireNonEmpty("roleSlug", config.roleSlug, failures);
 	requireNonEmpty("roleTitle", config.roleTitle, failures);
 	requireNonEmpty("stack", config.stack, failures);
-	requireNonEmpty("domain", config.domain, failures);
 	requireNonEmpty("featureDescription", config.featureDescription, failures);
 	requireNonEmpty("outputDir", config.outputDir, failures);
+	// domain is required UNLESS a JD is attached. The JD describes the
+	// business domain; asking the proctor to also type it out is
+	// redundant and a source of friction. The OpenAI prompt and the
+	// observer both fall back to the JD body when domain is empty.
+	const hasJD =
+		typeof config.jdPath === "string" && config.jdPath.trim().length > 0;
+	if (!hasJD) {
+		requireNonEmpty("domain", config.domain, failures);
+	}
 
 	const t = config.timeBoxMinutes;
 	const inRange = t >= CUSTOM_TIME_BOX_MIN && t <= CUSTOM_TIME_BOX_MAX;

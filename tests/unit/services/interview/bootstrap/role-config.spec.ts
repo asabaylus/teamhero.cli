@@ -111,6 +111,35 @@ describe("role-config validation", () => {
 		expect(r.failures.some((f) => /jdInfluencesProject/i.test(f))).toBe(true);
 	});
 
+	it("accepts an empty domain when a jdPath is attached (JD describes the domain)", () => {
+		// The wizard skips the Domain question whenever a JD is
+		// provided; the role-config produced has an empty domain.
+		// Validation must accept this — otherwise headless callers
+		// hitting the same shape would crash. The OpenAI prompt
+		// renders a "Domain: infer from the job description" line
+		// for the model.
+		const dir = mkdtempSync(join(tmpdir(), "iv-jd-no-domain-"));
+		try {
+			const jdPath = join(dir, "jd.md");
+			writeFileSync(jdPath, "# Healthtech\nWe build EHR integrations.\n");
+			const c: RoleConfig = {
+				...baseConfig(),
+				domain: "", // skipped by the wizard because JD is attached
+				jdPath,
+			};
+			expect(validateRoleConfig(c).ok).toBe(true);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("rejects an empty domain when no jdPath is attached", () => {
+		const c: RoleConfig = { ...baseConfig(), domain: "" };
+		const r = validateRoleConfig(c);
+		expect(r.ok).toBe(false);
+		expect(r.failures.some((f) => /domain/i.test(f))).toBe(true);
+	});
+
 	it("accepts jdInfluencesProject=true paired with a real jdPath", () => {
 		const dir = mkdtempSync(join(tmpdir(), "iv-jd-influence-"));
 		try {

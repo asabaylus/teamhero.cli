@@ -116,8 +116,17 @@ ${
 			? `\n\nJob description context — use this to calibrate the project's complexity, seniority, and domain character. Do not echo it back to the candidate or reference it in the README; treat it as background that shapes what you build:\n---\n${jd}\n---\n`
 			: "";
 
+	// Domain: when a JD is attached the wizard skips the Domain question
+	// (the JD already describes it), so render an instruction to the
+	// model rather than an empty "Domain: ." line. The jdContext block
+	// below has the actual JD body for inference.
+	const domainLine =
+		config.domain && config.domain.trim().length > 0
+			? `Domain: ${config.domain}.`
+			: "Domain: infer from the job description context below.";
+
 	return `You are generating a candidate coding interview project for the role: ${config.roleTitle}.
-Stack: ${config.stack}. Domain: ${config.domain}. Feature focus: ${config.featureDescription}.
+Stack: ${config.stack}. ${domainLine} Feature focus: ${config.featureDescription}.
 Time-box: ${config.timeBoxMinutes} minutes.
 
 This is attempt ${attempt}.${retryNote}${jdContext}

@@ -21,14 +21,18 @@ const (
 	ibStepRole interviewBootstrapStep = iota
 	ibStepRoleTitle
 	ibStepStack
-	ibStepDomain
-	// ibStepJDProvided is the yes/no gate for the standalone JD branch.
-	// "yes" routes through the path + influences-project pair; "no"
-	// skips both. The JD is now collected separately from rubric mode
-	// so the proctor can mix a custom rubric WITH a JD if they want.
+	// ibStepJDProvided sits BEFORE Domain so a job-description-supplied
+	// domain doesn't have to be re-typed by the proctor. "yes" routes
+	// through the path + influences-project pair AND skips Domain
+	// entirely; "no" routes to Domain so the proctor can name the
+	// business context explicitly.
 	ibStepJDProvided
 	ibStepJDPath
 	ibStepJDInfluencesProject
+	// ibStepDomain is reached only when no JD was attached. With a JD
+	// the AI infers domain from the JD context block; the role-config
+	// validator accepts empty domain in that case.
+	ibStepDomain
 	// ibStepFeatureSource is the either/or step that picks whether the
 	// proctor types the feature description themselves or asks the AI to
 	// suggest project ideas scoped to the role profile. The "Feature"
@@ -340,17 +344,19 @@ func (m *interviewBootstrapTeaModel) nextStep(cur interviewBootstrapStep) interv
 	case ibStepRoleTitle:
 		return ibStepStack
 	case ibStepStack:
-		return ibStepDomain
-	case ibStepDomain:
 		return ibStepJDProvided
 	case ibStepJDProvided:
 		if m.data.jdProvided == "yes" {
 			return ibStepJDPath
 		}
-		return ibStepFeatureSource
+		// No JD → ask Domain explicitly. With a JD, skip Domain;
+		// the AI infers it from the JD context block.
+		return ibStepDomain
 	case ibStepJDPath:
 		return ibStepJDInfluencesProject
 	case ibStepJDInfluencesProject:
+		return ibStepFeatureSource
+	case ibStepDomain:
 		return ibStepFeatureSource
 	case ibStepFeatureSource:
 		if m.data.featureSource == "suggest" {
@@ -513,7 +519,7 @@ func (m *interviewBootstrapTeaModel) buildForm() *huh.Form {
 		return huh.NewForm(huh.NewGroup(
 			huh.NewSelect[string]().
 				Title("Analysis mode").
-				Description("AI-assisted drafts post-interview notes; human-only doesn't.").
+				Description("AI-assisted drafts post-interview observations; human-only doesn't.").
 				Options(
 					huh.NewOption("AI-assisted (recommended)", "ai-assisted"),
 					huh.NewOption("Human-only", "human-only"),
@@ -522,16 +528,19 @@ func (m *interviewBootstrapTeaModel) buildForm() *huh.Form {
 		)).WithTheme(huh.ThemeCharm()).WithWidth(m.formWidth())
 
 	case ibStepRubricMode:
-		// Same short-description discipline as ibStepAnalysisMode —
-		// avoids the huh.ThemeCharm left-bar break on wrapped
-		// Description lines. JD attachment moved to its own earlier
-		// step so the rubric question is now a clean default-vs-custom.
+		// JD attachment moved to its own earlier step so the rubric
+		// question is now a clean default-vs-custom. The default option
+		// label and description signal what the rubric actually
+		// observes — traditional engineering discipline (domain-driven
+		// design, deep modules, verification, etc.) surfaced through
+		// how the candidate works with AI — rather than the opaque
+		// "9 built-in dimensions" phrasing it used to carry.
 		return huh.NewForm(huh.NewGroup(
 			huh.NewSelect[string]().
 				Title("How should AI share observations?").
-				Description("Picks the rubric AI uses to write up the recorded interview.").
+				Description("Default rubric looks for sound engineering practices applied to AI-assisted work.").
 				Options(
-					huh.NewOption("Default — 9 built-in dimensions (recommended)", "default"),
+					huh.NewOption("Default — DDD, deep modules, verification (recommended)", "default"),
 					huh.NewOption("Custom — write your own prompt", "custom"),
 				).
 				Value(&d.modeRubric),
