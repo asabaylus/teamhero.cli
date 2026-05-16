@@ -257,6 +257,40 @@ func TestInterviewBootstrap_Screenshot_WritesGolden(t *testing.T) {
 	}
 }
 
+// TestInterviewBootstrap_ConfirmStep_OmitsVerboseSummary pins the fix for
+// a reported clutter bug: the confirm step used to repeat every collected
+// field (role=… · stack=… · domain=… · time-box=…) as the huh.Confirm
+// form's Description, which duplicated the right-hand summary panel and
+// hid the only choice the user has to make. The summary panel is the
+// source of truth — the left-hand form should only show the prompt and
+// the two buttons. Any regression that pipes summarizeBootstrapModel back
+// into the form will reintroduce the "role=" / "stack=" markers and fail
+// this assertion.
+func TestInterviewBootstrap_ConfirmStep_OmitsVerboseSummary(t *testing.T) {
+	m := newInterviewBootstrapTeaModel(BootstrapWizardDefaults{
+		Role: "senior-backend", Stack: "Go", Domain: "Payments",
+		Feature: "ledger entry-point", TimeBox: "60",
+		ModeProject: "A", ModeAnalysis: "ai-assisted", ModeRubric: "default",
+		OutputDir: "./interviews/senior-backend",
+	})
+	m.step = ibStepConfirm
+	m.highWater = ibStepConfirm
+	m.form = m.buildForm()
+	_, stripped := driveWizardOutput(t, m)
+
+	// The verbose summary's signature tokens — if any of these leak back
+	// into the confirm-step view, the description was reattached.
+	for _, banned := range []string{"role=", "stack=", "time-box=", "out="} {
+		if strings.Contains(stripped, banned) {
+			t.Errorf("confirm step should NOT contain summary token %q (it duplicates the side panel); got:\n%s", banned, stripped)
+		}
+	}
+	// Sanity: the title and the affirmative button MUST still be visible
+	// — without these the user has nothing to act on.
+	mustContain(t, stripped, "Ready to bootstrap?", "confirm title")
+	mustContain(t, stripped, "Yes, generate the role", "affirmative button")
+}
+
 // normalizeForGolden collapses trailing whitespace on each line so minor
 // width changes don't churn the golden file.
 func normalizeForGolden(s string) string {

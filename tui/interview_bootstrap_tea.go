@@ -592,10 +592,13 @@ func (m *interviewBootstrapTeaModel) buildForm() *huh.Form {
 		// Enter on confirm, and got "Wizard cancelled at confirm" instead
 		// of a generated project.
 		d.confirmed = true
+		// No description on this confirm form — the right-hand summary
+		// panel already lists every collected field. Repeating them in
+		// the form's Description was reported as visual clutter that
+		// hid the only thing the user has to act on (Yes / Cancel).
 		return huh.NewForm(huh.NewGroup(
 			huh.NewConfirm().
 				Title("Ready to bootstrap?").
-				Description(summarizeBootstrapModel(m.data)).
 				Affirmative("Yes, generate the role").
 				Negative("Cancel").
 				Value(&d.confirmed),
