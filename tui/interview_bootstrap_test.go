@@ -184,6 +184,123 @@ func TestRunInterviewBootstrap_ForwardsRunnerExitCode(t *testing.T) {
 	}
 }
 
+// withPublishHooks installs no-op replacements for offerPublishToGitHub and
+// isStdinTTY for the duration of a test. The cleanup runs on teardown so
+// later tests see the production behavior.
+func withPublishHooks(t *testing.T, tty bool, onPublish func(opts *BootstrapOptions)) {
+	t.Helper()
+	origPublish := offerPublishToGitHub
+	origTTY := isStdinTTY
+	t.Cleanup(func() {
+		offerPublishToGitHub = origPublish
+		isStdinTTY = origTTY
+	})
+	offerPublishToGitHub = func(opts *BootstrapOptions, _, _ io.Writer) {
+		if onPublish != nil {
+			onPublish(opts)
+		}
+	}
+	isStdinTTY = func() bool { return tty }
+}
+
+func TestRunInterviewBootstrap_PrintsSuccessLinkOnZeroExit(t *testing.T) {
+	withPublishHooks(t, false, nil) // non-TTY so publish stays out of the way
+	var out, errBuf bytes.Buffer
+	stub := &stubRunner{code: 0}
+	code := runInterviewBootstrap([]string{
+		"--headless",
+		"--role", "x", "--stack", "x", "--domain", "x", "--feature", "x",
+		"--mode-project", "A", "--mode-analysis", "ai-assisted",
+		"--mode-rubric", "default", "--output-dir", "/tmp/teamhero-test",
+	}, stub, &out, &errBuf)
+	if code != 0 {
+		t.Fatalf("exit=%d stderr=%s", code, errBuf.String())
+	}
+	got := out.String()
+	if !strings.Contains(got, "/tmp/teamhero-test") {
+		t.Errorf("stdout missing output-dir path; got: %q", got)
+	}
+	// OSC 8 envelope: ESC ] 8 ; ; <url> ESC \   ...   ESC ] 8 ; ; ESC \
+	if !strings.Contains(got, "\x1b]8;;file://") {
+		t.Errorf("stdout should wrap path in an OSC 8 file:// hyperlink; got: %q", got)
+	}
+}
+
+func TestRunInterviewBootstrap_OffersPublishWhenTTY(t *testing.T) {
+	called := false
+	withPublishHooks(t, true, func(opts *BootstrapOptions) {
+		called = true
+		if opts.OutputDir != "/tmp/teamhero-test" {
+			t.Errorf("publish saw output-dir %q", opts.OutputDir)
+		}
+	})
+	var out, errBuf bytes.Buffer
+	stub := &stubRunner{code: 0}
+	runInterviewBootstrap([]string{
+		"--headless",
+		"--role", "x", "--stack", "x", "--domain", "x", "--feature", "x",
+		"--mode-project", "A", "--mode-analysis", "ai-assisted",
+		"--mode-rubric", "default", "--output-dir", "/tmp/teamhero-test",
+	}, stub, &out, &errBuf)
+	if !called {
+		t.Error("offerPublishToGitHub should be invoked when stdin is a TTY and --no-confirm is absent")
+	}
+}
+
+func TestRunInterviewBootstrap_SkipsPublishWhenNoConfirm(t *testing.T) {
+	called := false
+	withPublishHooks(t, true, func(*BootstrapOptions) { called = true })
+	var out, errBuf bytes.Buffer
+	stub := &stubRunner{code: 0}
+	runInterviewBootstrap([]string{
+		"--headless", "--no-confirm",
+		"--role", "x", "--stack", "x", "--domain", "x", "--feature", "x",
+		"--mode-project", "A", "--mode-analysis", "ai-assisted",
+		"--mode-rubric", "default", "--output-dir", "/tmp/teamhero-test",
+	}, stub, &out, &errBuf)
+	if called {
+		t.Error("publish must NOT prompt when --no-confirm is set")
+	}
+}
+
+func TestRunInterviewBootstrap_SkipsPublishWhenNotTTY(t *testing.T) {
+	called := false
+	withPublishHooks(t, false, func(*BootstrapOptions) { called = true })
+	var out, errBuf bytes.Buffer
+	stub := &stubRunner{code: 0}
+	runInterviewBootstrap([]string{
+		"--headless",
+		"--role", "x", "--stack", "x", "--domain", "x", "--feature", "x",
+		"--mode-project", "A", "--mode-analysis", "ai-assisted",
+		"--mode-rubric", "default", "--output-dir", "/tmp/teamhero-test",
+	}, stub, &out, &errBuf)
+	if called {
+		t.Error("publish must NOT prompt on non-TTY stdin (CI, piped)")
+	}
+}
+
+func TestRunInterviewBootstrap_NoPublishOnFailure(t *testing.T) {
+	called := false
+	withPublishHooks(t, true, func(*BootstrapOptions) { called = true })
+	var out, errBuf bytes.Buffer
+	stub := &stubRunner{code: 1}
+	code := runInterviewBootstrap([]string{
+		"--headless",
+		"--role", "x", "--stack", "x", "--domain", "x", "--feature", "x",
+		"--mode-project", "A", "--mode-analysis", "ai-assisted",
+		"--mode-rubric", "default", "--output-dir", "/tmp/teamhero-test",
+	}, stub, &out, &errBuf)
+	if code != 1 {
+		t.Errorf("expected forwarded failure exit, got %d", code)
+	}
+	if called {
+		t.Error("publish must NOT be offered when bootstrap fails")
+	}
+	if strings.Contains(out.String(), "file://") {
+		t.Errorf("success link should NOT print on failure; got stdout: %q", out.String())
+	}
+}
+
 // stubLauncher records the wizard invocation and returns a pre-built result.
 type stubWizardLauncher struct {
 	called bool

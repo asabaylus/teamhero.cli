@@ -221,7 +221,9 @@ func findBootstrapScript() string {
 }
 
 // runInterviewBootstrap dispatches the bootstrap verb. Parses flags, validates,
-// invokes the runner. Returns the exit code.
+// invokes the runner. On success it prints a clickable output-dir link and,
+// when running interactively, offers to publish the generated repo to GitHub.
+// Returns the exit code.
 func runInterviewBootstrap(args []string, runner BootstrapRunner, stdout, stderr io.Writer) int {
 	opts, parseErr := ParseBootstrapFlags(args)
 	if parseErr != "" {
@@ -236,5 +238,27 @@ func runInterviewBootstrap(args []string, runner BootstrapRunner, stdout, stderr
 		fmt.Fprintln(stderr, msg)
 		return 1
 	}
-	return runner.Run(opts, stdout, stderr)
+	exit := runner.Run(opts, stdout, stderr)
+	if exit == 0 {
+		printBootstrapSuccessLink(opts.OutputDir, stdout)
+		// Suppress the publish prompt on non-interactive runs (CI, piped
+		// stdin) and when --no-confirm explicitly opts out, so scripted
+		// callers never block on a huh form.
+		if isStdinTTY() && !opts.NoConfirm {
+			offerPublishToGitHub(opts, stdout, stderr)
+		}
+	}
+	return exit
+}
+
+// printBootstrapSuccessLink emits the generated project's absolute path as
+// an OSC 8 hyperlink so the proctor can ctrl-click to open it in their OS
+// file browser. Falls back to a plain path when no file:// URL can be derived.
+func printBootstrapSuccessLink(dir string, w io.Writer) {
+	abs, link := absPathLink(dir)
+	if link == "" {
+		fmt.Fprintf(w, "Project: %s\n", abs)
+		return
+	}
+	fmt.Fprintf(w, "Project: %s\n", osc8Link(link, abs))
 }
