@@ -18,6 +18,10 @@ export interface RoleConfig {
 	readonly outputDir: string;
 	readonly customPrompt?: string;
 	readonly jdPath?: string;
+	// stackByCandidate flips Mode B's brief from "use the named stack"
+	// to "candidate picks their own stack". Only meaningful when
+	// projectMode === "B"; validation rejects the combination otherwise.
+	readonly stackByCandidate?: boolean;
 }
 
 export interface RoleConfigValidationResult {
@@ -63,6 +67,11 @@ export function validateRoleConfig(
 
 	if (config.projectMode !== "A" && config.projectMode !== "B") {
 		failures.push("projectMode must be 'A' or 'B'");
+	}
+	if (config.stackByCandidate && config.projectMode !== "B") {
+		failures.push(
+			"stackByCandidate requires projectMode 'B' — Mode A scaffolds in a specific stack, so 'candidate picks the stack' is incoherent there.",
+		);
 	}
 	if (
 		config.analysisMode !== "ai-assisted" &&

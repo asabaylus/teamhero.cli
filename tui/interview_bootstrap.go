@@ -28,6 +28,13 @@ type BootstrapOptions struct {
 	Headless     bool
 	NoConfirm    bool
 	Foreground   bool
+	// StackByCandidate flips Mode B's brief from "use Stack" to
+	// "candidate picks their own stack". Only meaningful when
+	// ModeProject == "B"; the validator rejects the combination
+	// otherwise so the headless protocol stays explicit. Set by the
+	// wizard's "Greenfield (candidate picks stack)" option or the
+	// --stack-by-candidate headless flag.
+	StackByCandidate bool
 	// Debug toggles verbose run-context logs in the bun subprocess (the
 	// generator client) and the Go dispatcher. Off by default — light
 	// run logs print regardless so failure triage doesn't require a rerun.
@@ -50,6 +57,8 @@ func ParseBootstrapFlags(args []string) (*BootstrapOptions, string) {
 			opts.Foreground = true
 		case "--debug", "-d":
 			opts.Debug = true
+		case "--stack-by-candidate":
+			opts.StackByCandidate = true
 		case "--role", "--role-title", "--stack", "--domain", "--feature",
 			"--time-box", "--mode-project", "--mode-analysis", "--mode-rubric",
 			"--jd-path", "--custom-prompt",
@@ -120,6 +129,13 @@ func ValidateBootstrapOptions(opts *BootstrapOptions) string {
 	if opts.ModeProject != "A" && opts.ModeProject != "B" {
 		return "--mode-project must be 'A' or 'B'"
 	}
+	if opts.StackByCandidate && opts.ModeProject != "B" {
+		// stack-by-candidate is a Mode B variant. Combining it with Mode A
+		// is incoherent — Mode A generates a starter codebase IN a stack,
+		// so "candidate picks the stack" can't apply. Reject explicitly so
+		// callers don't get a brownfield project with a mismatched brief.
+		return "--stack-by-candidate requires --mode-project B"
+	}
 	if opts.ModeAnalysis != "ai-assisted" && opts.ModeAnalysis != "human-only" {
 		return "--mode-analysis must be 'ai-assisted' or 'human-only'"
 	}
@@ -176,6 +192,9 @@ func (bunBootstrapRunner) Run(opts *BootstrapOptions, stdout, stderr io.Writer) 
 	}
 	if opts.KitDir != "" {
 		args = append(args, "--kit-dir", opts.KitDir)
+	}
+	if opts.StackByCandidate {
+		args = append(args, "--stack-by-candidate")
 	}
 	if opts.Debug {
 		args = append(args, "--debug")
@@ -302,8 +321,8 @@ func logBootstrapRunContext(opts *BootstrapOptions, w io.Writer) {
 		return
 	}
 	fmt.Fprintf(w,
-		"[bootstrap] role=%s mode=%s stack=%s domain=%s time-box=%sm rubric=%s output=%s kit=%s debug=%t\n",
-		opts.Role, opts.ModeProject, opts.Stack, opts.Domain, opts.TimeBox,
+		"[bootstrap] role=%s mode=%s stack=%s stack-by-candidate=%t domain=%s time-box=%sm rubric=%s output=%s kit=%s debug=%t\n",
+		opts.Role, opts.ModeProject, opts.Stack, opts.StackByCandidate, opts.Domain, opts.TimeBox,
 		opts.ModeRubric, opts.OutputDir, opts.KitDir, opts.Debug,
 	)
 }

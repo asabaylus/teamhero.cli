@@ -390,7 +390,7 @@ func (m *interviewBootstrapTeaModel) buildForm() *huh.Form {
 		return huh.NewForm(huh.NewGroup(
 			huh.NewInput().
 				Title("Role slug (URL-safe identifier)").
-				Description("Lowercase, hyphenated — e.g. 'senior-backend' or 'staff-frontend'").
+				Description("Used in paths and role-config.json; not shown to the candidate.").
 				Value(&d.role).
 				Validate(validateRoleSlug),
 		)).WithTheme(huh.ThemeCharm()).WithWidth(m.formWidth())
@@ -399,7 +399,7 @@ func (m *interviewBootstrapTeaModel) buildForm() *huh.Form {
 		return huh.NewForm(huh.NewGroup(
 			huh.NewInput().
 				Title("Role title (human-readable, optional)").
-				Description("e.g. 'Senior Backend Engineer'").
+				Description("Appears in the candidate-facing README/BRIEF header.").
 				Value(&d.roleTitle),
 		)).WithTheme(huh.ThemeCharm()).WithWidth(m.formWidth())
 
@@ -407,7 +407,7 @@ func (m *interviewBootstrapTeaModel) buildForm() *huh.Form {
 		return huh.NewForm(huh.NewGroup(
 			huh.NewInput().
 				Title("Primary tech stack").
-				Description("e.g. 'TypeScript', 'Go', 'Python'").
+				Description("Sets the language the AI uses for source files and tests.").
 				Value(&d.stack).
 				Validate(nonEmpty("stack")),
 		)).WithTheme(huh.ThemeCharm()).WithWidth(m.formWidth())
@@ -416,7 +416,7 @@ func (m *interviewBootstrapTeaModel) buildForm() *huh.Form {
 		return huh.NewForm(huh.NewGroup(
 			huh.NewInput().
 				Title("Business domain").
-				Description("e.g. 'Payments', 'Storefront', 'Identity'").
+				Description("Shapes the GLOSSARY vocabulary and naming in generated code.").
 				Value(&d.domain).
 				Validate(nonEmpty("domain")),
 		)).WithTheme(huh.ThemeCharm()).WithWidth(m.formWidth())
@@ -431,7 +431,7 @@ func (m *interviewBootstrapTeaModel) buildForm() *huh.Form {
 		return huh.NewForm(huh.NewGroup(
 			huh.NewSelect[string]().
 				Title("How should we describe the project?").
-				Description("Type it yourself or let AI suggest ideas.").
+				Description("Drives what the candidate is asked to build.").
 				Options(
 					huh.NewOption("I'll write the description myself", "custom"),
 					huh.NewOption("Suggest project ideas for me", "suggest"),
@@ -443,7 +443,7 @@ func (m *interviewBootstrapTeaModel) buildForm() *huh.Form {
 		return huh.NewForm(huh.NewGroup(
 			huh.NewText().
 				Title("Feature description").
-				Description("A short paragraph describing what the candidate will build").
+				Description("Becomes the project's central focus and shapes every generated file.").
 				Value(&d.feature).
 				Validate(nonEmpty("feature")),
 		)).WithTheme(huh.ThemeCharm()).WithWidth(m.formWidth())
@@ -452,6 +452,7 @@ func (m *interviewBootstrapTeaModel) buildForm() *huh.Form {
 		return huh.NewForm(huh.NewGroup(
 			huh.NewSelect[string]().
 				Title("Time-box (minutes)").
+				Description("Bounds the acceptance criteria; appears in the candidate's brief.").
 				Options(
 					huh.NewOption("60 minutes (recommended)", "60"),
 					huh.NewOption("90 minutes", "90"),
@@ -471,13 +472,22 @@ func (m *interviewBootstrapTeaModel) buildForm() *huh.Form {
 		return m.buildTimeBoxCustomForm()
 
 	case ibStepProjectMode:
+		// Three options drive what the AI scaffolds:
+		//   brownfield        — generate a starter codebase in your stack
+		//   greenfield-stack  — written brief; candidate codes from scratch using your stack
+		//   greenfield-open   — written brief; candidate also picks the tech stack
+		// Internally the first two map to projectMode "A"/"B" so the
+		// downstream validator and OpenAI client only need to know about
+		// scaffolding-vs-brief. The third is "B" + stackByCandidate=true,
+		// resolved in bootstrapWizardOptionsFromModel.
 		return huh.NewForm(huh.NewGroup(
 			huh.NewSelect[string]().
-				Title("Project mode").
-				Description("A: generate a starter project for the candidate. B: candidate brings their own.").
+				Title("Project type").
+				Description("Picks whether the AI scaffolds starter code or only a written brief.").
 				Options(
-					huh.NewOption("A — generate starter project", "A"),
-					huh.NewOption("B — candidate brings their own", "B"),
+					huh.NewOption("Brownfield — AI scaffolds a starter codebase", "brownfield"),
+					huh.NewOption("Greenfield (use the stack above) — brief only", "greenfield-stack"),
+					huh.NewOption("Greenfield (candidate picks stack) — brief only", "greenfield-open"),
 				).
 				Value(&d.modeProject),
 		)).WithTheme(huh.ThemeCharm()).WithWidth(m.formWidth())
@@ -491,7 +501,7 @@ func (m *interviewBootstrapTeaModel) buildForm() *huh.Form {
 		return huh.NewForm(huh.NewGroup(
 			huh.NewSelect[string]().
 				Title("Analysis mode").
-				Description("AI-assisted drafts notes; human-only does not.").
+				Description("AI-assisted drafts post-interview notes; human-only doesn't.").
 				Options(
 					huh.NewOption("AI-assisted (recommended)", "ai-assisted"),
 					huh.NewOption("Human-only", "human-only"),
@@ -507,8 +517,8 @@ func (m *interviewBootstrapTeaModel) buildForm() *huh.Form {
 		// them.
 		return huh.NewForm(huh.NewGroup(
 			huh.NewSelect[string]().
-				Title("Rubric mode").
-				Description("Pick how the candidate will be assessed.").
+				Title("How should AI share observations?").
+				Description("Picks the rubric AI uses to write up the recorded interview.").
 				Options(
 					huh.NewOption("Default — 9 built-in dimensions (recommended)", "default"),
 					huh.NewOption("Custom — write your own prompt", "custom"),
@@ -521,7 +531,7 @@ func (m *interviewBootstrapTeaModel) buildForm() *huh.Form {
 		return huh.NewForm(huh.NewGroup(
 			huh.NewText().
 				Title("Custom rubric prompt").
-				Description("Describe the dimensions you want to assess").
+				Description("Free-form prompt the AI uses in place of the built-in dimensions.").
 				Value(&d.customPrompt).
 				Validate(nonEmpty("custom prompt")),
 		)).WithTheme(huh.ThemeCharm()).WithWidth(m.formWidth())
@@ -530,7 +540,7 @@ func (m *interviewBootstrapTeaModel) buildForm() *huh.Form {
 		return huh.NewForm(huh.NewGroup(
 			huh.NewInput().
 				Title("Path to job description file").
-				Description("Absolute or relative path to a .md or .txt file").
+				Description("Markdown or text JD the AI reads alongside the default rubric.").
 				Value(&d.jdPath).
 				Validate(func(s string) error {
 					if err := validateJDPath(s); err != nil {
@@ -550,7 +560,7 @@ func (m *interviewBootstrapTeaModel) buildForm() *huh.Form {
 		return huh.NewForm(huh.NewGroup(
 			huh.NewInput().
 				Title("Output directory").
-				Description("Where the role config and starter project will be written").
+				Description("Where the generated repo (and kit overlay) will be written.").
 				Value(&d.outputDir).
 				Validate(nonEmpty("output directory")),
 		)).WithTheme(huh.ThemeCharm()).WithWidth(m.formWidth())

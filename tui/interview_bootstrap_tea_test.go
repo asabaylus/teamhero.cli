@@ -117,7 +117,7 @@ func TestInterviewBootstrap_SummaryShowsValuesAsStepsAdvance(t *testing.T) {
 	mustContain(t, view, "Time-box: 90 min", "filled time-box")
 	// Long values wrap across lines in the narrow summary column; assert
 	// only the unwrappable prefix.
-	mustContain(t, view, "Project mode: A — generated", "filled project mode (prefix)")
+	mustContain(t, view, "Project type: Brownfield", "filled project type (prefix)")
 	mustContain(t, view, "Rubric: default", "filled rubric")
 	// Active step's form title should appear in the left panel.
 	mustContain(t, view, "Output directory", "current step form title")

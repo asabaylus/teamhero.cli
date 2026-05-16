@@ -10,8 +10,8 @@
                                                               │ Feature source: typed by proctor   │
                                                               │ Feature: ledger entry-point        │
                                                               │ Time-box: 60 min                   │
-                                                              │ Project mode: A — generated        │
-                                                              │ starter                            │
+                                                              │ Project type: Brownfield — AI      │
+                                                              │ scaffolds                          │
                                                               │ Analysis mode: ai-assisted         │
                                                               │ Rubric: default                    │
                                                               │ Output dir: ./interviews/senior-   │

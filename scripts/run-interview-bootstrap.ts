@@ -42,6 +42,7 @@ interface ParsedFlags {
 	model?: string;
 	maxAttempts?: string;
 	debug?: boolean;
+	stackByCandidate?: boolean;
 }
 
 const FLAGS: readonly FlagSpec[] = [
@@ -68,6 +69,10 @@ function parseArgs(argv: readonly string[]): ParsedFlags {
 		const arg = argv[i];
 		if (arg === "--debug" || arg === "-d") {
 			out.debug = true;
+			continue;
+		}
+		if (arg === "--stack-by-candidate") {
+			out.stackByCandidate = true;
 			continue;
 		}
 		const spec = FLAGS.find((f) => f.flag === arg);
@@ -107,6 +112,10 @@ function buildConfig(flags: ParsedFlags): RoleConfig | string {
 		return `--mode-rubric must be one of ${validModeRubrics.join("/")} (got ${flags.modeRubric})`;
 	}
 
+	if (flags.stackByCandidate && flags.modeProject !== "B") {
+		return "--stack-by-candidate is only valid with --mode-project B";
+	}
+
 	const config: RoleConfig = {
 		roleSlug: flags.role,
 		roleTitle: flags.roleTitle ?? flags.role,
@@ -120,6 +129,7 @@ function buildConfig(flags: ParsedFlags): RoleConfig | string {
 		outputDir: flags.outputDir,
 		...(flags.jdPath ? { jdPath: flags.jdPath } : {}),
 		...(flags.customPrompt ? { customPrompt: flags.customPrompt } : {}),
+		...(flags.stackByCandidate ? { stackByCandidate: true } : {}),
 	};
 	return config;
 }
@@ -148,7 +158,7 @@ async function main() {
 	// Always log: enough run context to triage a failure ticket without
 	// repro. Skip feature/prompt text bodies — those go in --debug.
 	consola.info(
-		`bootstrap.start role=${built.roleSlug} mode=${built.projectMode} stack=${built.stack} domain=${built.domain} time-box=${built.timeBoxMinutes}m rubric=${built.rubricMode} max-attempts=${maxAttempts ?? "(default)"} model=${flags.model ?? "(default)"}`,
+		`bootstrap.start role=${built.roleSlug} mode=${built.projectMode} stack=${built.stack} stack-by-candidate=${built.stackByCandidate ?? false} domain=${built.domain} time-box=${built.timeBoxMinutes}m rubric=${built.rubricMode} max-attempts=${maxAttempts ?? "(default)"} model=${flags.model ?? "(default)"}`,
 	);
 	if (flags.debug) {
 		consola.debug(

@@ -101,6 +101,32 @@ describe("role-config validation", () => {
 		// 45 is allowed as a custom value as long as it is between 15 and 240
 		expect(validateRoleConfig(c).ok).toBe(true);
 	});
+
+	it("accepts stackByCandidate=true when paired with projectMode 'B'", () => {
+		// "Greenfield (candidate picks stack)" — the brief tells the
+		// candidate they pick the tooling. Only valid with Mode B (no
+		// starter code), where letting the candidate choose is coherent.
+		const c: RoleConfig = {
+			...baseConfig(),
+			projectMode: "B",
+			stackByCandidate: true,
+		};
+		expect(validateRoleConfig(c).ok).toBe(true);
+	});
+
+	it("rejects stackByCandidate=true with projectMode 'A'", () => {
+		// Mode A scaffolds code IN a specific stack, so "candidate picks
+		// the stack" is incoherent. Validator catches the misconfiguration
+		// before a confused brownfield project + greenfield brief ships.
+		const c: RoleConfig = {
+			...baseConfig(),
+			projectMode: "A",
+			stackByCandidate: true,
+		};
+		const r = validateRoleConfig(c);
+		expect(r.ok).toBe(false);
+		expect(r.failures.some((f) => /stackByCandidate/i.test(f))).toBe(true);
+	});
 });
 
 describe("role-config persistence", () => {

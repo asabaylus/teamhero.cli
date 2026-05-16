@@ -2,8 +2,8 @@
                                                                                                     
                                                               ╭────────────────────────────────────╮
   ┃ Output directory                                          │ Interview Bootstrap                │
-  ┃ Where the role config and starter project will be         │                                    │
-  written                                                     │ Role slug: senior-backend          │
+  ┃ Where the generated repo (and kit overlay) will be        │                                    │
+  ┃ written.                                                  │ Role slug: senior-backend          │
   ┃ > ./interviews/senior-backend                             │ Role title: Senior Backend         │
                                                               │ Engineer                           │
   enter submit                                                │ Stack: Go                          │
@@ -12,8 +12,8 @@
                                                               │ Feature: build a ledger entry-     │
                                                               │ point                              │
                                                               │ Time-box: 60 min                   │
-                                                              │ Project mode: A — generated        │
-                                                              │ starter                            │
+                                                              │ Project type: Brownfield — AI      │
+                                                              │ scaffolds                          │
                                                               │ Analysis mode: ai-assisted         │
                                                               │ Rubric: default                    │
                                                               │ Output dir: —                      │

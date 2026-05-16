@@ -2,15 +2,15 @@
                                                                                                     
                                                               ╭────────────────────────────────────╮
   ┃ Role slug (URL-safe identifier)                           │ Interview Bootstrap                │
-  ┃ Lowercase, hyphenated — e.g. 'senior-backend' or          │                                    │
-  'staff-                                                     │ Role slug: —                       │
-  ┃ frontend'                                                 │ Role title: —                      │
-  ┃ >                                                         │ Stack: —                           │
-                                                              │ Domain: —                          │
-  enter submit                                                │ Feature source: —                  │
+  ┃ Used in paths and role-config.json; not shown to the      │                                    │
+  ┃ candidate.                                                │ Role slug: —                       │
+  ┃ >                                                         │ Role title: —                      │
+                                                              │ Stack: —                           │
+  enter submit                                                │ Domain: —                          │
+                                                              │ Feature source: —                  │
                                                               │ Feature: —                         │
                                                               │ Time-box: —                        │
-                                                              │ Project mode: —                    │
+                                                              │ Project type: —                    │
                                                               │ Analysis mode: —                   │
                                                               │ Rubric: —                          │
                                                               │ Output dir: —                      │

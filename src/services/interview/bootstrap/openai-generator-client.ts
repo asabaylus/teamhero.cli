@@ -139,6 +139,11 @@ REQUIRED FILES:
 - DO NOT generate a CLAUDE.md or an AGENTS.md. Those files are provided by the interview kit at copy time. If you write one, you will be overwriting carefully-authored proctor content with hallucinated instructions.`
 			: `Generate a Mode B "greenfield brief" project. The output MUST include only:
 - BRIEF.md with required sections: ## Time-box (state ${config.timeBoxMinutes} minutes), ## Acceptance criteria, ## Deliverables
+${
+	config.stackByCandidate
+		? `- A "## Tech stack" section in BRIEF.md that EXPLICITLY states the candidate selects their own tech stack. Mention "${config.stack}" only as context for the kind of tooling the hiring team uses internally — do NOT require it. The candidate's stack choice is itself evaluated.`
+		: `- A "## Tech stack" section in BRIEF.md that REQUIRES the candidate to use ${config.stack}.`
+}
 - No starter code at all. The candidate writes everything from scratch.
 - DO NOT generate a CLAUDE.md or an AGENTS.md. Those files are provided by the interview kit at copy time.`;
 

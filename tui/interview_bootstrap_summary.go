@@ -54,7 +54,7 @@ func renderInterviewBootstrapSummary(
 		{"Feature source", fmtFeatureSource(m.featureSource), ibStepFeatureSource},
 		{"Feature", truncate(m.feature, 28), ibStepFeature},
 		{"Time-box", fmtTimeBox(m.timeBox), ibStepTimeBox},
-		{"Project mode", fmtProjectMode(m.modeProject), ibStepProjectMode},
+		{"Project type", fmtProjectMode(m.modeProject), ibStepProjectMode},
 		{"Analysis mode", m.modeAnalysis, ibStepAnalysisMode},
 		{"Rubric", rubricValue, ibStepRubricMode},
 		{"Output dir", m.outputDir, ibStepOutputDir},
@@ -82,10 +82,12 @@ func renderInterviewBootstrapSummary(
 
 func fmtProjectMode(s string) string {
 	switch s {
-	case "A":
-		return "A — generated starter"
-	case "B":
-		return "B — bring your own"
+	case "brownfield", "A":
+		return "Brownfield — AI scaffolds"
+	case "greenfield-stack", "B":
+		return "Greenfield (your stack)"
+	case "greenfield-open":
+		return "Greenfield (candidate picks)"
 	default:
 		return s
 	}

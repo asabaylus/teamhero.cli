@@ -117,6 +117,53 @@ func TestValidateBootstrapOptions_JDRubricRequiresPath(t *testing.T) {
 	}
 }
 
+func TestParseBootstrapFlags_StackByCandidateFlag(t *testing.T) {
+	// --stack-by-candidate is the headless equivalent of the wizard's
+	// "Greenfield (candidate picks stack)" option. Boolean flag; off by
+	// default. Combined with --mode-project A it should fail validation
+	// (covered by TestValidateBootstrapOptions_StackByCandidateRequiresModeB).
+	opts, parseErr := ParseBootstrapFlags([]string{"--stack-by-candidate"})
+	if parseErr != "" {
+		t.Fatalf("unexpected parse error: %s", parseErr)
+	}
+	if !opts.StackByCandidate {
+		t.Error("--stack-by-candidate should set StackByCandidate=true")
+	}
+}
+
+func TestValidateBootstrapOptions_StackByCandidateRequiresModeB(t *testing.T) {
+	// Stack-by-candidate is incoherent with Mode A — Mode A scaffolds
+	// code IN a stack, so "candidate picks the stack" makes no sense
+	// there. The validator rejects the combination so headless callers
+	// don't get a brownfield project with a confused brief.
+	opts := &BootstrapOptions{
+		Role: "x", Stack: "x", Domain: "x", Feature: "x", OutputDir: "x",
+		ModeProject: "A", ModeAnalysis: "ai-assisted", ModeRubric: "default",
+		StackByCandidate: true,
+	}
+	msg := ValidateBootstrapOptions(opts)
+	if msg == "" {
+		t.Fatal("expected validation error when --stack-by-candidate is combined with --mode-project A")
+	}
+	if !strings.Contains(msg, "stack-by-candidate") {
+		t.Errorf("validation error should mention stack-by-candidate; got %q", msg)
+	}
+}
+
+func TestValidateBootstrapOptions_StackByCandidateAllowedWithModeB(t *testing.T) {
+	// Stack-by-candidate IS valid in combination with Mode B — that's
+	// the only mode where "no starter code, candidate picks the stack"
+	// makes sense.
+	opts := &BootstrapOptions{
+		Role: "x", Stack: "x", Domain: "x", Feature: "x", OutputDir: "x",
+		ModeProject: "B", ModeAnalysis: "ai-assisted", ModeRubric: "default",
+		StackByCandidate: true,
+	}
+	if msg := ValidateBootstrapOptions(opts); msg != "" {
+		t.Fatalf("expected validation pass for B + StackByCandidate, got %q", msg)
+	}
+}
+
 func TestValidateBootstrapOptions_HappyPath(t *testing.T) {
 	opts := &BootstrapOptions{
 		Role: "x", Stack: "x", Domain: "x", Feature: "x", OutputDir: "x",

@@ -73,6 +73,13 @@ type bootstrapWizardModel struct {
 	domain       string
 	feature      string
 	timeBox      string
+	// modeProject holds one of three wizard-level values:
+	//   "brownfield"       — generates a starter codebase (Mode A)
+	//   "greenfield-stack" — written brief; candidate uses the named stack (Mode B)
+	//   "greenfield-open"  — written brief; candidate picks their own stack (Mode B + stackByCandidate)
+	// These collapse to projectMode "A"/"B" + stackByCandidate at the
+	// BootstrapOptions boundary so the downstream validator and OpenAI
+	// client stay simple.
 	modeProject  string
 	modeAnalysis string
 	modeRubric   string
@@ -109,7 +116,11 @@ func newBootstrapWizardModel(d BootstrapWizardDefaults) bootstrapWizardModel {
 		domain:       d.Domain,
 		feature:      d.Feature,
 		timeBox:      firstNonEmptyStr(d.TimeBox, "60"),
-		modeProject:  firstNonEmptyStr(d.ModeProject, "A"),
+		// modeProject default is "brownfield" — the most common interview
+		// shape (AI scaffolds a starter codebase the candidate extends).
+		// Legacy "A"/"B" values from BootstrapWizardDefaults are accepted
+		// and translated below so existing callers don't break.
+		modeProject:  normalizeWizardProjectMode(firstNonEmptyStr(d.ModeProject, "brownfield")),
 		modeAnalysis: firstNonEmptyStr(d.ModeAnalysis, "ai-assisted"),
 		modeRubric:   firstNonEmptyStr(d.ModeRubric, "default"),
 		outputDir:     firstNonEmptyStr(d.OutputDir, "./interviews/role"),
@@ -176,21 +187,59 @@ func bootstrapWizardNextState(cur bootstrapWizardState, m bootstrapWizardModel) 
 // BootstrapOptions shape the headless flag parser produces. The result MUST
 // pass ValidateBootstrapOptions or the dispatcher will reject it — that single
 // validator is the shared gate between headless and interactive paths.
+// normalizeWizardProjectMode accepts both the new self-describing values
+// ("brownfield" / "greenfield-stack" / "greenfield-open") and the legacy
+// "A"/"B" values that older defaults / tests / saved configs might pass
+// in. Returns one of the three new values so the wizard's project-type
+// select renders the right option as pre-selected.
+func normalizeWizardProjectMode(v string) string {
+	switch v {
+	case "A":
+		return "brownfield"
+	case "B":
+		return "greenfield-stack"
+	case "brownfield", "greenfield-stack", "greenfield-open":
+		return v
+	default:
+		return "brownfield"
+	}
+}
+
+// resolveWizardProjectMode collapses a wizard-level project-type value
+// into (modeProject, stackByCandidate) so the BootstrapOptions struct
+// only ever carries the two-state mode the downstream validator and
+// OpenAI client understand. "greenfield-open" is the only case that
+// flips stackByCandidate to true; the rest set it false.
+func resolveWizardProjectMode(v string) (string, bool) {
+	switch v {
+	case "brownfield", "A":
+		return "A", false
+	case "greenfield-stack", "B":
+		return "B", false
+	case "greenfield-open":
+		return "B", true
+	default:
+		return "A", false
+	}
+}
+
 func bootstrapWizardOptionsFromModel(m bootstrapWizardModel) *BootstrapOptions {
+	mode, stackByCandidate := resolveWizardProjectMode(m.modeProject)
 	return &BootstrapOptions{
-		Role:         m.role,
-		RoleTitle:    m.roleTitle,
-		Stack:        m.stack,
-		Domain:       m.domain,
-		Feature:      m.feature,
-		TimeBox:      m.timeBox,
-		ModeProject:  m.modeProject,
-		ModeAnalysis: m.modeAnalysis,
-		ModeRubric:   m.modeRubric,
-		CustomPrompt: m.customPrompt,
-		JDPath:       m.jdPath,
-		OutputDir:    m.outputDir,
-		Headless:     true, // the runner always speaks the headless protocol
+		Role:             m.role,
+		RoleTitle:        m.roleTitle,
+		Stack:            m.stack,
+		Domain:           m.domain,
+		Feature:          m.feature,
+		TimeBox:          m.timeBox,
+		ModeProject:      mode,
+		StackByCandidate: stackByCandidate,
+		ModeAnalysis:     m.modeAnalysis,
+		ModeRubric:       m.modeRubric,
+		CustomPrompt:     m.customPrompt,
+		JDPath:           m.jdPath,
+		OutputDir:        m.outputDir,
+		Headless:         true, // the runner always speaks the headless protocol
 	}
 }
 

@@ -64,8 +64,12 @@ func TestBootstrapWizard_DefaultModelHasSensibleDefaults(t *testing.T) {
 	if m.timeBox != "60" {
 		t.Errorf("default time-box should be 60 (recommended length per product spec), got %q", m.timeBox)
 	}
-	if m.modeProject != "A" {
-		t.Errorf("default project mode should be A, got %q", m.modeProject)
+	// "brownfield" is the wizard-level project type name; it resolves to
+	// projectMode "A" at the BootstrapOptions boundary. The default is
+	// brownfield because that's the most common interview shape (AI
+	// scaffolds a starter codebase the candidate extends).
+	if m.modeProject != "brownfield" {
+		t.Errorf("default project type should be brownfield, got %q", m.modeProject)
 	}
 	if m.modeAnalysis != "ai-assisted" {
 		t.Errorf("default analysis mode should be ai-assisted, got %q", m.modeAnalysis)
@@ -193,6 +197,86 @@ func TestBootstrapWizard_NextState_FeatureThenTimeBox(t *testing.T) {
 
 // Options round-trip: a fully-populated model must produce options that
 // pass the same ValidateBootstrapOptions gate the headless path uses.
+
+// TestBootstrapWizard_ProjectTypeTaxonomy_ResolvesToLegacyABFlags pins
+// the wizard-level → downstream contract: the three project-type values
+// the proctor sees in the picker must collapse to (modeProject, stackByCandidate)
+// pairs the downstream validator and OpenAI client understand. Any future
+// refactor that adds a new option must keep this contract or break tests.
+func TestBootstrapWizard_ProjectTypeTaxonomy_ResolvesToLegacyABFlags(t *testing.T) {
+	cases := []struct {
+		wizardValue          string
+		wantMode             string
+		wantStackByCandidate bool
+	}{
+		{"brownfield", "A", false},
+		{"greenfield-stack", "B", false},
+		{"greenfield-open", "B", true},
+		// Legacy A/B values from saved configs must still resolve so a
+		// proctor with a stale role-config.json doesn't get a runtime
+		// surprise. New code paths emit the human-readable strings.
+		{"A", "A", false},
+		{"B", "B", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.wizardValue, func(t *testing.T) {
+			gotMode, gotByCandidate := resolveWizardProjectMode(tc.wizardValue)
+			if gotMode != tc.wantMode {
+				t.Errorf("modeProject: got %q, want %q", gotMode, tc.wantMode)
+			}
+			if gotByCandidate != tc.wantStackByCandidate {
+				t.Errorf("stackByCandidate: got %t, want %t", gotByCandidate, tc.wantStackByCandidate)
+			}
+		})
+	}
+}
+
+// TestBootstrapWizard_NormalizeProjectMode_AcceptsLegacyValues ensures
+// that BootstrapWizardDefaults seeded from a legacy save (--mode-project A)
+// still pre-selects the right wizard option (brownfield).
+func TestBootstrapWizard_NormalizeProjectMode_AcceptsLegacyValues(t *testing.T) {
+	cases := map[string]string{
+		"A":                "brownfield",
+		"B":                "greenfield-stack",
+		"brownfield":       "brownfield",
+		"greenfield-stack": "greenfield-stack",
+		"greenfield-open":  "greenfield-open",
+		"":                 "brownfield",
+		"garbage-value":    "brownfield",
+	}
+	for in, want := range cases {
+		if got := normalizeWizardProjectMode(in); got != want {
+			t.Errorf("normalizeWizardProjectMode(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// TestBootstrapWizard_GreenfieldOpen_RoundTripCarriesStackByCandidate
+// drives a full wizard→options pass with the greenfield-open option
+// selected and verifies the BootstrapOptions carries the boolean flag
+// AND the project mode collapses to "B" so the downstream validator
+// accepts it.
+func TestBootstrapWizard_GreenfieldOpen_RoundTripCarriesStackByCandidate(t *testing.T) {
+	m := newBootstrapWizardModel(BootstrapWizardDefaults{})
+	m.role = "candidate-picks-stack"
+	m.stack = "Go"
+	m.domain = "Internal tools"
+	m.feature = "Build a CLI to lint role-config files"
+	m.modeProject = "greenfield-open"
+	m.modeRubric = "default"
+	m.outputDir = "/tmp/x"
+
+	opts := bootstrapWizardOptionsFromModel(m)
+	if msg := ValidateBootstrapOptions(opts); msg != "" {
+		t.Fatalf("validation failed: %q", msg)
+	}
+	if opts.ModeProject != "B" {
+		t.Errorf("greenfield-open should collapse to ModeProject=B, got %q", opts.ModeProject)
+	}
+	if !opts.StackByCandidate {
+		t.Error("greenfield-open MUST set StackByCandidate=true so the BRIEF.md tells the candidate they pick the stack")
+	}
+}
 
 func TestBootstrapWizard_OptionsRoundTrip_DefaultRubric(t *testing.T) {
 	m := newBootstrapWizardModel(BootstrapWizardDefaults{})

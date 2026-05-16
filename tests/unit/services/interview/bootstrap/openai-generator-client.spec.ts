@@ -178,6 +178,41 @@ describe("OpenAIGeneratorClient.generate", () => {
 		expect(prompt).not.toContain("deep module");
 	});
 
+	it("Mode B with stackByCandidate=false REQUIRES the named stack in BRIEF.md", async () => {
+		// Wizard's "Greenfield (use your stack)" option lands here. The
+		// brief must constrain the candidate to the stack the proctor
+		// already chose at Q3 — otherwise the proctor's stack signal is
+		// wasted.
+		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
+		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
+		await client.generate({
+			config: role({ projectMode: "B", stack: "Go" }),
+			attempt: 1,
+		});
+		const prompt = captured.calls[0].input;
+		expect(prompt).toMatch(/REQUIRES the candidate to use Go/);
+		// The stack-by-candidate path must NOT activate here.
+		expect(prompt).not.toMatch(/candidate selects their own tech stack/);
+	});
+
+	it("Mode B with stackByCandidate=true tells the BRIEF.md the candidate picks the stack", async () => {
+		// Wizard's "Greenfield (candidate picks stack)" option lands
+		// here. The brief must EXPLICITLY tell the candidate they
+		// choose the tooling — that's part of what's being evaluated.
+		// The proctor-stated stack should appear only as context, not
+		// as a requirement, so the candidate's choice itself is judged.
+		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
+		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
+		await client.generate({
+			config: role({ projectMode: "B", stack: "Go", stackByCandidate: true }),
+			attempt: 1,
+		});
+		const prompt = captured.calls[0].input;
+		expect(prompt).toMatch(/candidate selects their own tech stack/);
+		// Must not also demand the proctor's stack.
+		expect(prompt).not.toMatch(/REQUIRES the candidate to use Go/);
+	});
+
 	it("includes the attempt number in the prompt", async () => {
 		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
 		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
