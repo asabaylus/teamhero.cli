@@ -156,6 +156,13 @@ function truncateForLog(s: string | undefined, max = 300): string {
 
 async function main() {
 	const flags = parseArgs(process.argv.slice(2));
+	// consola's default log level (3) hides .debug() output. When the
+	// proctor passes --debug we want the per-field truncated body logs
+	// to actually print, so raise the threshold. Lifted once here so
+	// every consola.debug below benefits without re-checking the flag.
+	if (flags.debug) {
+		consola.level = 4;
+	}
 	const built = buildConfig(flags);
 	if (typeof built === "string") {
 		consola.error(built);
