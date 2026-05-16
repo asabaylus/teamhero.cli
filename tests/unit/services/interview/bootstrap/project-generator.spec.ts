@@ -95,10 +95,11 @@ describe("generateProject (Mode A)", () => {
 		}
 	});
 
-	it("retries up to 3 times when validation fails, then succeeds on a later attempt", async () => {
+	it("retries when validation fails, then succeeds on a later attempt within the default budget", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "iv-gen-"));
 		try {
-			// First two attempts return malformed projects (no README.md), third succeeds
+			// First two attempts return malformed projects (no README.md), third succeeds.
+			// Default budget is 5 attempts, so this exercises mid-budget recovery.
 			const malformed: GeneratedProject = {
 				files: [{ path: "NOTES.md", content: "incomplete" }],
 			};
@@ -115,16 +116,21 @@ describe("generateProject (Mode A)", () => {
 		}
 	});
 
-	it("reports failure with diagnostic after 3 failed attempts", async () => {
+	it("reports failure with diagnostic after exhausting the default attempt budget", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "iv-gen-"));
 		try {
 			const malformed: GeneratedProject = {
 				files: [{ path: "NOTES.md", content: "incomplete" }],
 			};
-			const client = clientReturning(malformed, malformed, malformed);
+			// clientReturning clamps to the last project when it runs out, so
+			// this returns malformed for every attempt and exhausts the default
+			// 5-attempt budget. The number 5 is load-bearing: it was raised
+			// from 3 in response to repeated first-pass LOC/deep-module
+			// shortfalls reported in production wizard runs.
+			const client = clientReturning(malformed);
 			const result = await generateProject(role({ outputDir: dir }), client);
 			expect(result.ok).toBe(false);
-			expect(result.attempts).toBe(3);
+			expect(result.attempts).toBe(5);
 			expect(result.failures.length).toBeGreaterThan(0);
 		} finally {
 			rmSync(dir, { recursive: true, force: true });

@@ -94,6 +94,27 @@ describe("OpenAIGeneratorClient.generate", () => {
 		expect(prompt).toContain("deep module");
 	});
 
+	it("emphasizes the LOC size target as a hard constraint (regression: first-attempt undersize)", async () => {
+		// gpt-5-mini was repeatedly landing at ~200-300 LOC with one deep
+		// module on attempt 1, then needing retries-with-feedback to climb
+		// into the 400-700 range. The prompt now states the LOC budget as a
+		// "hard constraint" with a target midpoint AND specific per-module
+		// guidance ("100-150 lines per deep module") so the model commits to
+		// a substantial decomposition on attempt 1 instead of sketching a
+		// happy path.
+		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
+		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
+		await client.generate({ config: role({ projectMode: "A" }), attempt: 1 });
+		const prompt = captured.calls[0].input;
+		expect(prompt).toContain("SIZE TARGET");
+		expect(prompt).toContain("hard constraint");
+		expect(prompt).toContain("400 and 700");
+		// Per-module guidance: at least one of these phrasings must survive
+		// any future prompt edit. Without it, gpt-5-mini regresses to a
+		// thin single-file sketch.
+		expect(prompt).toMatch(/100-150 lines per deep module/i);
+	});
+
 	it("explicitly forbids the AI from authoring CLAUDE.md or AGENTS.md (Mode A)", async () => {
 		// The prompt MUST tell the model not to write agent-facing files; those
 		// are owned by the kit. Otherwise the model hallucinates "Agent guidance"

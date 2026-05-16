@@ -47,7 +47,13 @@ export interface GenerateResult {
 	readonly failures: readonly string[];
 }
 
-const DEFAULT_MAX_ATTEMPTS = 3;
+// Bumped from 3 to 5 after repeated reports of first-pass LOC/deep-module
+// shortfalls. gpt-5-mini frequently lands at ~200-300 LOC with one deep
+// module on attempt 1, then climbs into the 400-700 window on attempts
+// 2-4 once the validator's failure list (passed via previousFailures) is
+// concrete. Five gives a healthy margin without runaway cost — each
+// attempt is one structured Responses API call.
+const DEFAULT_MAX_ATTEMPTS = 5;
 
 /**
  * Resolves `relPath` relative to `rootAbs` and refuses paths that escape the

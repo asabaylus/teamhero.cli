@@ -63,9 +63,12 @@ function buildPrompt(
   (5) "Process" — one sentence pointing to INTERVIEW_RULES.md for the recording/interview workflow.
   DO NOT write agent operating instructions. DO NOT mention rubric dimensions or what the observer is looking for. DO NOT coach the candidate on how to work with their AI agent. Agent guidance is shipped separately by the kit; the AI generator must not author it.
 - GLOSSARY.md at the root (domain terms)
-- At least 2 "deep modules" (>=80 lines each) under src/
+- SIZE TARGET (this is a hard constraint — the validator rejects projects outside it):
+  * Total source LOC: between 400 and 700 lines (inclusive). Aim for the middle of the range (~525 LOC) to leave room for line-count variance.
+  * At least 2 "deep modules" under src/. A deep module is a single source file with >=80 lines of real logic — types, error handling, comments included, but no boilerplate-padding. Target 100-150 lines per deep module.
+  * Suggested decomposition for a typical role: a domain types/schema module, a service/orchestrator module, and one or two helpers. Three substantive files of ~120 lines each lands you safely inside the LOC budget with two deep modules to spare.
+  * Do NOT shrink to a minimal "happy path" sketch. The candidate needs enough surrounding code to demonstrate real-world judgment (error handling, naming, separation of concerns) within the time-box.
 - At least 1 failing or skipped test under tests/ that marks the gap the candidate fills (use describe.skip or "not yet implemented")
-- Total source LOC must be between 400 and 700 lines (inclusive)
 - A working test framework setup so the candidate can run tests immediately
 - DO NOT generate a CLAUDE.md or an AGENTS.md. Those files are provided by the interview kit at copy time. If you write one, you will be overwriting carefully-authored proctor content with hallucinated instructions.`
 			: `Generate a Mode B "greenfield brief" project. The output MUST include only:
