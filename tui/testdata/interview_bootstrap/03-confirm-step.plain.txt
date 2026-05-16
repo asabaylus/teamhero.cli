@@ -7,6 +7,7 @@
                                                               │ Role title: —                      │
   ←/→ toggle • enter submit • y Yes, generate the role …      │ Stack: Go                          │
                                                               │ Domain: Payments                   │
+                                                              │ Feature source: typed by proctor   │
                                                               │ Feature: ledger entry-point        │
                                                               │ Time-box: 60 min                   │
                                                               │ Project mode: A — generated        │
@@ -15,7 +16,6 @@
                                                               │ Rubric: default                    │
                                                               │ Output dir: ./interviews/senior-   │
                                                               │ backend                            │
-                                                              │ Project prompt: (default)          │
                                                               ╰────────────────────────────────────╯
                                                                                                     
 enter continue • ctrl+c quit                                                                        

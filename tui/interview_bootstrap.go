@@ -12,26 +12,26 @@ import (
 
 // BootstrapOptions are the headless flags accepted by `teamhero interview bootstrap`.
 type BootstrapOptions struct {
-	Role          string
-	RoleTitle     string
-	Stack         string
-	Domain        string
-	Feature       string
-	TimeBox       string
-	ModeProject   string
-	ModeAnalysis  string
-	ModeRubric    string
-	JDPath        string
-	CustomPrompt  string
-	// ProjectPrompt is the proctor's free-form addendum to the AI
-	// project-generation prompt. Optional. Distinct from CustomPrompt
-	// (which is rubric-mode-only).
-	ProjectPrompt string
-	OutputDir     string
-	KitDir        string
-	Headless      bool
-	NoConfirm     bool
-	Foreground    bool
+	Role         string
+	RoleTitle    string
+	Stack        string
+	Domain       string
+	Feature      string
+	TimeBox      string
+	ModeProject  string
+	ModeAnalysis string
+	ModeRubric   string
+	JDPath       string
+	CustomPrompt string
+	OutputDir    string
+	KitDir       string
+	Headless     bool
+	NoConfirm    bool
+	Foreground   bool
+	// Debug toggles verbose run-context logs in the bun subprocess (the
+	// generator client) and the Go dispatcher. Off by default — light
+	// run logs print regardless so failure triage doesn't require a rerun.
+	Debug bool
 }
 
 // ParseBootstrapFlags parses headless flags from the args following `bootstrap`.
@@ -48,9 +48,11 @@ func ParseBootstrapFlags(args []string) (*BootstrapOptions, string) {
 			opts.NoConfirm = true
 		case "--foreground":
 			opts.Foreground = true
+		case "--debug", "-d":
+			opts.Debug = true
 		case "--role", "--role-title", "--stack", "--domain", "--feature",
 			"--time-box", "--mode-project", "--mode-analysis", "--mode-rubric",
-			"--jd-path", "--custom-prompt", "--project-prompt",
+			"--jd-path", "--custom-prompt",
 			"--output-dir", "--kit-dir":
 			if i+1 >= len(args) {
 				return nil, fmt.Sprintf("flag %s requires a value", a)
@@ -79,8 +81,6 @@ func ParseBootstrapFlags(args []string) (*BootstrapOptions, string) {
 				opts.JDPath = val
 			case "--custom-prompt":
 				opts.CustomPrompt = val
-			case "--project-prompt":
-				opts.ProjectPrompt = val
 			case "--output-dir":
 				opts.OutputDir = val
 			case "--kit-dir":
@@ -174,11 +174,11 @@ func (bunBootstrapRunner) Run(opts *BootstrapOptions, stdout, stderr io.Writer) 
 	if opts.CustomPrompt != "" {
 		args = append(args, "--custom-prompt", opts.CustomPrompt)
 	}
-	if opts.ProjectPrompt != "" {
-		args = append(args, "--project-prompt", opts.ProjectPrompt)
-	}
 	if opts.KitDir != "" {
 		args = append(args, "--kit-dir", opts.KitDir)
+	}
+	if opts.Debug {
+		args = append(args, "--debug")
 	}
 
 	bunPath := resolveBunBinary()
@@ -276,6 +276,7 @@ func runInterviewBootstrap(args []string, runner BootstrapRunner, stdout, stderr
 		fmt.Fprintln(stderr, msg)
 		return 1
 	}
+	logBootstrapRunContext(opts, stderr)
 	exit := runner.Run(opts, stdout, stderr)
 	if exit == 0 {
 		printBootstrapSuccessLink(opts.OutputDir, stdout)
@@ -287,6 +288,24 @@ func runInterviewBootstrap(args []string, runner BootstrapRunner, stdout, stderr
 		}
 	}
 	return exit
+}
+
+// logBootstrapRunContext emits a single-line summary of the validated
+// options before the bun subprocess runs so a failure ticket can be
+// triaged without rerunning. Always prints (light context); the verbose
+// per-field dump is delegated to the bun subprocess via --debug.
+//
+// Goes to stderr because stdout is reserved for the user-facing success
+// link / OSC 8 hyperlink, which the TUI consumes verbatim.
+func logBootstrapRunContext(opts *BootstrapOptions, w io.Writer) {
+	if opts == nil {
+		return
+	}
+	fmt.Fprintf(w,
+		"[bootstrap] role=%s mode=%s stack=%s domain=%s time-box=%sm rubric=%s output=%s kit=%s debug=%t\n",
+		opts.Role, opts.ModeProject, opts.Stack, opts.Domain, opts.TimeBox,
+		opts.ModeRubric, opts.OutputDir, opts.KitDir, opts.Debug,
+	)
 }
 
 // printBootstrapSuccessLink emits the generated project's absolute path as

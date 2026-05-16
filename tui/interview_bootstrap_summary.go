@@ -46,23 +46,18 @@ func renderInterviewBootstrapSummary(
 		rubricValue = "custom (" + truncate(m.customPrompt, 24) + ")"
 	}
 
-	projectPromptValue := "(default)"
-	if strings.TrimSpace(m.projectPrompt) != "" {
-		projectPromptValue = truncate(m.projectPrompt, 28)
-	}
-
 	entries := []entry{
 		{"Role slug", m.role, ibStepRole},
 		{"Role title", m.roleTitle, ibStepRoleTitle},
 		{"Stack", m.stack, ibStepStack},
 		{"Domain", m.domain, ibStepDomain},
+		{"Feature source", fmtFeatureSource(m.featureSource), ibStepFeatureSource},
 		{"Feature", truncate(m.feature, 28), ibStepFeature},
 		{"Time-box", fmtTimeBox(m.timeBox), ibStepTimeBox},
 		{"Project mode", fmtProjectMode(m.modeProject), ibStepProjectMode},
 		{"Analysis mode", m.modeAnalysis, ibStepAnalysisMode},
 		{"Rubric", rubricValue, ibStepRubricMode},
 		{"Output dir", m.outputDir, ibStepOutputDir},
-		{"Project prompt", projectPromptValue, ibStepProjectPrompt},
 	}
 
 	lines := []string{
@@ -101,6 +96,17 @@ func fmtTimeBox(s string) string {
 		return ""
 	}
 	return s + " min"
+}
+
+func fmtFeatureSource(s string) string {
+	switch s {
+	case "custom":
+		return "typed by proctor"
+	case "suggest":
+		return "AI-suggested"
+	default:
+		return s
+	}
 }
 
 // truncate clips a string to `max` runes and appends "…" when clipped.

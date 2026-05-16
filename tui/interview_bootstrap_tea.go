@@ -21,7 +21,21 @@ const (
 	ibStepRoleTitle
 	ibStepStack
 	ibStepDomain
+	// ibStepFeatureSource is the either/or step that picks whether the
+	// proctor types the feature description themselves or asks the AI to
+	// suggest project ideas scoped to the role profile. The "Feature"
+	// description is the single source of truth for what the candidate
+	// builds — the old PromptSource + ProjectPrompt addendum pair were
+	// redundant and have been removed.
+	ibStepFeatureSource
 	ibStepFeature
+	// ibStepIdeaFetching is a transient spinner state shown while the
+	// idea-fetcher runs. Reached only when featureSource == "suggest".
+	ibStepIdeaFetching
+	// ibStepIdeaSelect presents the fetched ideas as a single-select.
+	// The chosen idea's title+blurb populates data.feature before the
+	// wizard advances to time-box.
+	ibStepIdeaSelect
 	ibStepTimeBox
 	// ibStepTimeBoxCustom is a sub-step shown only when the user chooses
 	// "Custom" on the time-box select. It runs the validated minutes-input
@@ -33,20 +47,6 @@ const (
 	ibStepCustomPrompt
 	ibStepJDPath
 	ibStepOutputDir
-	// ibStepPromptSource asks the proctor whether to write a custom
-	// project-generation prompt themselves or have ChatGPT suggest ideas.
-	ibStepPromptSource
-	// ibStepProjectPrompt is the proctor's optional addendum to the AI
-	// project-generation prompt. Optional — empty input is valid and
-	// produces no addendum in the prompt sent to OpenAI.
-	ibStepProjectPrompt
-	// ibStepIdeaFetching is a transient spinner state shown while the
-	// idea-fetcher runs. Reached only when promptSource == "suggest".
-	ibStepIdeaFetching
-	// ibStepIdeaSelect presents the fetched ideas as a single-select.
-	// The chosen idea's title+blurb populates data.projectPrompt before
-	// the wizard advances to confirm.
-	ibStepIdeaSelect
 	ibStepConfirm
 	ibStepDone
 )
@@ -62,7 +62,7 @@ type interviewBootstrapTeaModel struct {
 	highWater interviewBootstrapStep
 	form      *huh.Form
 
-	// ideaFetcher is the strategy used when promptSource == "suggest".
+	// ideaFetcher is the strategy used when featureSource == "suggest".
 	// Production callers leave it nil; the tea model lazily constructs an
 	// openAIIdeaFetcher when first needed. Tests inject a stub via the
 	// constructor to avoid real HTTP traffic.
@@ -238,9 +238,9 @@ func (m *interviewBootstrapTeaModel) formWidth() int {
 // Returns (model, tea.Quit) when the wizard reaches its final state
 // (Confirm answered).
 func (m *interviewBootstrapTeaModel) advance() (tea.Model, tea.Cmd) {
-	// Persist the selected idea into projectPrompt as the user leaves
-	// the idea-select step — that way the downstream OpenAI call sees
-	// the addendum without any additional plumbing.
+	// Persist the selected idea into the feature description as the user
+	// leaves the idea-select step — that becomes the candidate-facing
+	// project description AND the AI prompt's feature focus.
 	if m.step == ibStepIdeaSelect {
 		m.commitSelectedIdea()
 	}
@@ -271,9 +271,10 @@ func (m *interviewBootstrapTeaModel) advance() (tea.Model, tea.Cmd) {
 }
 
 // commitSelectedIdea copies the chosen idea's "title — blurb" into
-// data.projectPrompt so the downstream generator picks it up via the
-// existing addendum path. No-op when no idea is selected (e.g. when the
-// fetch failed and the user pressed enter on the error note).
+// data.feature so the downstream generator and the candidate-facing
+// role-config both see the AI-suggested project as the single feature
+// description. No-op when no idea is selected (e.g. when the fetch
+// failed and the user pressed enter on the error note).
 func (m *interviewBootstrapTeaModel) commitSelectedIdea() {
 	if len(m.data.ideas) == 0 {
 		return
@@ -283,7 +284,7 @@ func (m *interviewBootstrapTeaModel) commitSelectedIdea() {
 		idx = 0
 	}
 	chosen := m.data.ideas[idx]
-	m.data.projectPrompt = strings.TrimSpace(chosen.Title + "\n\n" + chosen.Blurb)
+	m.data.feature = strings.TrimSpace(chosen.Title + "\n\n" + chosen.Blurb)
 }
 
 // fetchIdeasCmd returns a tea.Cmd that runs the OpenAI idea-fetch on a
@@ -332,8 +333,17 @@ func (m *interviewBootstrapTeaModel) nextStep(cur interviewBootstrapStep) interv
 	case ibStepStack:
 		return ibStepDomain
 	case ibStepDomain:
+		return ibStepFeatureSource
+	case ibStepFeatureSource:
+		if m.data.featureSource == "suggest" {
+			return ibStepIdeaFetching
+		}
 		return ibStepFeature
 	case ibStepFeature:
+		return ibStepTimeBox
+	case ibStepIdeaFetching:
+		return ibStepIdeaSelect
+	case ibStepIdeaSelect:
 		return ibStepTimeBox
 	case ibStepTimeBox:
 		// Branch into the custom sub-step only when the user picked
@@ -362,17 +372,6 @@ func (m *interviewBootstrapTeaModel) nextStep(cur interviewBootstrapStep) interv
 	case ibStepJDPath:
 		return ibStepOutputDir
 	case ibStepOutputDir:
-		return ibStepPromptSource
-	case ibStepPromptSource:
-		if m.data.promptSource == "suggest" {
-			return ibStepIdeaFetching
-		}
-		return ibStepProjectPrompt
-	case ibStepProjectPrompt:
-		return ibStepConfirm
-	case ibStepIdeaFetching:
-		return ibStepIdeaSelect
-	case ibStepIdeaSelect:
 		return ibStepConfirm
 	case ibStepConfirm:
 		return ibStepDone
@@ -420,6 +419,24 @@ func (m *interviewBootstrapTeaModel) buildForm() *huh.Form {
 				Description("e.g. 'Payments', 'Storefront', 'Identity'").
 				Value(&d.domain).
 				Validate(nonEmpty("domain")),
+		)).WithTheme(huh.ThemeCharm()).WithWidth(m.formWidth())
+
+	case ibStepFeatureSource:
+		// The single either/or step that replaces the old PromptSource +
+		// ProjectPrompt redundancy. The feature description IS the project
+		// prompt; the proctor either writes it themselves or picks from a
+		// few AI-drafted ideas. Description kept under one line at the
+		// default formWidth to dodge huh.ThemeCharm's left-bar break on
+		// wrapped Description lines.
+		return huh.NewForm(huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("How should we describe the project?").
+				Description("Type it yourself or let AI suggest ideas.").
+				Options(
+					huh.NewOption("I'll write the description myself", "custom"),
+					huh.NewOption("Suggest project ideas for me", "suggest"),
+				).
+				Value(&d.featureSource),
 		)).WithTheme(huh.ThemeCharm()).WithWidth(m.formWidth())
 
 	case ibStepFeature:
@@ -538,29 +555,6 @@ func (m *interviewBootstrapTeaModel) buildForm() *huh.Form {
 				Validate(nonEmpty("output directory")),
 		)).WithTheme(huh.ThemeCharm()).WithWidth(m.formWidth())
 
-	case ibStepProjectPrompt:
-		// Optional. Empty input is valid — the AI generator just skips the
-		// addendum. The proctor types domain or framing guidance that gets
-		// appended after the rubric block in the project-generation prompt.
-		return huh.NewForm(huh.NewGroup(
-			huh.NewText().
-				Title("Project prompt (optional)").
-				Description("Extra instructions for the AI that will scaffold the project. Leave blank to use defaults.").
-				Value(&d.projectPrompt),
-		)).WithTheme(huh.ThemeCharm()).WithWidth(m.formWidth())
-
-	case ibStepPromptSource:
-		return huh.NewForm(huh.NewGroup(
-			huh.NewSelect[string]().
-				Title("How should the AI prompt be supplied?").
-				Description("Custom: you type domain guidance. Suggest: ChatGPT proposes ideas scoped to the role profile; you pick one.").
-				Options(
-					huh.NewOption("Write a custom prompt", "custom"),
-					huh.NewOption("Suggest ideas for me", "suggest"),
-				).
-				Value(&d.promptSource),
-		)).WithTheme(huh.ThemeCharm()).WithWidth(m.formWidth())
-
 	case ibStepIdeaFetching:
 		// No huh form — the spinner is rendered in View(). The fetch was
 		// kicked off by advance() as a tea.Cmd; we just wait for the
@@ -569,12 +563,15 @@ func (m *interviewBootstrapTeaModel) buildForm() *huh.Form {
 
 	case ibStepIdeaSelect:
 		if d.ideaFetchErr != "" || len(d.ideas) == 0 {
-			// Surface the fetch error as a one-line confirm screen; the user
-			// can press enter to fall back to the custom-prompt path.
+			// Surface the fetch error so the user can press enter to
+			// continue with an empty feature description (the next screen
+			// is the validator-protected time-box, so the wizard will
+			// still reject an empty feature at confirm time — better than
+			// hanging here).
 			return huh.NewForm(huh.NewGroup(
 				huh.NewNote().
 					Title("Idea generation failed").
-					Description(d.ideaFetchErr + "\n\nPress enter to continue without an AI-suggested idea (you can type a custom prompt next, or leave projectPrompt empty)."),
+					Description(d.ideaFetchErr + "\n\nPress enter to continue; you'll need to back up and type a feature description manually."),
 			)).WithTheme(huh.ThemeCharm()).WithWidth(m.formWidth())
 		}
 		opts := make([]huh.Option[int], 0, len(d.ideas))
@@ -588,7 +585,7 @@ func (m *interviewBootstrapTeaModel) buildForm() *huh.Form {
 		return huh.NewForm(huh.NewGroup(
 			huh.NewSelect[int]().
 				Title("Pick a project idea").
-				Description("The full title + blurb of the selected idea becomes the project prompt.").
+				Description("The full title + blurb becomes the feature description.").
 				Options(opts...).
 				Value(&d.ideaSelected),
 		)).WithTheme(huh.ThemeCharm()).WithWidth(m.formWidth())

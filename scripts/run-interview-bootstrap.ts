@@ -37,11 +37,11 @@ interface ParsedFlags {
 	modeRubric?: string;
 	jdPath?: string;
 	customPrompt?: string;
-	projectPrompt?: string;
 	outputDir?: string;
 	kitDir?: string;
 	model?: string;
 	maxAttempts?: string;
+	debug?: boolean;
 }
 
 const FLAGS: readonly FlagSpec[] = [
@@ -56,7 +56,6 @@ const FLAGS: readonly FlagSpec[] = [
 	{ flag: "--mode-rubric", target: "modeRubric" },
 	{ flag: "--jd-path", target: "jdPath" },
 	{ flag: "--custom-prompt", target: "customPrompt" },
-	{ flag: "--project-prompt", target: "projectPrompt" },
 	{ flag: "--output-dir", target: "outputDir" },
 	{ flag: "--kit-dir", target: "kitDir" },
 	{ flag: "--model", target: "model" },
@@ -67,9 +66,13 @@ function parseArgs(argv: readonly string[]): ParsedFlags {
 	const out: ParsedFlags = {};
 	for (let i = 0; i < argv.length; i++) {
 		const arg = argv[i];
+		if (arg === "--debug" || arg === "-d") {
+			out.debug = true;
+			continue;
+		}
 		const spec = FLAGS.find((f) => f.flag === arg);
 		if (spec && i + 1 < argv.length) {
-			out[spec.target] = argv[i + 1];
+			(out as Record<string, string | boolean | undefined>)[spec.target] = argv[i + 1];
 			i++;
 		}
 	}
@@ -117,9 +120,18 @@ function buildConfig(flags: ParsedFlags): RoleConfig | string {
 		outputDir: flags.outputDir,
 		...(flags.jdPath ? { jdPath: flags.jdPath } : {}),
 		...(flags.customPrompt ? { customPrompt: flags.customPrompt } : {}),
-		...(flags.projectPrompt ? { projectPrompt: flags.projectPrompt } : {}),
 	};
 	return config;
+}
+
+// truncateForLog clips long strings so a stray multi-KB feature description
+// (or rubric custom-prompt) can't blow up the debug log. 300 chars is
+// enough to recognize the input while staying readable in a terminal.
+function truncateForLog(s: string | undefined, max = 300): string {
+	if (!s) return "";
+	const t = s.replace(/\s+/g, " ").trim();
+	if (t.length <= max) return t;
+	return `${t.slice(0, max - 1)}…`;
 }
 
 async function main() {
@@ -132,18 +144,41 @@ async function main() {
 	const maxAttempts = flags.maxAttempts
 		? Number.parseInt(flags.maxAttempts, 10)
 		: undefined;
+
+	// Always log: enough run context to triage a failure ticket without
+	// repro. Skip feature/prompt text bodies — those go in --debug.
+	consola.info(
+		`bootstrap.start role=${built.roleSlug} mode=${built.projectMode} stack=${built.stack} domain=${built.domain} time-box=${built.timeBoxMinutes}m rubric=${built.rubricMode} max-attempts=${maxAttempts ?? "(default)"} model=${flags.model ?? "(default)"}`,
+	);
+	if (flags.debug) {
+		consola.debug(
+			`bootstrap.debug.feature ${truncateForLog(built.featureDescription)}`,
+		);
+		if (built.customPrompt) {
+			consola.debug(
+				`bootstrap.debug.custom-prompt ${truncateForLog(built.customPrompt)}`,
+			);
+		}
+		consola.debug(`bootstrap.debug.output-dir ${built.outputDir}`);
+		consola.debug(`bootstrap.debug.kit-dir ${flags.kitDir ?? "(none)"}`);
+	}
+
+	const startedAt = Date.now();
 	const result = await runBootstrap(built, {
 		client: new OpenAIGeneratorClient(undefined, flags.model),
 		kitTemplateDir: flags.kitDir,
 		...(Number.isFinite(maxAttempts) ? { maxAttempts } : {}),
 	});
+	const elapsedMs = Date.now() - startedAt;
 	if (!result.ok) {
-		consola.error("Bootstrap failed:");
+		consola.error(
+			`bootstrap.fail attempts=${result.attempts} elapsed=${elapsedMs}ms`,
+		);
 		for (const f of result.failures) consola.error(`  - ${f}`);
 		process.exit(1);
 	}
 	consola.success(
-		`Bootstrap completed in ${result.attempts} attempt(s). Output: ${built.outputDir}`,
+		`bootstrap.ok attempts=${result.attempts} elapsed=${elapsedMs}ms output=${built.outputDir}`,
 	);
 }
 

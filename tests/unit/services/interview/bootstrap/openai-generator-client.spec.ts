@@ -91,28 +91,57 @@ describe("OpenAIGeneratorClient.generate", () => {
 		const prompt = captured.calls[0].input;
 		expect(prompt).toContain("README.md");
 		expect(prompt).toContain("GLOSSARY.md");
-		expect(prompt).toContain("deep module");
+		// The scaffold requirements no longer use the literal "deep module"
+		// phrase — replaced by an explicit "AT LEAST 2 source files must
+		// each contain 80 or more lines" rule that's more actionable for
+		// the model. This assertion pins the new wording so future prompt
+		// tweaks can't silently drop the dual-file requirement.
+		expect(prompt).toMatch(/AT LEAST 2 source files must each contain 80/);
 	});
 
 	it("emphasizes the LOC size target as a hard constraint (regression: first-attempt undersize)", async () => {
 		// gpt-5-mini was repeatedly landing at ~200-300 LOC with one deep
 		// module on attempt 1, then needing retries-with-feedback to climb
-		// into the 400-700 range. The prompt now states the LOC budget as a
-		// "hard constraint" with a target midpoint AND specific per-module
-		// guidance ("100-150 lines per deep module") so the model commits to
-		// a substantial decomposition on attempt 1 instead of sketching a
-		// happy path.
+		// into the 400-700 range. The prompt now states the LOC budget at
+		// the TOP of the Mode A spec, calls it out as auto-rejected
+		// outside the range, and gives a concrete file budget table so the
+		// model commits to a substantial decomposition on attempt 1.
 		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
 		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
 		await client.generate({ config: role({ projectMode: "A" }), attempt: 1 });
 		const prompt = captured.calls[0].input;
-		expect(prompt).toContain("SIZE TARGET");
-		expect(prompt).toContain("hard constraint");
+		expect(prompt).toContain("ABSOLUTE SIZE REQUIREMENTS");
+		expect(prompt).toContain("AUTOMATICALLY REJECTS");
 		expect(prompt).toContain("400 and 700");
-		// Per-module guidance: at least one of these phrasings must survive
-		// any future prompt edit. Without it, gpt-5-mini regresses to a
-		// thin single-file sketch.
-		expect(prompt).toMatch(/100-150 lines per deep module/i);
+		// Concrete file budget — the failure mode we're guarding against is
+		// the model producing a single ~250-LOC blob. Naming files and line
+		// ranges in the prompt redirects it to a real decomposition.
+		expect(prompt).toMatch(/4-5 source files/i);
+		expect(prompt).toMatch(/100-150 lines per file/i);
+	});
+
+	it("on retry, includes a measured correction note quoting the prior LOC count", async () => {
+		// Regression guard for retry-with-feedback: when the validator
+		// reports "LOC out of range: 266 lines of code", the next attempt's
+		// prompt must include that NUMBER and a concrete "double it" target.
+		// Abstract retry notes ("please address these failures") were not
+		// enough to nudge gpt-5-mini past the 266-LOC ceiling.
+		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
+		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
+		await client.generate({
+			config: role({ projectMode: "A" }),
+			attempt: 2,
+			previousFailures: [
+				"LOC out of range: 266 lines of code; expected 400-700.",
+				"Expected at least 2 deep modules (>=80 lines); found 1.",
+			],
+		});
+		const prompt = captured.calls[0].input;
+		expect(prompt).toContain("CORRECTION REQUIRED");
+		// Must quote the measured numbers so the model knows the exact delta.
+		expect(prompt).toMatch(/266/);
+		expect(prompt).toMatch(/double/i);
+		expect(prompt).toMatch(/1 file\(s\) with 80\+ lines/);
 	});
 
 	it("explicitly forbids the AI from authoring CLAUDE.md or AGENTS.md (Mode A)", async () => {
@@ -203,38 +232,15 @@ describe("OpenAIGeneratorClient.generate", () => {
 		expect(captured.calls[0].input).toContain("60");
 	});
 
-	it("appends projectPrompt as a proctor addendum after the rubric", async () => {
-		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
-		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
-		await client.generate({
-			config: role({ projectPrompt: "Use Postgres and emphasize idempotency." }),
-			attempt: 1,
-		});
-		const prompt = captured.calls[0].input;
-		expect(prompt).toContain("Additional instructions from the hiring manager");
-		expect(prompt).toContain("Use Postgres and emphasize idempotency.");
-		// Must appear after the rubric block so structural requirements remain
-		// authoritative — anchor the assertion to the rubric header.
-		const rubricIdx = prompt.indexOf("Rubric (interview-reviewer");
-		const addendumIdx = prompt.indexOf("Additional instructions from the hiring manager");
-		expect(rubricIdx).toBeGreaterThan(-1);
-		expect(addendumIdx).toBeGreaterThan(rubricIdx);
-	});
-
-	it("omits the proctor addendum entirely when projectPrompt is empty", async () => {
+	it("does NOT include any 'hiring manager addendum' block (the projectPrompt addendum was removed — the feature description is the single source)", async () => {
 		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
 		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
 		await client.generate({ config: role(), attempt: 1 });
-		expect(captured.calls[0].input).not.toContain("Additional instructions from the hiring manager");
-	});
-
-	it("omits the proctor addendum when projectPrompt is whitespace-only", async () => {
-		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
-		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
-		await client.generate({
-			config: role({ projectPrompt: "   \n\t  " }),
-			attempt: 1,
-		});
+		// Regression guard: the proctor-addendum block used to wrap the
+		// projectPrompt field. After collapsing the wizard's redundant
+		// "Project prompt" step into the single feature-description either/or,
+		// the addendum block must never resurface — otherwise the prompt
+		// implies a second free-form field the user can't actually set.
 		expect(captured.calls[0].input).not.toContain("Additional instructions from the hiring manager");
 	});
 });

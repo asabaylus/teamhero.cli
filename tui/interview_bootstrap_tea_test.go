@@ -291,6 +291,65 @@ func TestInterviewBootstrap_ConfirmStep_OmitsVerboseSummary(t *testing.T) {
 	mustContain(t, stripped, "Yes, generate the role", "affirmative button")
 }
 
+// TestInterviewBootstrap_CommitSelectedIdea_WritesToFeature pins the
+// either/or contract: when the proctor picks an AI-suggested idea, the
+// chosen title+blurb MUST land in data.feature (the single source of
+// truth for what the candidate builds). Earlier code wrote to
+// data.projectPrompt and left feature blank, which left the OpenAI
+// generator with an empty "Feature focus:" field and the candidate-facing
+// role-config without a description. Both fields are gone now — this
+// test exists so a future refactor can't reintroduce the split.
+func TestInterviewBootstrap_CommitSelectedIdea_WritesToFeature(t *testing.T) {
+	m := newInterviewBootstrapTeaModel(BootstrapWizardDefaults{})
+	m.data.ideas = []ProjectIdea{
+		{Title: "Refund retries", Blurb: "Idempotent retries with exponential backoff."},
+		{Title: "Audit log", Blurb: "Append-only ledger of refund state transitions."},
+	}
+	m.data.ideaSelected = 1
+	m.commitSelectedIdea()
+	if !strings.Contains(m.data.feature, "Audit log") {
+		t.Errorf("commitSelectedIdea must populate data.feature with the chosen idea; got %q", m.data.feature)
+	}
+	if !strings.Contains(m.data.feature, "Append-only ledger") {
+		t.Errorf("commitSelectedIdea must include the blurb; got %q", m.data.feature)
+	}
+}
+
+// TestInterviewBootstrap_NextStep_DomainRoutesToFeatureSource ensures the
+// new either/or step sits between Domain and Feature in the tea state
+// machine.
+func TestInterviewBootstrap_NextStep_DomainRoutesToFeatureSource(t *testing.T) {
+	m := newInterviewBootstrapTeaModel(BootstrapWizardDefaults{})
+	m.step = ibStepDomain
+	if next := m.nextStep(m.step); next != ibStepFeatureSource {
+		t.Fatalf("domain should advance to feature-source, got %v", next)
+	}
+}
+
+// TestInterviewBootstrap_NextStep_FeatureSourceSuggestRoutesToFetch
+// pins the suggest branch — picking "Suggest ideas for me" triggers
+// the spinner state, then idea-select, then time-box (rejoining the
+// main flow).
+func TestInterviewBootstrap_NextStep_FeatureSourceSuggestRoutesToFetch(t *testing.T) {
+	m := newInterviewBootstrapTeaModel(BootstrapWizardDefaults{})
+	m.data.featureSource = "suggest"
+	m.step = ibStepFeatureSource
+	if next := m.nextStep(m.step); next != ibStepIdeaFetching {
+		t.Fatalf("featureSource=suggest should advance to idea-fetching, got %v", next)
+	}
+}
+
+// TestInterviewBootstrap_NextStep_OutputDirRoutesToConfirm ensures the
+// late-stage PromptSource/ProjectPrompt redundancy is gone: output-dir
+// now flows straight into the confirm screen.
+func TestInterviewBootstrap_NextStep_OutputDirRoutesToConfirm(t *testing.T) {
+	m := newInterviewBootstrapTeaModel(BootstrapWizardDefaults{})
+	m.step = ibStepOutputDir
+	if next := m.nextStep(m.step); next != ibStepConfirm {
+		t.Fatalf("output-dir should advance to confirm, got %v", next)
+	}
+}
+
 // normalizeForGolden collapses trailing whitespace on each line so minor
 // width changes don't churn the golden file.
 func normalizeForGolden(s string) string {

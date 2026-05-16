@@ -45,20 +45,23 @@ func TestParseBootstrapFlags_MissingValueErrors(t *testing.T) {
 	}
 }
 
-func TestParseBootstrapFlags_ProjectPrompt(t *testing.T) {
-	// --project-prompt is the new proctor-customizable project-generation
-	// addendum. Distinct from --custom-prompt (which is rubric-mode only).
-	opts, parseErr := ParseBootstrapFlags([]string{
-		"--project-prompt", "Use Postgres and emphasize idempotency.",
-	})
+func TestParseBootstrapFlags_DebugFlag(t *testing.T) {
+	// --debug toggles verbose run-context logging in both the dispatcher
+	// (Go side) and the bun subprocess. Off by default.
+	opts, parseErr := ParseBootstrapFlags([]string{"--debug"})
 	if parseErr != "" {
 		t.Fatalf("unexpected parse error: %s", parseErr)
 	}
-	if opts.ProjectPrompt != "Use Postgres and emphasize idempotency." {
-		t.Errorf("project-prompt: got %q", opts.ProjectPrompt)
+	if !opts.Debug {
+		t.Error("--debug should set Debug=true")
 	}
-	if opts.CustomPrompt != "" {
-		t.Errorf("--project-prompt should NOT populate CustomPrompt (got %q)", opts.CustomPrompt)
+	// Short form -d works the same way.
+	opts2, parseErr2 := ParseBootstrapFlags([]string{"-d"})
+	if parseErr2 != "" {
+		t.Fatalf("unexpected parse error for -d: %s", parseErr2)
+	}
+	if !opts2.Debug {
+		t.Error("-d should set Debug=true")
 	}
 }
 

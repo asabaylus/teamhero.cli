@@ -20,7 +20,21 @@ const (
 	wsBootstrapRoleTitle
 	wsBootstrapStack
 	wsBootstrapDomain
+	// wsBootstrapFeatureSource is the either/or step that drives whether
+	// the proctor types the feature description themselves or lets the
+	// AI suggest project ideas. Replaces the old late-stage
+	// PromptSource/ProjectPrompt redundancy — the feature description
+	// IS the project prompt, so there's exactly one place to supply it.
+	wsBootstrapFeatureSource
 	wsBootstrapFeature
+	// wsBootstrapIdeaFetching is a transient spinner state while the
+	// wizard calls OpenAI to enumerate candidate ideas. Reached only when
+	// featureSource == "suggest". Lands on wsBootstrapIdeaSelect on
+	// success or surfaces the error on the same select screen.
+	wsBootstrapIdeaFetching
+	// wsBootstrapIdeaSelect presents the fetched ideas as a huh.Select.
+	// The chosen idea's title+blurb populates the feature description.
+	wsBootstrapIdeaSelect
 	wsBootstrapTimeBox
 	wsBootstrapProjectMode
 	wsBootstrapAnalysisMode
@@ -28,22 +42,6 @@ const (
 	wsBootstrapCustomPrompt
 	wsBootstrapJDPath
 	wsBootstrapOutputDir
-	// wsBootstrapPromptSource asks how the proctor wants to supply the
-	// project-generation prompt: "custom" (they type one) or "suggest"
-	// (ChatGPT proposes ideas they pick from). Drives the branch into
-	// either wsBootstrapProjectPrompt or wsBootstrapIdeaFetching.
-	wsBootstrapPromptSource
-	// wsBootstrapProjectPrompt is the optional proctor-facing prompt that
-	// gets appended to the AI project-generation prompt.
-	wsBootstrapProjectPrompt
-	// wsBootstrapIdeaFetching is a transient spinner state while the
-	// wizard calls OpenAI to enumerate candidate ideas. No user input —
-	// reaches wsBootstrapIdeaSelect on success or surfaces the error on
-	// the confirm screen.
-	wsBootstrapIdeaFetching
-	// wsBootstrapIdeaSelect presents the fetched ideas as a huh.Select.
-	// The chosen idea's title+blurb populates projectPrompt downstream.
-	wsBootstrapIdeaSelect
 	wsBootstrapConfirm
 	wsBootstrapDone
 )
@@ -69,34 +67,32 @@ type BootstrapWizardDefaults struct {
 type bootstrapWizardModel struct {
 	state bootstrapWizardState
 
-	role          string
-	roleTitle     string
-	stack         string
-	domain        string
-	feature       string
-	timeBox       string
-	modeProject   string
-	modeAnalysis  string
-	modeRubric    string
-	customPrompt  string
-	projectPrompt string
-	jdPath        string
-	outputDir     string
+	role         string
+	roleTitle    string
+	stack        string
+	domain       string
+	feature      string
+	timeBox      string
+	modeProject  string
+	modeAnalysis string
+	modeRubric   string
+	customPrompt string
+	jdPath       string
+	outputDir    string
 
-	// promptSource selects how the project-generation prompt is supplied:
-	// "custom" — proctor types a prompt at wsBootstrapProjectPrompt.
-	// "suggest" — wizard fetches ideas, proctor picks one at
-	//            wsBootstrapIdeaSelect; the chosen idea populates
-	//            projectPrompt before the main generator runs.
-	// Default "custom" so headless callers (who skip the picker) behave
-	// identically to the pre-Step-4.5 wizard.
-	promptSource string
+	// featureSource selects how the candidate-facing feature description
+	// is supplied: "custom" — proctor types it themselves at
+	// wsBootstrapFeature; "suggest" — wizard fetches ideas and the
+	// proctor picks one at wsBootstrapIdeaSelect, which populates the
+	// feature field. Defaults to "custom" so headless callers (who
+	// always supply --feature) behave identically.
+	featureSource string
 
-	// ideas is populated by the Idea-fetch step when promptSource ==
+	// ideas is populated by the Idea-fetch step when featureSource ==
 	// "suggest". ideaSelected indexes into ideas; -1 means none yet.
-	ideas         []ProjectIdea
-	ideaSelected  int
-	ideaFetchErr  string
+	ideas        []ProjectIdea
+	ideaSelected int
+	ideaFetchErr string
 
 	confirmed bool
 	aborted   bool
@@ -116,15 +112,17 @@ func newBootstrapWizardModel(d BootstrapWizardDefaults) bootstrapWizardModel {
 		modeProject:  firstNonEmptyStr(d.ModeProject, "A"),
 		modeAnalysis: firstNonEmptyStr(d.ModeAnalysis, "ai-assisted"),
 		modeRubric:   firstNonEmptyStr(d.ModeRubric, "default"),
-		outputDir:    firstNonEmptyStr(d.OutputDir, "./interviews/role"),
-		promptSource: "custom",
-		ideaSelected: -1,
+		outputDir:     firstNonEmptyStr(d.OutputDir, "./interviews/role"),
+		featureSource: "custom",
+		ideaSelected:  -1,
 	}
 	return m
 }
 
 // bootstrapWizardNextState returns the next wizard state given the current
-// state and the values on the model. Rubric mode is the only branching point.
+// state and the values on the model. Two branching points: featureSource
+// chooses between the typed-description path and the AI-suggest path, and
+// rubricMode picks the optional custom-prompt or jd-path side-step.
 func bootstrapWizardNextState(cur bootstrapWizardState, m bootstrapWizardModel) bootstrapWizardState {
 	switch cur {
 	case wsBootstrapRole:
@@ -134,8 +132,17 @@ func bootstrapWizardNextState(cur bootstrapWizardState, m bootstrapWizardModel) 
 	case wsBootstrapStack:
 		return wsBootstrapDomain
 	case wsBootstrapDomain:
+		return wsBootstrapFeatureSource
+	case wsBootstrapFeatureSource:
+		if m.featureSource == "suggest" {
+			return wsBootstrapIdeaFetching
+		}
 		return wsBootstrapFeature
 	case wsBootstrapFeature:
+		return wsBootstrapTimeBox
+	case wsBootstrapIdeaFetching:
+		return wsBootstrapIdeaSelect
+	case wsBootstrapIdeaSelect:
 		return wsBootstrapTimeBox
 	case wsBootstrapTimeBox:
 		return wsBootstrapProjectMode
@@ -157,17 +164,6 @@ func bootstrapWizardNextState(cur bootstrapWizardState, m bootstrapWizardModel) 
 	case wsBootstrapJDPath:
 		return wsBootstrapOutputDir
 	case wsBootstrapOutputDir:
-		return wsBootstrapPromptSource
-	case wsBootstrapPromptSource:
-		if m.promptSource == "suggest" {
-			return wsBootstrapIdeaFetching
-		}
-		return wsBootstrapProjectPrompt
-	case wsBootstrapProjectPrompt:
-		return wsBootstrapConfirm
-	case wsBootstrapIdeaFetching:
-		return wsBootstrapIdeaSelect
-	case wsBootstrapIdeaSelect:
 		return wsBootstrapConfirm
 	case wsBootstrapConfirm:
 		return wsBootstrapDone
@@ -182,20 +178,19 @@ func bootstrapWizardNextState(cur bootstrapWizardState, m bootstrapWizardModel) 
 // validator is the shared gate between headless and interactive paths.
 func bootstrapWizardOptionsFromModel(m bootstrapWizardModel) *BootstrapOptions {
 	return &BootstrapOptions{
-		Role:          m.role,
-		RoleTitle:     m.roleTitle,
-		Stack:         m.stack,
-		Domain:        m.domain,
-		Feature:       m.feature,
-		TimeBox:       m.timeBox,
-		ModeProject:   m.modeProject,
-		ModeAnalysis:  m.modeAnalysis,
-		ModeRubric:    m.modeRubric,
-		CustomPrompt:  m.customPrompt,
-		ProjectPrompt: m.projectPrompt,
-		JDPath:        m.jdPath,
-		OutputDir:     m.outputDir,
-		Headless:      true, // the runner always speaks the headless protocol
+		Role:         m.role,
+		RoleTitle:    m.roleTitle,
+		Stack:        m.stack,
+		Domain:       m.domain,
+		Feature:      m.feature,
+		TimeBox:      m.timeBox,
+		ModeProject:  m.modeProject,
+		ModeAnalysis: m.modeAnalysis,
+		ModeRubric:   m.modeRubric,
+		CustomPrompt: m.customPrompt,
+		JDPath:       m.jdPath,
+		OutputDir:    m.outputDir,
+		Headless:     true, // the runner always speaks the headless protocol
 	}
 }
 

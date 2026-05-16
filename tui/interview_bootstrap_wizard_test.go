@@ -130,26 +130,40 @@ func TestBootstrapWizard_NextState_JDPathThenOutputDir(t *testing.T) {
 	}
 }
 
-func TestBootstrapWizard_NextState_OutputDirThenPromptSource(t *testing.T) {
+func TestBootstrapWizard_NextState_OutputDirThenConfirm(t *testing.T) {
+	// Output-dir advances directly to confirm — the redundant late-stage
+	// "How should the AI prompt be supplied?" + Project-prompt addendum
+	// have been collapsed into the early either/or FeatureSource step.
 	m := newBootstrapWizardModel(BootstrapWizardDefaults{})
-	if next := bootstrapWizardNextState(wsBootstrapOutputDir, m); next != wsBootstrapPromptSource {
-		t.Errorf("output-dir should advance to prompt-source, got %v", next)
+	if next := bootstrapWizardNextState(wsBootstrapOutputDir, m); next != wsBootstrapConfirm {
+		t.Errorf("output-dir should advance straight to confirm, got %v", next)
 	}
 }
 
-func TestBootstrapWizard_NextState_PromptSourceCustomThenProjectPrompt(t *testing.T) {
+func TestBootstrapWizard_NextState_DomainThenFeatureSource(t *testing.T) {
+	// The either/or feature-source step sits between Domain and Feature.
 	m := newBootstrapWizardModel(BootstrapWizardDefaults{})
-	m.promptSource = "custom"
-	if next := bootstrapWizardNextState(wsBootstrapPromptSource, m); next != wsBootstrapProjectPrompt {
-		t.Errorf("prompt-source=custom should advance to project-prompt, got %v", next)
+	if next := bootstrapWizardNextState(wsBootstrapDomain, m); next != wsBootstrapFeatureSource {
+		t.Errorf("domain should advance to feature-source, got %v", next)
 	}
 }
 
-func TestBootstrapWizard_NextState_PromptSourceSuggestThenFetching(t *testing.T) {
+func TestBootstrapWizard_NextState_FeatureSourceCustomThenFeature(t *testing.T) {
+	// "Write the description myself" branches into the text-input step.
 	m := newBootstrapWizardModel(BootstrapWizardDefaults{})
-	m.promptSource = "suggest"
-	if next := bootstrapWizardNextState(wsBootstrapPromptSource, m); next != wsBootstrapIdeaFetching {
-		t.Errorf("prompt-source=suggest should advance to idea-fetching, got %v", next)
+	m.featureSource = "custom"
+	if next := bootstrapWizardNextState(wsBootstrapFeatureSource, m); next != wsBootstrapFeature {
+		t.Errorf("feature-source=custom should advance to feature, got %v", next)
+	}
+}
+
+func TestBootstrapWizard_NextState_FeatureSourceSuggestThenFetching(t *testing.T) {
+	// "Suggest ideas for me" branches into the spinner state. The chosen
+	// idea then populates feature directly — no late-stage addendum.
+	m := newBootstrapWizardModel(BootstrapWizardDefaults{})
+	m.featureSource = "suggest"
+	if next := bootstrapWizardNextState(wsBootstrapFeatureSource, m); next != wsBootstrapIdeaFetching {
+		t.Errorf("feature-source=suggest should advance to idea-fetching, got %v", next)
 	}
 }
 
@@ -160,17 +174,20 @@ func TestBootstrapWizard_NextState_IdeaFetchingThenSelect(t *testing.T) {
 	}
 }
 
-func TestBootstrapWizard_NextState_IdeaSelectThenConfirm(t *testing.T) {
+func TestBootstrapWizard_NextState_IdeaSelectThenTimeBox(t *testing.T) {
+	// After picking an AI-suggested idea the wizard rejoins the main flow
+	// at time-box — same point the typed-description path lands on.
 	m := newBootstrapWizardModel(BootstrapWizardDefaults{})
-	if next := bootstrapWizardNextState(wsBootstrapIdeaSelect, m); next != wsBootstrapConfirm {
-		t.Errorf("idea-select should advance to confirm, got %v", next)
+	if next := bootstrapWizardNextState(wsBootstrapIdeaSelect, m); next != wsBootstrapTimeBox {
+		t.Errorf("idea-select should advance to time-box, got %v", next)
 	}
 }
 
-func TestBootstrapWizard_NextState_ProjectPromptThenConfirm(t *testing.T) {
+func TestBootstrapWizard_NextState_FeatureThenTimeBox(t *testing.T) {
+	// The typed-description path rejoins at time-box.
 	m := newBootstrapWizardModel(BootstrapWizardDefaults{})
-	if next := bootstrapWizardNextState(wsBootstrapProjectPrompt, m); next != wsBootstrapConfirm {
-		t.Errorf("project-prompt should advance to confirm, got %v", next)
+	if next := bootstrapWizardNextState(wsBootstrapFeature, m); next != wsBootstrapTimeBox {
+		t.Errorf("feature should advance to time-box, got %v", next)
 	}
 }
 

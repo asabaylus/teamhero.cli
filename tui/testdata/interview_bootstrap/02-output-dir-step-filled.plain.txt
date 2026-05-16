@@ -8,6 +8,7 @@
                                                               │ Engineer                           │
   enter submit                                                │ Stack: Go                          │
                                                               │ Domain: Payments                   │
+                                                              │ Feature source: typed by proctor   │
                                                               │ Feature: build a ledger entry-     │
                                                               │ point                              │
                                                               │ Time-box: 60 min                   │
@@ -16,7 +17,6 @@
                                                               │ Analysis mode: ai-assisted         │
                                                               │ Rubric: default                    │
                                                               │ Output dir: —                      │
-                                                              │ Project prompt: —                  │
                                                               ╰────────────────────────────────────╯
                                                                                                     
 enter continue • ctrl+c quit                                                                        
