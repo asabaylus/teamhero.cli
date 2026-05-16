@@ -1,0 +1,157 @@
+package main
+
+import (
+	"strings"
+
+	"github.com/charmbracelet/lipgloss"
+)
+
+// renderInterviewBootstrapSummary builds the right-side configuration summary
+// panel for the interview bootstrap wizard. It mirrors renderSummary() for
+// the report wizard: a bordered box with one labelled row per field, the
+// current field highlighted, and fields not yet reached shown as "—".
+func renderInterviewBootstrapSummary(
+	m *bootstrapWizardModel,
+	currentStep interviewBootstrapStep,
+	highWater interviewBootstrapStep,
+	width int,
+) string {
+	if width < 20 {
+		width = 20
+	}
+
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
+	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	valueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("239"))
+	activeLabel := lipgloss.NewStyle().Foreground(lipgloss.Color("14")).Bold(true)
+
+	boxStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("240")).
+		Padding(0, 1)
+
+	innerWidth := width - boxStyle.GetHorizontalBorderSize()
+
+	type entry struct {
+		label string
+		value string
+		step  interviewBootstrapStep
+	}
+
+	rubricValue := m.modeRubric
+	if m.modeRubric == "custom" && m.customPrompt != "" {
+		rubricValue = "custom (" + truncate(m.customPrompt, 24) + ")"
+	}
+
+	jdValue := "—"
+	if m.jdProvided == "yes" {
+		if m.jdPath != "" {
+			jdValue = truncate(m.jdPath, 28)
+		} else {
+			jdValue = "(path pending)"
+		}
+	} else if m.jdProvided == "no" {
+		jdValue = "none"
+	}
+
+	jdInfluenceValue := "—"
+	if m.jdProvided == "yes" {
+		if m.jdInfluencesProject == "yes" {
+			jdInfluenceValue = "shapes project"
+		} else if m.jdInfluencesProject == "no" {
+			jdInfluenceValue = "review only"
+		}
+	}
+
+	// Entry order mirrors the wizard's step order: JD comes BEFORE
+	// Domain because the JD describes the business domain. When a JD
+	// is attached, the wizard skips Domain entirely — the row will
+	// render with a "—" placeholder.
+	domainValue := m.domain
+	if m.jdProvided == "yes" && strings.TrimSpace(m.domain) == "" {
+		domainValue = "(from JD)"
+	}
+	entries := []entry{
+		{"Role slug", m.role, ibStepRole},
+		{"Role title", m.roleTitle, ibStepRoleTitle},
+		{"Stack", m.stack, ibStepStack},
+		{"JD attached", jdValue, ibStepJDProvided},
+		{"JD usage", jdInfluenceValue, ibStepJDInfluencesProject},
+		{"Domain", domainValue, ibStepDomain},
+		{"Feature source", fmtFeatureSource(m.featureSource), ibStepFeatureSource},
+		{"Feature", truncate(m.feature, 28), ibStepFeature},
+		{"Time-box", fmtTimeBox(m.timeBox), ibStepTimeBox},
+		{"Project type", fmtProjectMode(m.modeProject), ibStepProjectMode},
+		{"Analysis mode", m.modeAnalysis, ibStepAnalysisMode},
+		{"Rubric", rubricValue, ibStepRubricMode},
+		{"Output dir", m.outputDir, ibStepOutputDir},
+	}
+
+	lines := []string{
+		headerStyle.Render("Interview Bootstrap"),
+		"",
+	}
+
+	for _, e := range entries {
+		lbl := labelStyle
+		if e.step == currentStep {
+			lbl = activeLabel
+		}
+		val := dimStyle.Render("—")
+		if highWater > e.step && strings.TrimSpace(e.value) != "" {
+			val = valueStyle.Render(e.value)
+		}
+		lines = append(lines, lbl.Render(e.label+": ")+val)
+	}
+
+	return boxStyle.Width(innerWidth).Render(strings.Join(lines, "\n"))
+}
+
+func fmtProjectMode(s string) string {
+	switch s {
+	case "brownfield", "A":
+		return "Brownfield — AI scaffolds"
+	case "greenfield-stack", "B":
+		return "Greenfield (your stack)"
+	case "greenfield-open":
+		return "Greenfield (candidate picks)"
+	default:
+		return s
+	}
+}
+
+func fmtTimeBox(s string) string {
+	if s == "" {
+		return ""
+	}
+	return s + " min"
+}
+
+func fmtFeatureSource(s string) string {
+	switch s {
+	case "custom":
+		return "typed by proctor"
+	case "suggest":
+		return "AI-suggested"
+	default:
+		return s
+	}
+}
+
+// truncate clips a string to `max` runes and appends "…" when clipped.
+// Operates on runes (not bytes) so multi-byte characters like accented
+// Latin or CJK don't get split mid-codepoint into invalid UTF-8.
+func truncate(s string, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	runes := []rune(s)
+	if max == 1 {
+		return s
+	}
+	if len(runes) <= max {
+		return s
+	}
+	return string(runes[:max-1]) + "…"
+}

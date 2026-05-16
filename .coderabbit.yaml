@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit configuration — https://docs.coderabbit.ai/configuration/auto-review
+#
+# Goal: auto-review PRs opened by Claude (branches named claude/*).
+# CodeRabbit auto-reviews every PR targeting the default branch (main) by default,
+# so PRs from claude/* branches are covered automatically.
+#
+# Note: the CodeRabbit schema has no source/head-branch filter. `base_branches`
+# only matches the TARGET branch, not the source. The configuration below simply
+# ensures auto-review stays on for the default branch.
+
+language: en-US
+
+reviews:
+  auto_review:
+    enabled: true
+    drafts: false
+    auto_incremental_review: true
+    auto_pause_after_reviewed_commits: 5

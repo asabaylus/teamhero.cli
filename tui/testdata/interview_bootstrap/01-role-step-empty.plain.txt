@@ -1,0 +1,21 @@
+//// TEAM HERO //////////////////////////////////////////////////////////////////////////////////// 
+                                                                                                    
+                                                              ╭────────────────────────────────────╮
+  ┃ Role slug (URL-safe identifier)                           │ Interview Bootstrap                │
+  ┃ Used in paths and role-config.json; not shown to the      │                                    │
+  ┃ candidate.                                                │ Role slug: —                       │
+  ┃ >                                                         │ Role title: —                      │
+                                                              │ Stack: —                           │
+  enter submit                                                │ JD attached: —                     │
+                                                              │ JD usage: —                        │
+                                                              │ Domain: —                          │
+                                                              │ Feature source: —                  │
+                                                              │ Feature: —                         │
+                                                              │ Time-box: —                        │
+                                                              │ Project type: —                    │
+                                                              │ Analysis mode: —                   │
+                                                              │ Rubric: —                          │
+                                                              │ Output dir: —                      │
+                                                              ╰────────────────────────────────────╯
+                                                                                                    
+enter continue • ctrl+c quit                                                                        

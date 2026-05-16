@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -c '{event: \"user-prompt-submit\", timestamp: (now | todateiso8601), prompt: .prompt}' >> interview.log || true"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -c '{event: \"pre-tool-use\", timestamp: (now | todateiso8601), tool_name: .tool_name, tool_input: .tool_input}' >> interview.log || true"
+          }
+        ]
+      }
+    ]
+  }
+}
