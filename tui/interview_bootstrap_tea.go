@@ -436,8 +436,8 @@ func (m *interviewBootstrapTeaModel) buildForm() *huh.Form {
 			huh.NewSelect[string]().
 				Title("Time-box (minutes)").
 				Options(
-					huh.NewOption("60 minutes", "60"),
-					huh.NewOption("90 minutes (recommended)", "90"),
+					huh.NewOption("60 minutes (recommended)", "60"),
+					huh.NewOption("90 minutes", "90"),
 					huh.NewOption("120 minutes", "120"),
 					huh.NewOption("Custom", "custom"),
 				).
@@ -517,8 +517,8 @@ func (m *interviewBootstrapTeaModel) buildForm() *huh.Form {
 		)).WithTheme(huh.ThemeCharm()).WithWidth(m.formWidth())
 
 	case ibStepOutputDir:
-		if d.outputDir == "./roles/role" && d.role != "" {
-			d.outputDir = "./roles/" + d.role
+		if d.outputDir == "./interviews/role" && d.role != "" {
+			d.outputDir = "./interviews/" + d.role
 		}
 		return huh.NewForm(huh.NewGroup(
 			huh.NewInput().

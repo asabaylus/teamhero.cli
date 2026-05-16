@@ -86,7 +86,7 @@ function buildConfig(flags: ParsedFlags): RoleConfig | string {
 	if (!flags.modeRubric) return "Missing required flag --mode-rubric";
 	if (!flags.outputDir) return "Missing required flag --output-dir";
 
-	const timeBox = Number.parseInt(flags.timeBox ?? "90", 10);
+	const timeBox = Number.parseInt(flags.timeBox ?? "60", 10);
 	if (!Number.isFinite(timeBox)) {
 		return `--time-box must be an integer number of minutes (got ${String(flags.timeBox)})`;
 	}

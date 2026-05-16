@@ -112,11 +112,11 @@ func newBootstrapWizardModel(d BootstrapWizardDefaults) bootstrapWizardModel {
 		stack:        d.Stack,
 		domain:       d.Domain,
 		feature:      d.Feature,
-		timeBox:      firstNonEmptyStr(d.TimeBox, "90"),
+		timeBox:      firstNonEmptyStr(d.TimeBox, "60"),
 		modeProject:  firstNonEmptyStr(d.ModeProject, "A"),
 		modeAnalysis: firstNonEmptyStr(d.ModeAnalysis, "ai-assisted"),
 		modeRubric:   firstNonEmptyStr(d.ModeRubric, "default"),
-		outputDir:    firstNonEmptyStr(d.OutputDir, "./roles/role"),
+		outputDir:    firstNonEmptyStr(d.OutputDir, "./interviews/role"),
 		promptSource: "custom",
 		ideaSelected: -1,
 	}

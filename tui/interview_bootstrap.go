@@ -220,6 +220,31 @@ func findBootstrapScript() string {
 	return "scripts/run-interview-bootstrap.ts"
 }
 
+// applyBootstrapDefaults fills in any optional flag whose value is derivable
+// from the rest of the config so the proctor doesn't have to repeat the
+// obvious defaults every run.
+//
+//   - --output-dir defaults to `./interviews/<role-slug>`. The repo's
+//     .gitignore covers `interviews/`, so generated candidate material
+//     never accidentally lands in a commit.
+//   - --time-box defaults to "60" minutes — the recommended length for a
+//     candidate interview project. Override with --time-box per the
+//     original PRD when the role needs more or less runway.
+//
+// Defaults are applied in-place; an explicit user flag always wins.
+func applyBootstrapDefaults(opts *BootstrapOptions) {
+	if opts == nil {
+		return
+	}
+	role := strings.TrimSpace(opts.Role)
+	if strings.TrimSpace(opts.OutputDir) == "" && role != "" {
+		opts.OutputDir = filepath.Join("interviews", role)
+	}
+	if strings.TrimSpace(opts.TimeBox) == "" {
+		opts.TimeBox = "60"
+	}
+}
+
 // runInterviewBootstrap dispatches the bootstrap verb. Parses flags, validates,
 // invokes the runner. On success it prints a clickable output-dir link and,
 // when running interactively, offers to publish the generated repo to GitHub.
@@ -234,6 +259,7 @@ func runInterviewBootstrap(args []string, runner BootstrapRunner, stdout, stderr
 		fmt.Fprintln(stderr, "teamhero interview bootstrap: only --headless mode is implemented in this slice; pass --headless and all required flags.")
 		return 1
 	}
+	applyBootstrapDefaults(opts)
 	if msg := ValidateBootstrapOptions(opts); msg != "" {
 		fmt.Fprintln(stderr, msg)
 		return 1

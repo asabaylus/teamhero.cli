@@ -279,6 +279,106 @@ func TestRunInterviewBootstrap_SkipsPublishWhenNotTTY(t *testing.T) {
 	}
 }
 
+func TestApplyBootstrapDefaults_FillsOutputDirFromRole(t *testing.T) {
+	opts := &BootstrapOptions{Role: "senior-frontend"}
+	applyBootstrapDefaults(opts)
+	want := "interviews/senior-frontend"
+	if opts.OutputDir != want {
+		t.Errorf("OutputDir = %q, want %q", opts.OutputDir, want)
+	}
+}
+
+func TestApplyBootstrapDefaults_DoesNotOverrideExplicitOutputDir(t *testing.T) {
+	opts := &BootstrapOptions{Role: "senior-frontend", OutputDir: "/tmp/custom"}
+	applyBootstrapDefaults(opts)
+	if opts.OutputDir != "/tmp/custom" {
+		t.Errorf("explicit --output-dir must win; got %q", opts.OutputDir)
+	}
+}
+
+func TestApplyBootstrapDefaults_LeavesOutputDirEmptyWhenRoleMissing(t *testing.T) {
+	// If --role wasn't supplied, validation will reject the run regardless
+	// of OutputDir, so leaving it empty surfaces the missing-role error
+	// instead of producing a misleading "./interviews/<empty>" path.
+	opts := &BootstrapOptions{}
+	applyBootstrapDefaults(opts)
+	if opts.OutputDir != "" {
+		t.Errorf("OutputDir should remain empty when Role is missing; got %q", opts.OutputDir)
+	}
+}
+
+func TestApplyBootstrapDefaults_FillsTimeBoxWhenMissing(t *testing.T) {
+	opts := &BootstrapOptions{Role: "x"}
+	applyBootstrapDefaults(opts)
+	if opts.TimeBox != "60" {
+		t.Errorf("TimeBox default should be 60 minutes; got %q", opts.TimeBox)
+	}
+}
+
+func TestApplyBootstrapDefaults_DoesNotOverrideExplicitTimeBox(t *testing.T) {
+	opts := &BootstrapOptions{Role: "x", TimeBox: "120"}
+	applyBootstrapDefaults(opts)
+	if opts.TimeBox != "120" {
+		t.Errorf("explicit --time-box must win; got %q", opts.TimeBox)
+	}
+}
+
+func TestApplyBootstrapDefaults_NilSafe(t *testing.T) {
+	// Defensive: panicking on a nil opts pointer would crash production
+	// callers that wire applyBootstrapDefaults into hot paths without an
+	// explicit nil check.
+	applyBootstrapDefaults(nil)
+}
+
+func TestRunInterviewBootstrap_AllowsOmittedOutputDirAndTimeBox(t *testing.T) {
+	// End-to-end: the dispatcher should fill in --output-dir from --role
+	// and --time-box from the 60-min default, then validation should pass
+	// (it would previously fail with "missing required flag --output-dir").
+	withPublishHooks(t, false, nil)
+	var out, errBuf bytes.Buffer
+	var seen *BootstrapOptions
+	stub := &stubRunner{code: 0}
+	// Capture what the runner sees so we can assert defaults made it through.
+	origRunner := stub
+	wrapped := &captureRunner{inner: origRunner, sink: &seen}
+	code := runInterviewBootstrap([]string{
+		"--headless",
+		"--role", "senior-frontend",
+		"--stack", "React", "--domain", "B2B", "--feature", "timeline",
+		"--mode-project", "A", "--mode-analysis", "ai-assisted",
+		"--mode-rubric", "default",
+		// Note: --output-dir and --time-box intentionally omitted.
+	}, wrapped, &out, &errBuf)
+	if code != 0 {
+		t.Fatalf("exit=%d stderr=%s", code, errBuf.String())
+	}
+	if seen == nil {
+		t.Fatal("runner not called")
+	}
+	if seen.OutputDir != "interviews/senior-frontend" {
+		t.Errorf("default OutputDir = %q, want interviews/senior-frontend", seen.OutputDir)
+	}
+	if seen.TimeBox != "60" {
+		t.Errorf("default TimeBox = %q, want 60", seen.TimeBox)
+	}
+}
+
+// captureRunner records the BootstrapOptions the dispatcher passes through
+// after applyBootstrapDefaults runs, then forwards to an inner runner so
+// the rest of the dispatcher's post-success flow (link + publish) still
+// fires. stubRunner already captures via gotOpts, but the dispatcher's
+// `code := runner.Run(opts, ...)` runs *after* defaults, so any wrapper
+// here just needs to remember the resolved opts.
+type captureRunner struct {
+	inner BootstrapRunner
+	sink  **BootstrapOptions
+}
+
+func (c *captureRunner) Run(opts *BootstrapOptions, stdout, stderr io.Writer) int {
+	*c.sink = opts
+	return c.inner.Run(opts, stdout, stderr)
+}
+
 func TestRunInterviewBootstrap_NoPublishOnFailure(t *testing.T) {
 	called := false
 	withPublishHooks(t, true, func(*BootstrapOptions) { called = true })

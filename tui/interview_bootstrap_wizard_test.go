@@ -61,8 +61,8 @@ func stringsContains(s, sub string) bool {
 
 func TestBootstrapWizard_DefaultModelHasSensibleDefaults(t *testing.T) {
 	m := newBootstrapWizardModel(BootstrapWizardDefaults{})
-	if m.timeBox != "90" {
-		t.Errorf("default time-box should be 90, got %q", m.timeBox)
+	if m.timeBox != "60" {
+		t.Errorf("default time-box should be 60 (recommended length per product spec), got %q", m.timeBox)
 	}
 	if m.modeProject != "A" {
 		t.Errorf("default project mode should be A, got %q", m.modeProject)

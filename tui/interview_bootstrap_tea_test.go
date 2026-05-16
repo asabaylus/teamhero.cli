@@ -195,7 +195,7 @@ func TestInterviewBootstrap_Screenshot_WritesGolden(t *testing.T) {
 				m := newInterviewBootstrapTeaModel(BootstrapWizardDefaults{
 					Role: "senior-backend", RoleTitle: "Senior Backend Engineer",
 					Stack: "Go", Domain: "Payments",
-					Feature: "build a ledger entry-point", TimeBox: "90",
+					Feature: "build a ledger entry-point", TimeBox: "60",
 					ModeProject: "A", ModeAnalysis: "ai-assisted", ModeRubric: "default",
 				})
 				m.step = ibStepOutputDir
@@ -209,9 +209,9 @@ func TestInterviewBootstrap_Screenshot_WritesGolden(t *testing.T) {
 			seed: func() *interviewBootstrapTeaModel {
 				m := newInterviewBootstrapTeaModel(BootstrapWizardDefaults{
 					Role: "senior-backend", Stack: "Go", Domain: "Payments",
-					Feature: "ledger entry-point", TimeBox: "90",
+					Feature: "ledger entry-point", TimeBox: "60",
 					ModeProject: "A", ModeAnalysis: "ai-assisted", ModeRubric: "default",
-					OutputDir: "./roles/senior-backend",
+					OutputDir: "./interviews/senior-backend",
 				})
 				m.step = ibStepConfirm
 				m.highWater = ibStepConfirm

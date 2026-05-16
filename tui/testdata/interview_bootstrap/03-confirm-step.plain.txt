@@ -4,16 +4,17 @@
   ┃ Ready to bootstrap?                                       │ Interview Bootstrap                │
   ┃ role=senior-backend · stack=Go · domain=Payments ·        │                                    │
   time-                                                       │ Role slug: senior-backend          │
-  ┃ box=90 · project=A · analysis=ai-assisted ·               │ Role title: —                      │
+  ┃ box=60 · project=A · analysis=ai-assisted ·               │ Role title: —                      │
   rubric=default                                              │ Stack: Go                          │
-  ┃ · out=./roles/senior-backend                              │ Domain: Payments                   │
+  ┃ · out=./interviews/senior-backend                         │ Domain: Payments                   │
   ┃                                                           │ Feature: ledger entry-point        │
-  ┃             Yes, generate the role     Cancel             │ Time-box: 90 min                   │
+  ┃             Yes, generate the role     Cancel             │ Time-box: 60 min                   │
                                                               │ Project mode: A — generated        │
   ←/→ toggle • enter submit • y Yes, generate the role …      │ starter                            │
                                                               │ Analysis mode: ai-assisted         │
                                                               │ Rubric: default                    │
-                                                              │ Output dir: ./roles/senior-backend │
+                                                              │ Output dir: ./interviews/senior-   │
+                                                              │ backend                            │
                                                               │ Project prompt: (default)          │
                                                               ╰────────────────────────────────────╯
                                                                                                     
