@@ -36,33 +36,6 @@ const PROJECT_RESPONSE_SCHEMA = {
 	},
 } as const;
 
-// extractLocFromFailure returns the integer LOC value that the validator
-// reports in its "LOC out of range: <n> lines of code" failure string, or
-// 0 when no LOC failure is present. We feed this back into the retry
-// prompt so the model sees a concrete delta to close, not just an
-// abstract "previous attempt was wrong" note.
-function extractLocFromFailure(failures: readonly string[]): number {
-	for (const f of failures) {
-		const m = f.match(/LOC out of range:\s*(\d+)\s+lines/i);
-		if (m) {
-			const n = Number.parseInt(m[1], 10);
-			if (Number.isFinite(n)) return n;
-		}
-	}
-	return 0;
-}
-
-function extractDeepModuleCount(failures: readonly string[]): number {
-	for (const f of failures) {
-		const m = f.match(/found\s+(\d+)\s*\./i);
-		if (m) {
-			const n = Number.parseInt(m[1], 10);
-			if (Number.isFinite(n)) return n;
-		}
-	}
-	return -1;
-}
-
 function buildPrompt(
 	config: RoleConfig,
 	attempt: number,
@@ -74,55 +47,14 @@ function buildPrompt(
 		)
 		.join("\n");
 
-	// Build a high-signal retry note. The default "address these failures"
-	// phrasing is too abstract — gpt-5-mini routinely produces another small
-	// project on retry. When we can extract concrete numbers from the
-	// validator's failure list, restate them as a SPECIFIC correction target
-	// so the model commits to a larger decomposition.
-	let retryNote = "";
-	if (previousFailures.length > 0) {
-		const priorLoc = extractLocFromFailure(previousFailures);
-		const priorDeepModules = extractDeepModuleCount(previousFailures);
-		const lines = [
-			"",
-			"",
-			"CORRECTION REQUIRED — your previous attempt was rejected.",
-			"Specific validator failures:",
-			...previousFailures.map((f) => `  - ${f}`),
-			"",
-		];
-		if (priorLoc > 0 && priorLoc < 400) {
-			lines.push(
-				`Your last attempt produced ${priorLoc} total source LOC. The validator requires AT LEAST 400. For this attempt, target ~550 LOC — you must roughly DOUBLE the previous output. Add additional source files; do not just enlarge existing ones with comments.`,
-			);
-		}
-		if (priorDeepModules >= 0 && priorDeepModules < 2) {
-			lines.push(
-				`Your last attempt had ${priorDeepModules} file(s) with 80+ lines. You need AT LEAST 2 such files. The fix is to split logic across MORE source files under src/, each containing 100+ lines of real implementation.`,
-			);
-		}
-		lines.push(
-			"Do not produce another minimal 'happy path' sketch. Write substantive, realistic code that a candidate could meaningfully extend.",
-			"",
-		);
-		retryNote = lines.join("\n");
-	}
+	const retryNote =
+		previousFailures.length > 0
+			? `\n\nPrevious attempt failed validation with: ${previousFailures.join("; ")}\nPlease address these specific failures in this attempt.\n`
+			: "";
 
 	const modeSpec =
 		config.projectMode === "A"
-			? `Generate a Mode A "AI-bootstrap extension" project.
-
-ABSOLUTE SIZE REQUIREMENTS (hard constraint — the validator AUTOMATICALLY REJECTS projects outside this range):
-- Total source LOC under src/ MUST be between 400 and 700. Target ~550 — do NOT aim for the 400 floor; recent attempts that landed at 399-410 LOC have been one stray comment away from rejection.
-- AT LEAST 2 source files must each contain 80 or more lines of real logic. Target 100-150 lines per file. A 79-line file is REJECTED — give yourself margin.
-- Plan for 4-5 source files. A typical safe decomposition:
-    src/types.ts (or equivalent for ${config.stack})          ~80-120 lines  — domain types, schemas, error classes
-    src/<feature>-service.ts                                   ~120-180 lines — main orchestrator with the failing-test gap
-    src/<feature>-validators.ts                                ~80-120 lines  — input parsing and validation
-    src/<feature>-helpers.ts                                   ~60-100 lines  — formatters, utilities, mappers
-    src/<feature>-store.ts (optional)                          ~80-120 lines  — persistence or in-memory state
-- The line-count guidance above is REAL — count your output before returning. Anything below 400 LOC will be rejected and the run will retry.
-- Do NOT pad with empty lines or trivial boilerplate. Write actual domain logic the candidate can read, modify, and extend.
+			? `Generate a Mode A "AI-bootstrap extension" project — a realistic starter codebase the candidate extends within the time-box.
 
 REQUIRED FILES:
 - README.md at the root — written FOR THE CANDIDATE in plain language. Sections:
@@ -132,8 +64,8 @@ REQUIRED FILES:
   (4) "Acceptance criteria" — bullet list of what "done" looks like for this slice.
   (5) "Process" — one sentence pointing to INTERVIEW_RULES.md for the recording/interview workflow.
   DO NOT write agent operating instructions. DO NOT mention rubric dimensions or what the observer is looking for. DO NOT coach the candidate on how to work with their AI agent. Agent guidance is shipped separately by the kit; the AI generator must not author it.
-- GLOSSARY.md at the root (domain terms — at least 6 entries with one-line definitions).
-- The 4-5 source files described in the SIZE REQUIREMENTS above.
+- GLOSSARY.md at the root (domain terms).
+- Source files under src/ — split the work into a few cohesive modules (domain types, a service/orchestrator, helpers as appropriate for ${config.stack}). Right-size for the ${config.timeBoxMinutes}-minute time-box: substantive enough that a candidate can demonstrate judgment about architecture and naming, not so large that they can't read it in the first 10 minutes.
 - At least 1 failing or skipped test under tests/ that marks the gap the candidate fills (use describe.skip or "not yet implemented").
 - A working test framework setup (package.json/go.mod/etc as appropriate for ${config.stack}) so the candidate can run tests immediately.
 - DO NOT generate a CLAUDE.md or an AGENTS.md. Those files are provided by the interview kit at copy time. If you write one, you will be overwriting carefully-authored proctor content with hallucinated instructions.`

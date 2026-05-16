@@ -26,32 +26,25 @@ function role(overrides: Partial<RoleConfig> = {}): RoleConfig {
 	};
 }
 
-function stubModeAProject(loc = 500, withFailingTest = true): GeneratedProject {
-	const padLines = Array.from(
-		{ length: 100 },
-		(_, k) => `export const v${k} = ${k};`,
-	).join("\n");
+// stubModeAProject returns a minimal Mode A project that passes the
+// (post-size-validator) structural checks: README.md, GLOSSARY.md, and
+// a single failing/skipped test. Optionally suppress the failing test
+// to drive the validator's "no failing test" failure path. The `loc`
+// parameter is now ignored — kept in the signature so existing call
+// sites don't churn — because the validator no longer enforces a line
+// budget.
+function stubModeAProject(_loc?: number, withFailingTest = true): GeneratedProject {
+	void _loc;
 	const files = [
 		{ path: "README.md", content: "# Project\nWhat you're building: a thing.\n" },
 		{ path: "GLOSSARY.md", content: "# Glossary\n- term: definition\n" },
-		{ path: "src/deep-one.ts", content: padLines },
-		{ path: "src/deep-two.ts", content: padLines },
+		{ path: "src/main.ts", content: "export const main = () => {};\n" },
 	];
 	if (withFailingTest) {
 		files.push({
 			path: "tests/feature.spec.ts",
 			content:
 				'import { describe, it } from "bun:test";\ndescribe.skip("feature", () => { it("todo", () => {}); });\n',
-		});
-	}
-	const totalCurrent = padLines.split("\n").length * 2;
-	if (loc > totalCurrent) {
-		const remaining = loc - totalCurrent;
-		files.push({
-			path: "src/pad.ts",
-			content: Array.from({ length: remaining }, (_, k) => `// line ${k}`).join(
-				"\n",
-			),
 		});
 	}
 	return { files };
@@ -88,7 +81,7 @@ describe("generateProject (Mode A)", () => {
 			expect(result.ok).toBe(true);
 			expect(existsSync(join(dir, "README.md"))).toBe(true);
 			expect(existsSync(join(dir, "GLOSSARY.md"))).toBe(true);
-			expect(existsSync(join(dir, "src", "deep-one.ts"))).toBe(true);
+			expect(existsSync(join(dir, "src", "main.ts"))).toBe(true);
 			expect(result.attempts).toBe(1);
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
@@ -98,19 +91,15 @@ describe("generateProject (Mode A)", () => {
 	it("retries when validation fails, then succeeds on a later attempt within the default budget", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "iv-gen-"));
 		try {
-			// First two attempts return malformed projects (no README.md), third succeeds.
-			// Default budget is 5 attempts, so this exercises mid-budget recovery.
+			// First attempt returns a malformed project (no README.md);
+			// second attempt succeeds. Default budget is 3 attempts.
 			const malformed: GeneratedProject = {
 				files: [{ path: "NOTES.md", content: "incomplete" }],
 			};
-			const client = clientReturning(
-				malformed,
-				malformed,
-				stubModeAProject(),
-			);
+			const client = clientReturning(malformed, stubModeAProject());
 			const result = await generateProject(role({ outputDir: dir }), client);
 			expect(result.ok).toBe(true);
-			expect(result.attempts).toBe(3);
+			expect(result.attempts).toBe(2);
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}
@@ -123,14 +112,14 @@ describe("generateProject (Mode A)", () => {
 				files: [{ path: "NOTES.md", content: "incomplete" }],
 			};
 			// clientReturning clamps to the last project when it runs out, so
-			// this returns malformed for every attempt and exhausts the default
-			// 5-attempt budget. The number 5 is load-bearing: it was raised
-			// from 3 in response to repeated first-pass LOC/deep-module
-			// shortfalls reported in production wizard runs.
+			// this returns malformed for every attempt and exhausts the
+			// default 3-attempt budget. The structural checks (README,
+			// GLOSSARY, failing test) still drive failure here — the size
+			// rule that previously dominated retry behavior was removed.
 			const client = clientReturning(malformed);
 			const result = await generateProject(role({ outputDir: dir }), client);
 			expect(result.ok).toBe(false);
-			expect(result.attempts).toBe(5);
+			expect(result.attempts).toBe(3);
 			expect(result.failures.length).toBeGreaterThan(0);
 		} finally {
 			rmSync(dir, { recursive: true, force: true });

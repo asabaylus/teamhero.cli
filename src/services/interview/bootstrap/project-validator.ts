@@ -1,41 +1,10 @@
 import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
-import { extname, join } from "node:path";
+import { join } from "node:path";
 
 export interface ValidationResult {
 	readonly ok: boolean;
 	readonly failures: readonly string[];
 }
-
-/** Lower bound (inclusive) for total lines of code in Mode A output. */
-const MODE_A_LOC_MIN = 400;
-/** Upper bound (inclusive) for total lines of code in Mode A output. */
-const MODE_A_LOC_MAX = 700;
-/** A file counts as a "deep module" when its line count meets or exceeds this. */
-const DEEP_MODULE_MIN_LINES = 80;
-/** Minimum required deep modules. Anti-sprawl signal. */
-const MODE_A_MIN_DEEP_MODULES = 2;
-
-// Source extensions span the languages a candidate role can be evaluated in,
-// not just the languages this CLI happens to be written in. Adding a language
-// here lets the LOC/deep-module counts include it; ship a matching test
-// pattern in TEST_NAME_PATTERN and SKIPPED_TEST_PATTERNS if the language has a
-// non-JS test convention.
-const SOURCE_EXTS = new Set([
-	// JS/TS family
-	".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".vue", ".svelte",
-	// JVM
-	".java", ".kt", ".kts", ".scala", ".groovy",
-	// .NET
-	".cs", ".fs", ".vb",
-	// Systems
-	".go", ".rs", ".c", ".cc", ".cpp", ".cxx", ".h", ".hpp", ".hh",
-	// Dynamic
-	".py", ".rb", ".php",
-	// Mobile / Apple
-	".swift", ".m", ".mm",
-	// Functional / niche
-	".ex", ".exs", ".erl", ".clj", ".cljs", ".ml", ".mli",
-]);
 
 // Test files are identified BOTH by Node-style suffixes (foo.spec.ts) AND by
 // language conventions where suffix-naming doesn't apply (FooTests.cs,
@@ -58,12 +27,6 @@ function walk(dir: string, out: string[] = []): string[] {
 	return out;
 }
 
-function countLines(file: string): number {
-	const body = readFileSync(file, "utf8");
-	if (body.length === 0) return 0;
-	return body.split("\n").length;
-}
-
 export function validateModeAProject(dir: string): ValidationResult {
 	const failures: string[] = [];
 
@@ -80,19 +43,7 @@ export function validateModeAProject(dir: string): ValidationResult {
 	}
 
 	const allFiles = walk(dir);
-	const sourceFiles = allFiles.filter(
-		(f) => SOURCE_EXTS.has(extname(f)) && !TEST_NAME_PATTERN.test(f),
-	);
 	const testFiles = allFiles.filter((f) => TEST_NAME_PATTERN.test(f));
-
-	const deepModules = sourceFiles.filter(
-		(f) => countLines(f) >= DEEP_MODULE_MIN_LINES,
-	);
-	if (deepModules.length < MODE_A_MIN_DEEP_MODULES) {
-		failures.push(
-			`Expected at least ${MODE_A_MIN_DEEP_MODULES} deep modules (>=${DEEP_MODULE_MIN_LINES} lines); found ${deepModules.length}.`,
-		);
-	}
 
 	const hasFailingTest = testFiles.some((f) => {
 		const body = readFileSync(f, "utf8");
@@ -127,13 +78,6 @@ export function validateModeAProject(dir: string): ValidationResult {
 	if (!hasFailingTest) {
 		failures.push(
 			"No failing or skipped tests found. Mode A projects must include at least one failing/skipped test marking the gap the candidate fills.",
-		);
-	}
-
-	const totalLoc = sourceFiles.reduce((acc, f) => acc + countLines(f), 0);
-	if (totalLoc < MODE_A_LOC_MIN || totalLoc > MODE_A_LOC_MAX) {
-		failures.push(
-			`LOC out of range: ${totalLoc} lines of code; expected ${MODE_A_LOC_MIN}-${MODE_A_LOC_MAX}.`,
 		);
 	}
 

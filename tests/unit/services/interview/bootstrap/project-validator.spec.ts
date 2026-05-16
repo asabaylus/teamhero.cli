@@ -16,19 +16,13 @@ function writeModeAFixture(
 	opts: {
 		withReadme?: boolean;
 		withGlossary?: boolean;
-		deepModuleCount?: number;
-		shallowModuleCount?: number;
 		withFailingTests?: boolean;
-		linesOfCode?: number;
 	} = {},
 ): void {
 	const o = {
 		withReadme: true,
 		withGlossary: true,
-		deepModuleCount: 2,
-		shallowModuleCount: 0,
 		withFailingTests: true,
-		linesOfCode: 500,
 		...opts,
 	};
 
@@ -36,17 +30,7 @@ function writeModeAFixture(
 	if (o.withGlossary) writeFileSync(join(dir, "GLOSSARY.md"), "# Glossary\n");
 
 	mkdirSync(join(dir, "src"), { recursive: true });
-	for (let i = 0; i < o.deepModuleCount; i++) {
-		// "Deep" — long enough to count: > 80 lines
-		const body = Array.from(
-			{ length: 100 },
-			(_, k) => `export const v${i}_${k} = ${k};`,
-		).join("\n");
-		writeFileSync(join(dir, "src", `deep-${i}.ts`), body);
-	}
-	for (let i = 0; i < o.shallowModuleCount; i++) {
-		writeFileSync(join(dir, "src", `shallow-${i}.ts`), "export const x = 1;");
-	}
+	writeFileSync(join(dir, "src", "main.ts"), "export const main = () => {};\n");
 
 	mkdirSync(join(dir, "tests"), { recursive: true });
 	if (o.withFailingTests) {
@@ -55,22 +39,14 @@ function writeModeAFixture(
 			`import { describe, it } from "bun:test";\ndescribe.skip("feature", () => {\n  it("not yet implemented", () => {});\n});\n`,
 		);
 	}
-
-	// Pad LOC to target if necessary. Test files are excluded from the LOC
-	// count by the validator (TEST_NAME_PATTERN), so we only count deep
-	// modules here.
-	const currentLoc = o.deepModuleCount * 100;
-	const remaining = o.linesOfCode - currentLoc;
-	if (remaining > 0) {
-		writeFileSync(
-			join(dir, "src", "pad.ts"),
-			Array.from({ length: remaining }, (_, k) => `// line ${k}`).join("\n"),
-		);
-	}
 }
 
 describe("project-validator (Mode A)", () => {
-	it("passes when project has README.md, GLOSSARY.md, 2+ deep modules, failing tests, LOC in range", () => {
+	it("passes when project has README.md, GLOSSARY.md, and a failing/skipped test", () => {
+		// Structural-only validation. The LOC + deep-module rules that
+		// previously gated this check were removed because they were a
+		// heuristic, not a product requirement, and produced friction on
+		// perfectly serviceable smaller projects.
 		const dir = makeTempProject();
 		try {
 			writeModeAFixture(dir);
@@ -106,18 +82,6 @@ describe("project-validator (Mode A)", () => {
 		}
 	});
 
-	it("fails when there are fewer than 2 deep modules (sprawl-only)", () => {
-		const dir = makeTempProject();
-		try {
-			writeModeAFixture(dir, { deepModuleCount: 0, shallowModuleCount: 10 });
-			const result = validateModeAProject(dir);
-			expect(result.ok).toBe(false);
-			expect(result.failures.some((f) => /deep modules?/i.test(f))).toBe(true);
-		} finally {
-			rmSync(dir, { recursive: true, force: true });
-		}
-	});
-
 	it("fails when no failing/skipped tests are present", () => {
 		const dir = makeTempProject();
 		try {
@@ -132,108 +96,69 @@ describe("project-validator (Mode A)", () => {
 		}
 	});
 
-	it("fails when LOC is below the 400-700 range", () => {
-		const dir = makeTempProject();
-		try {
-			writeModeAFixture(dir, { linesOfCode: 200 });
-			const result = validateModeAProject(dir);
-			expect(result.ok).toBe(false);
-			expect(result.failures.some((f) => /LOC|lines of code/i.test(f))).toBe(
-				true,
-			);
-		} finally {
-			rmSync(dir, { recursive: true, force: true });
-		}
-	});
-
-	it("fails when LOC is above the 400-700 range", () => {
-		const dir = makeTempProject();
-		try {
-			writeModeAFixture(dir, { linesOfCode: 1500 });
-			const result = validateModeAProject(dir);
-			expect(result.ok).toBe(false);
-			expect(result.failures.some((f) => /LOC|lines of code/i.test(f))).toBe(
-				true,
-			);
-		} finally {
-			rmSync(dir, { recursive: true, force: true });
-		}
-	});
-
-	it("counts C# (.cs) files toward LOC and treats *Tests.cs as test files", () => {
-		// Regression: validator originally hardcoded SOURCE_EXTS to TS/Go and
-		// reported 35 LOC for a 400+ LOC C# project, because .cs wasn't counted
-		// at all. The interview command takes role.stack as input — the
-		// validator must not assume the team's own stack.
+	it("does NOT reject a small project on size grounds (regression: LOC validator removed)", () => {
+		// The validator used to reject any project under 400 source LOC.
+		// That rule was a heuristic that produced friction; product spec
+		// only requires the structural files. This test pins the new
+		// contract — a tiny but structurally-complete project must pass.
 		const dir = makeTempProject();
 		try {
 			writeFileSync(join(dir, "README.md"), "# Project\n");
 			writeFileSync(join(dir, "GLOSSARY.md"), "# Glossary\n");
 			mkdirSync(join(dir, "src"), { recursive: true });
-			mkdirSync(join(dir, "tests"), { recursive: true });
-
-			const deep = Array.from(
-				{ length: 100 },
-				(_, k) => `public static class Helper${k} { public static int V = ${k}; }`,
-			).join("\n");
-			writeFileSync(join(dir, "src", "DeepA.cs"), deep);
-			writeFileSync(join(dir, "src", "DeepB.cs"), deep);
-
-			// Pad to land in the 400-700 LOC window.
+			// Single ~10-line source file — would have failed the old
+			// 400-700 LOC + 2-deep-module gates.
 			writeFileSync(
-				join(dir, "src", "Pad.cs"),
-				Array.from({ length: 250 }, (_, k) => `// line ${k}`).join("\n"),
+				join(dir, "src", "tiny.ts"),
+				"export const tiny = () => 1;\n",
 			);
+			mkdirSync(join(dir, "tests"), { recursive: true });
+			writeFileSync(
+				join(dir, "tests", "feature.spec.ts"),
+				`import { describe, it } from "bun:test";\ndescribe.skip("feature", () => { it("todo", () => {}); });\n`,
+			);
+			const result = validateModeAProject(dir);
+			expect(result.ok).toBe(true);
+			expect(result.failures).toEqual([]);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
 
-			// xUnit skipped test — must be detected even though the file name is
-			// *Tests.cs rather than *.spec.ts.
+	it("recognises xUnit Skip-attributed tests in *Tests.cs files", () => {
+		// The polyglot test-file detection still matters — the validator
+		// must recognise a Skip-attributed [Fact] in C# as a failing test
+		// so a .NET interview project passes the failing-test check.
+		const dir = makeTempProject();
+		try {
+			writeFileSync(join(dir, "README.md"), "# Project\n");
+			writeFileSync(join(dir, "GLOSSARY.md"), "# Glossary\n");
+			mkdirSync(join(dir, "tests"), { recursive: true });
 			writeFileSync(
 				join(dir, "tests", "FeatureTests.cs"),
 				`using Xunit;\npublic class FeatureTests {\n  [Fact(Skip = "not yet implemented")]\n  public void Pending() {}\n}\n`,
 			);
-
 			const result = validateModeAProject(dir);
-			expect(result.failures).toEqual([]);
 			expect(result.ok).toBe(true);
+			expect(result.failures).toEqual([]);
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}
 	});
 
-	it("counts .vue and recognises pytest skip markers", () => {
+	it("recognises pytest skip markers in test_*.py files", () => {
 		const dir = makeTempProject();
 		try {
 			writeFileSync(join(dir, "README.md"), "# Project\n");
 			writeFileSync(join(dir, "GLOSSARY.md"), "# Glossary\n");
-			mkdirSync(join(dir, "src"), { recursive: true });
 			mkdirSync(join(dir, "tests"), { recursive: true });
-
-			const vueBody = Array.from(
-				{ length: 100 },
-				(_, k) => `<!-- comment ${k} -->`,
-			).join("\n");
-			writeFileSync(join(dir, "src", "DeepView.vue"), vueBody);
-
-			const pyBody = Array.from(
-				{ length: 100 },
-				(_, k) => `def fn_${k}(): return ${k}`,
-			).join("\n");
-			writeFileSync(join(dir, "src", "deep_module.py"), pyBody);
-
-			// Pad to land in window.
-			writeFileSync(
-				join(dir, "src", "pad.py"),
-				Array.from({ length: 250 }, (_, k) => `# line ${k}`).join("\n"),
-			);
-
 			writeFileSync(
 				join(dir, "tests", "test_feature.py"),
 				`import pytest\n@pytest.mark.skip(reason="not yet implemented")\ndef test_pending():\n    pass\n`,
 			);
-
 			const result = validateModeAProject(dir);
-			expect(result.failures).toEqual([]);
 			expect(result.ok).toBe(true);
+			expect(result.failures).toEqual([]);
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}

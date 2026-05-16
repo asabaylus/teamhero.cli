@@ -91,57 +91,29 @@ describe("OpenAIGeneratorClient.generate", () => {
 		const prompt = captured.calls[0].input;
 		expect(prompt).toContain("README.md");
 		expect(prompt).toContain("GLOSSARY.md");
-		// The scaffold requirements no longer use the literal "deep module"
-		// phrase — replaced by an explicit "AT LEAST 2 source files must
-		// each contain 80 or more lines" rule that's more actionable for
-		// the model. This assertion pins the new wording so future prompt
-		// tweaks can't silently drop the dual-file requirement.
-		expect(prompt).toMatch(/AT LEAST 2 source files must each contain 80/);
+		// Right-sizing hint — the model still gets nudged toward a
+		// substantive decomposition (multiple modules, time-box-aware),
+		// but the prompt no longer encodes a hard LOC band that gets
+		// auto-rejected at validation time.
+		expect(prompt).toMatch(/cohesive modules/i);
 	});
 
-	it("emphasizes the LOC size target as a hard constraint (regression: first-attempt undersize)", async () => {
-		// gpt-5-mini was repeatedly landing at ~200-300 LOC with one deep
-		// module on attempt 1, then needing retries-with-feedback to climb
-		// into the 400-700 range. The prompt now states the LOC budget at
-		// the TOP of the Mode A spec, calls it out as auto-rejected
-		// outside the range, and gives a concrete file budget table so the
-		// model commits to a substantial decomposition on attempt 1.
+	it("does NOT encode a hard LOC band or deep-module quota in the prompt", async () => {
+		// Regression guard for the removed size validator: prior versions
+		// of this prompt asserted a 400-700 LOC range and an "AT LEAST 2
+		// source files of 80+ lines" rule, mirrored on the validator side.
+		// Both have been removed because they weren't in the product spec
+		// and they were producing real friction (retries on
+		// perfectly-serviceable 300-LOC outputs). If a future prompt edit
+		// reintroduces these phrases, this test fails so we revisit
+		// whether the matching validator rule should come back too.
 		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
 		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
 		await client.generate({ config: role({ projectMode: "A" }), attempt: 1 });
 		const prompt = captured.calls[0].input;
-		expect(prompt).toContain("ABSOLUTE SIZE REQUIREMENTS");
-		expect(prompt).toContain("AUTOMATICALLY REJECTS");
-		expect(prompt).toContain("400 and 700");
-		// Concrete file budget — the failure mode we're guarding against is
-		// the model producing a single ~250-LOC blob. Naming files and line
-		// ranges in the prompt redirects it to a real decomposition.
-		expect(prompt).toMatch(/4-5 source files/i);
-		expect(prompt).toMatch(/100-150 lines per file/i);
-	});
-
-	it("on retry, includes a measured correction note quoting the prior LOC count", async () => {
-		// Regression guard for retry-with-feedback: when the validator
-		// reports "LOC out of range: 266 lines of code", the next attempt's
-		// prompt must include that NUMBER and a concrete "double it" target.
-		// Abstract retry notes ("please address these failures") were not
-		// enough to nudge gpt-5-mini past the 266-LOC ceiling.
-		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
-		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
-		await client.generate({
-			config: role({ projectMode: "A" }),
-			attempt: 2,
-			previousFailures: [
-				"LOC out of range: 266 lines of code; expected 400-700.",
-				"Expected at least 2 deep modules (>=80 lines); found 1.",
-			],
-		});
-		const prompt = captured.calls[0].input;
-		expect(prompt).toContain("CORRECTION REQUIRED");
-		// Must quote the measured numbers so the model knows the exact delta.
-		expect(prompt).toMatch(/266/);
-		expect(prompt).toMatch(/double/i);
-		expect(prompt).toMatch(/1 file\(s\) with 80\+ lines/);
+		expect(prompt).not.toContain("400 and 700");
+		expect(prompt).not.toContain("ABSOLUTE SIZE REQUIREMENTS");
+		expect(prompt).not.toMatch(/AT LEAST 2 source files must each contain 80/);
 	});
 
 	it("explicitly forbids the AI from authoring CLAUDE.md or AGENTS.md (Mode A)", async () => {
@@ -227,11 +199,14 @@ describe("OpenAIGeneratorClient.generate", () => {
 		await client.generate({
 			config: role(),
 			attempt: 2,
-			previousFailures: ["Missing README.md at project root.", "LOC out of range: 150 lines"],
+			previousFailures: [
+				"Missing README.md at project root.",
+				"No failing or skipped tests found.",
+			],
 		});
 		const prompt = captured.calls[0].input;
 		expect(prompt).toContain("Missing README.md");
-		expect(prompt).toContain("LOC out of range");
+		expect(prompt).toContain("No failing or skipped tests");
 	});
 
 	it("does NOT include previousFailures section on the first attempt", async () => {
