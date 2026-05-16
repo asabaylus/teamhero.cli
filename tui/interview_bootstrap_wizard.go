@@ -20,6 +20,21 @@ const (
 	wsBootstrapRoleTitle
 	wsBootstrapStack
 	wsBootstrapDomain
+	// wsBootstrapJDProvided is the yes/no step that asks the hiring
+	// manager whether they have a job description to attach. The JD is
+	// now collected as a standalone input rather than being smuggled in
+	// via a "default+jd" rubric value. When provided, two more
+	// downstream steps follow (path + influences-project toggle); when
+	// declined the wizard skips both.
+	wsBootstrapJDProvided
+	wsBootstrapJDPath
+	// wsBootstrapJDInfluencesProject asks whether the JD should also
+	// shape the AI's project-generation prompt (in addition to
+	// informing the post-interview rubric analysis). When true the
+	// generator reads the JD body and tailors the project's
+	// complexity and domain accordingly — e.g., a junior healthtech
+	// JD nudges toward an EHR-flavoured feature.
+	wsBootstrapJDInfluencesProject
 	// wsBootstrapFeatureSource is the either/or step that drives whether
 	// the proctor types the feature description themselves or lets the
 	// AI suggest project ideas. Replaces the old late-stage
@@ -38,9 +53,11 @@ const (
 	wsBootstrapTimeBox
 	wsBootstrapProjectMode
 	wsBootstrapAnalysisMode
+	// wsBootstrapRubricMode is now just default/custom — the
+	// "default+jd" value was retired in favour of the standalone JD
+	// branch above. JD attachment is independent of rubric choice now.
 	wsBootstrapRubricMode
 	wsBootstrapCustomPrompt
-	wsBootstrapJDPath
 	wsBootstrapOutputDir
 	wsBootstrapConfirm
 	wsBootstrapDone
@@ -85,7 +102,17 @@ type bootstrapWizardModel struct {
 	modeRubric   string
 	customPrompt string
 	jdPath       string
-	outputDir    string
+	// jdProvided is bound to the "Will you provide a JD?" select. The
+	// string values are "yes"/"no" so huh.Select can bind directly; the
+	// downstream code only branches on this — the canonical JD presence
+	// signal is the non-empty jdPath that follows.
+	jdProvided string
+	// jdInfluencesProject is bound to the "Should the JD influence the
+	// project?" select. Same "yes"/"no" pattern as jdProvided. The
+	// boolean is collapsed at the BootstrapOptions boundary so the
+	// downstream surface stays typed.
+	jdInfluencesProject string
+	outputDir           string
 
 	// featureSource selects how the candidate-facing feature description
 	// is supplied: "custom" — proctor types it themselves at
@@ -123,17 +150,20 @@ func newBootstrapWizardModel(d BootstrapWizardDefaults) bootstrapWizardModel {
 		modeProject:  normalizeWizardProjectMode(firstNonEmptyStr(d.ModeProject, "brownfield")),
 		modeAnalysis: firstNonEmptyStr(d.ModeAnalysis, "ai-assisted"),
 		modeRubric:   firstNonEmptyStr(d.ModeRubric, "default"),
-		outputDir:     firstNonEmptyStr(d.OutputDir, "./interviews/role"),
-		featureSource: "custom",
-		ideaSelected:  -1,
+		outputDir:           firstNonEmptyStr(d.OutputDir, "./interviews/role"),
+		featureSource:       "custom",
+		jdProvided:          "no",
+		jdInfluencesProject: "no",
+		ideaSelected:        -1,
 	}
 	return m
 }
 
 // bootstrapWizardNextState returns the next wizard state given the current
-// state and the values on the model. Two branching points: featureSource
-// chooses between the typed-description path and the AI-suggest path, and
-// rubricMode picks the optional custom-prompt or jd-path side-step.
+// state and the values on the model. Branching points:
+//   - jdProvided: "yes" takes the JD-path + influences-project detour
+//   - featureSource: "suggest" diverts through the spinner + idea-select
+//   - modeRubric: "custom" diverts through the custom-prompt step
 func bootstrapWizardNextState(cur bootstrapWizardState, m bootstrapWizardModel) bootstrapWizardState {
 	switch cur {
 	case wsBootstrapRole:
@@ -143,6 +173,15 @@ func bootstrapWizardNextState(cur bootstrapWizardState, m bootstrapWizardModel) 
 	case wsBootstrapStack:
 		return wsBootstrapDomain
 	case wsBootstrapDomain:
+		return wsBootstrapJDProvided
+	case wsBootstrapJDProvided:
+		if m.jdProvided == "yes" {
+			return wsBootstrapJDPath
+		}
+		return wsBootstrapFeatureSource
+	case wsBootstrapJDPath:
+		return wsBootstrapJDInfluencesProject
+	case wsBootstrapJDInfluencesProject:
 		return wsBootstrapFeatureSource
 	case wsBootstrapFeatureSource:
 		if m.featureSource == "suggest" {
@@ -162,17 +201,11 @@ func bootstrapWizardNextState(cur bootstrapWizardState, m bootstrapWizardModel) 
 	case wsBootstrapAnalysisMode:
 		return wsBootstrapRubricMode
 	case wsBootstrapRubricMode:
-		switch m.modeRubric {
-		case "custom":
+		if m.modeRubric == "custom" {
 			return wsBootstrapCustomPrompt
-		case "default+jd":
-			return wsBootstrapJDPath
-		default:
-			return wsBootstrapOutputDir
 		}
-	case wsBootstrapCustomPrompt:
 		return wsBootstrapOutputDir
-	case wsBootstrapJDPath:
+	case wsBootstrapCustomPrompt:
 		return wsBootstrapOutputDir
 	case wsBootstrapOutputDir:
 		return wsBootstrapConfirm
@@ -225,21 +258,32 @@ func resolveWizardProjectMode(v string) (string, bool) {
 
 func bootstrapWizardOptionsFromModel(m bootstrapWizardModel) *BootstrapOptions {
 	mode, stackByCandidate := resolveWizardProjectMode(m.modeProject)
+	// JD is only attached when the proctor said "yes" up front. If they
+	// said "no" but somehow still typed a path, ignore the path — the
+	// declared intent wins. Likewise, jdInfluencesProject is meaningless
+	// without a JD, so collapse it to false in that case.
+	jdPath := ""
+	jdInfluencesProject := false
+	if m.jdProvided == "yes" {
+		jdPath = m.jdPath
+		jdInfluencesProject = m.jdInfluencesProject == "yes"
+	}
 	return &BootstrapOptions{
-		Role:             m.role,
-		RoleTitle:        m.roleTitle,
-		Stack:            m.stack,
-		Domain:           m.domain,
-		Feature:          m.feature,
-		TimeBox:          m.timeBox,
-		ModeProject:      mode,
-		StackByCandidate: stackByCandidate,
-		ModeAnalysis:     m.modeAnalysis,
-		ModeRubric:       m.modeRubric,
-		CustomPrompt:     m.customPrompt,
-		JDPath:           m.jdPath,
-		OutputDir:        m.outputDir,
-		Headless:         true, // the runner always speaks the headless protocol
+		Role:                m.role,
+		RoleTitle:           m.roleTitle,
+		Stack:               m.stack,
+		Domain:              m.domain,
+		Feature:             m.feature,
+		TimeBox:             m.timeBox,
+		ModeProject:         mode,
+		StackByCandidate:    stackByCandidate,
+		ModeAnalysis:        m.modeAnalysis,
+		ModeRubric:          m.modeRubric,
+		CustomPrompt:        m.customPrompt,
+		JDPath:              jdPath,
+		JDInfluencesProject: jdInfluencesProject,
+		OutputDir:           m.outputDir,
+		Headless:            true, // the runner always speaks the headless protocol
 	}
 }
 

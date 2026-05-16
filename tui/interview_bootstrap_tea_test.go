@@ -144,12 +144,40 @@ func TestInterviewBootstrap_View_AdvancesPastRubricStep_ShowsCustomTruncatedInSu
 // don't need the bubbletea runtime, so we test them directly for speed.
 // ---------------------------------------------------------------------------
 
-func TestInterviewBootstrap_RubricJDBranch_RoutesToJDStep(t *testing.T) {
+func TestInterviewBootstrap_JDProvidedYes_RoutesToJDPath(t *testing.T) {
+	// JD attachment is now its own branch, decoupled from rubric mode.
+	// jdProvided=yes from the Domain → JD-provided step lands on the
+	// JD-path input.
 	m := newInterviewBootstrapTeaModel(BootstrapWizardDefaults{})
-	m.data.modeRubric = "default+jd"
-	m.step = ibStepRubricMode
+	m.data.jdProvided = "yes"
+	m.step = ibStepJDProvided
 	if next := m.nextStep(m.step); next != ibStepJDPath {
-		t.Fatalf("rubric=default+jd should advance to JD step, got %v", next)
+		t.Fatalf("jdProvided=yes should advance to JD-path, got %v", next)
+	}
+}
+
+func TestInterviewBootstrap_JDProvidedNo_SkipsJDBranch(t *testing.T) {
+	m := newInterviewBootstrapTeaModel(BootstrapWizardDefaults{})
+	m.data.jdProvided = "no"
+	m.step = ibStepJDProvided
+	if next := m.nextStep(m.step); next != ibStepFeatureSource {
+		t.Fatalf("jdProvided=no should skip directly to feature-source, got %v", next)
+	}
+}
+
+func TestInterviewBootstrap_JDPath_RoutesToInfluencesProject(t *testing.T) {
+	m := newInterviewBootstrapTeaModel(BootstrapWizardDefaults{})
+	m.step = ibStepJDPath
+	if next := m.nextStep(m.step); next != ibStepJDInfluencesProject {
+		t.Fatalf("jd-path should advance to influences-project, got %v", next)
+	}
+}
+
+func TestInterviewBootstrap_JDInfluencesProject_RoutesToFeatureSource(t *testing.T) {
+	m := newInterviewBootstrapTeaModel(BootstrapWizardDefaults{})
+	m.step = ibStepJDInfluencesProject
+	if next := m.nextStep(m.step); next != ibStepFeatureSource {
+		t.Fatalf("influences-project should advance to feature-source, got %v", next)
 	}
 }
 
@@ -315,14 +343,14 @@ func TestInterviewBootstrap_CommitSelectedIdea_WritesToFeature(t *testing.T) {
 	}
 }
 
-// TestInterviewBootstrap_NextStep_DomainRoutesToFeatureSource ensures the
-// new either/or step sits between Domain and Feature in the tea state
-// machine.
-func TestInterviewBootstrap_NextStep_DomainRoutesToFeatureSource(t *testing.T) {
+// TestInterviewBootstrap_NextStep_DomainRoutesToJDProvided ensures the
+// JD-provided gate sits between Domain and the rest of the flow in the
+// tea state machine.
+func TestInterviewBootstrap_NextStep_DomainRoutesToJDProvided(t *testing.T) {
 	m := newInterviewBootstrapTeaModel(BootstrapWizardDefaults{})
 	m.step = ibStepDomain
-	if next := m.nextStep(m.step); next != ibStepFeatureSource {
-		t.Fatalf("domain should advance to feature-source, got %v", next)
+	if next := m.nextStep(m.step); next != ibStepJDProvided {
+		t.Fatalf("domain should advance to jd-provided, got %v", next)
 	}
 }
 

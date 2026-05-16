@@ -112,11 +112,44 @@ func TestBootstrapWizard_NextState_CustomRubricRoutesToPromptScreen(t *testing.T
 	}
 }
 
-func TestBootstrapWizard_NextState_JDRubricRoutesToFilePicker(t *testing.T) {
+func TestBootstrapWizard_NextState_RubricDefaultRoutesToOutputDir(t *testing.T) {
+	// Rubric mode is now just default/custom — the "default+jd" value
+	// was retired. JD attachment is its own earlier step. From rubric
+	// mode, the default path goes straight to output-dir.
 	m := newBootstrapWizardModel(BootstrapWizardDefaults{})
-	m.modeRubric = "default+jd"
-	if next := bootstrapWizardNextState(wsBootstrapRubricMode, m); next != wsBootstrapJDPath {
-		t.Errorf("default+jd rubric should advance to jd-path screen, got %v", next)
+	m.modeRubric = "default"
+	if next := bootstrapWizardNextState(wsBootstrapRubricMode, m); next != wsBootstrapOutputDir {
+		t.Errorf("default rubric should advance to output-dir, got %v", next)
+	}
+}
+
+func TestBootstrapWizard_NextState_JDProvidedYesRoutesToPath(t *testing.T) {
+	m := newBootstrapWizardModel(BootstrapWizardDefaults{})
+	m.jdProvided = "yes"
+	if next := bootstrapWizardNextState(wsBootstrapJDProvided, m); next != wsBootstrapJDPath {
+		t.Errorf("jdProvided=yes should advance to jd-path, got %v", next)
+	}
+}
+
+func TestBootstrapWizard_NextState_JDProvidedNoSkipsJDBranch(t *testing.T) {
+	m := newBootstrapWizardModel(BootstrapWizardDefaults{})
+	m.jdProvided = "no"
+	if next := bootstrapWizardNextState(wsBootstrapJDProvided, m); next != wsBootstrapFeatureSource {
+		t.Errorf("jdProvided=no should skip both JD steps, got %v", next)
+	}
+}
+
+func TestBootstrapWizard_NextState_JDPathRoutesToInfluenceQuestion(t *testing.T) {
+	m := newBootstrapWizardModel(BootstrapWizardDefaults{})
+	if next := bootstrapWizardNextState(wsBootstrapJDPath, m); next != wsBootstrapJDInfluencesProject {
+		t.Errorf("jd-path should advance to influences-project, got %v", next)
+	}
+}
+
+func TestBootstrapWizard_NextState_JDInfluenceRoutesToFeatureSource(t *testing.T) {
+	m := newBootstrapWizardModel(BootstrapWizardDefaults{})
+	if next := bootstrapWizardNextState(wsBootstrapJDInfluencesProject, m); next != wsBootstrapFeatureSource {
+		t.Errorf("jd-influences-project should advance to feature-source, got %v", next)
 	}
 }
 
@@ -124,13 +157,6 @@ func TestBootstrapWizard_NextState_CustomPromptThenOutputDir(t *testing.T) {
 	m := newBootstrapWizardModel(BootstrapWizardDefaults{})
 	if next := bootstrapWizardNextState(wsBootstrapCustomPrompt, m); next != wsBootstrapOutputDir {
 		t.Errorf("custom-prompt should advance to output-dir, got %v", next)
-	}
-}
-
-func TestBootstrapWizard_NextState_JDPathThenOutputDir(t *testing.T) {
-	m := newBootstrapWizardModel(BootstrapWizardDefaults{})
-	if next := bootstrapWizardNextState(wsBootstrapJDPath, m); next != wsBootstrapOutputDir {
-		t.Errorf("jd-path should advance to output-dir, got %v", next)
 	}
 }
 
@@ -144,11 +170,13 @@ func TestBootstrapWizard_NextState_OutputDirThenConfirm(t *testing.T) {
 	}
 }
 
-func TestBootstrapWizard_NextState_DomainThenFeatureSource(t *testing.T) {
-	// The either/or feature-source step sits between Domain and Feature.
+func TestBootstrapWizard_NextState_DomainThenJDProvided(t *testing.T) {
+	// The standalone JD branch sits between Domain and Feature source —
+	// asking about the JD early so the project-generation prompt has
+	// access to it when feature ideas are suggested.
 	m := newBootstrapWizardModel(BootstrapWizardDefaults{})
-	if next := bootstrapWizardNextState(wsBootstrapDomain, m); next != wsBootstrapFeatureSource {
-		t.Errorf("domain should advance to feature-source, got %v", next)
+	if next := bootstrapWizardNextState(wsBootstrapDomain, m); next != wsBootstrapJDProvided {
+		t.Errorf("domain should advance to jd-provided, got %v", next)
 	}
 }
 
@@ -322,9 +350,10 @@ func TestBootstrapWizard_OptionsRoundTrip_CustomRubricCarriesPrompt(t *testing.T
 	}
 }
 
-func TestBootstrapWizard_OptionsRoundTrip_JDRubricCarriesPath(t *testing.T) {
+func TestBootstrapWizard_OptionsRoundTrip_JDCarriesPath(t *testing.T) {
 	// Create a real JD file so the existence check inside
-	// ValidateBootstrapOptions passes.
+	// ValidateBootstrapOptions passes. The JD is now its own input
+	// (jdProvided=yes + jdPath), independent of rubric mode.
 	jd := filepath.Join(t.TempDir(), "jd.md")
 	if err := os.WriteFile(jd, []byte("# JD"), 0o644); err != nil {
 		t.Fatalf("setup: %v", err)
@@ -335,7 +364,8 @@ func TestBootstrapWizard_OptionsRoundTrip_JDRubricCarriesPath(t *testing.T) {
 	m.stack = "x"
 	m.domain = "x"
 	m.feature = "x"
-	m.modeRubric = "default+jd"
+	m.modeRubric = "default"
+	m.jdProvided = "yes"
 	m.jdPath = jd
 	m.outputDir = "x"
 
@@ -471,15 +501,17 @@ func TestBootstrapWizard_HuhLauncherCustomRubricSmoke(t *testing.T) {
 	}
 }
 
-// TestBootstrapWizard_HuhLauncherJDRubricSmoke covers the default+jd branch.
-func TestBootstrapWizard_HuhLauncherJDRubricSmoke(t *testing.T) {
+// TestBootstrapWizard_HuhLauncherDefaultRubricWithJDSmoke covers a
+// happy-path run with the standalone JD attached. The "default+jd"
+// rubric value was retired; JD attachment is now an independent input.
+func TestBootstrapWizard_HuhLauncherDefaultRubricWithJDSmoke(t *testing.T) {
 	origRunner := runBootstrapTeaProgram
 	t.Cleanup(func() { runBootstrapTeaProgram = origRunner })
 	runBootstrapTeaProgram = stubTeaProgramRunner(t, true)
 
 	launcher := newHuhBootstrapWizardLauncher(BootstrapWizardDefaults{
 		Role: "smoke-role", Stack: "Go", Domain: "Smoke", Feature: "smoke",
-		ModeRubric: "default+jd", OutputDir: "/tmp/smoke",
+		ModeRubric: "default", OutputDir: "/tmp/smoke",
 	})
 	res, err := launcher.Launch()
 	if err != nil {
@@ -496,10 +528,12 @@ func TestBootstrapWizard_SummarizeRendersAllFields(t *testing.T) {
 	m.stack = "Go"
 	m.domain = "Payments"
 	m.outputDir = "/tmp/x"
-	m.modeRubric = "default+jd"
+	m.modeRubric = "default"
+	m.jdProvided = "yes"
 	m.jdPath = "/path/jd.md"
+	m.jdInfluencesProject = "yes"
 	out := summarizeBootstrapModel(m)
-	for _, want := range []string{"x", "Go", "Payments", "/tmp/x", "default+jd"} {
+	for _, want := range []string{"x", "Go", "Payments", "/tmp/x", "default", "/path/jd.md", "shapes project"} {
 		if !contains([]string{out}, want) && !stringsContains(out, want) {
 			t.Errorf("summary missing %q: %s", want, out)
 		}

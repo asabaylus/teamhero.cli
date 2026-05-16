@@ -35,6 +35,13 @@ type BootstrapOptions struct {
 	// wizard's "Greenfield (candidate picks stack)" option or the
 	// --stack-by-candidate headless flag.
 	StackByCandidate bool
+	// JDInfluencesProject tells the project-generation prompt to read
+	// the JD at JDPath and tailor the generated repo to its seniority
+	// and domain (e.g., junior healthtech → EHR-flavoured feature).
+	// Requires JDPath; the validator rejects the combination otherwise.
+	// Independent of ModeRubric — the JD is now a standalone input
+	// rather than being smuggled in via a rubric value.
+	JDInfluencesProject bool
 	// Debug toggles verbose run-context logs in the bun subprocess (the
 	// generator client) and the Go dispatcher. Off by default — light
 	// run logs print regardless so failure triage doesn't require a rerun.
@@ -59,6 +66,8 @@ func ParseBootstrapFlags(args []string) (*BootstrapOptions, string) {
 			opts.Debug = true
 		case "--stack-by-candidate":
 			opts.StackByCandidate = true
+		case "--jd-influences-project":
+			opts.JDInfluencesProject = true
 		case "--role", "--role-title", "--stack", "--domain", "--feature",
 			"--time-box", "--mode-project", "--mode-analysis", "--mode-rubric",
 			"--jd-path", "--custom-prompt",
@@ -140,20 +149,23 @@ func ValidateBootstrapOptions(opts *BootstrapOptions) string {
 		return "--mode-analysis must be 'ai-assisted' or 'human-only'"
 	}
 	switch opts.ModeRubric {
-	case "default", "custom", "default+jd":
+	case "default", "custom":
 	default:
-		return "--mode-rubric must be 'default', 'custom', or 'default+jd'"
+		return "--mode-rubric must be 'default' or 'custom'"
 	}
 	if opts.ModeRubric == "custom" && strings.TrimSpace(opts.CustomPrompt) == "" {
 		return "--mode-rubric 'custom' requires --custom-prompt"
 	}
-	if opts.ModeRubric == "default+jd" {
-		if strings.TrimSpace(opts.JDPath) == "" {
-			return "--mode-rubric 'default+jd' requires --jd-path"
-		}
+	// jd-path is now optional regardless of rubric mode. When supplied,
+	// the file must exist. --jd-influences-project requires a path
+	// (the generator has nothing to read otherwise).
+	if strings.TrimSpace(opts.JDPath) != "" {
 		if _, err := os.Stat(opts.JDPath); err != nil {
 			return fmt.Sprintf("--jd-path does not exist: %s", opts.JDPath)
 		}
+	}
+	if opts.JDInfluencesProject && strings.TrimSpace(opts.JDPath) == "" {
+		return "--jd-influences-project requires --jd-path"
 	}
 	return ""
 }
@@ -195,6 +207,9 @@ func (bunBootstrapRunner) Run(opts *BootstrapOptions, stdout, stderr io.Writer) 
 	}
 	if opts.StackByCandidate {
 		args = append(args, "--stack-by-candidate")
+	}
+	if opts.JDInfluencesProject {
+		args = append(args, "--jd-influences-project")
 	}
 	if opts.Debug {
 		args = append(args, "--debug")
@@ -320,10 +335,14 @@ func logBootstrapRunContext(opts *BootstrapOptions, w io.Writer) {
 	if opts == nil {
 		return
 	}
+	jdShort := opts.JDPath
+	if jdShort == "" {
+		jdShort = "(none)"
+	}
 	fmt.Fprintf(w,
-		"[bootstrap] role=%s mode=%s stack=%s stack-by-candidate=%t domain=%s time-box=%sm rubric=%s output=%s kit=%s debug=%t\n",
+		"[bootstrap] role=%s mode=%s stack=%s stack-by-candidate=%t domain=%s time-box=%sm rubric=%s jd=%s jd-influences-project=%t output=%s kit=%s debug=%t\n",
 		opts.Role, opts.ModeProject, opts.Stack, opts.StackByCandidate, opts.Domain, opts.TimeBox,
-		opts.ModeRubric, opts.OutputDir, opts.KitDir, opts.Debug,
+		opts.ModeRubric, jdShort, opts.JDInfluencesProject, opts.OutputDir, opts.KitDir, opts.Debug,
 	)
 }
 

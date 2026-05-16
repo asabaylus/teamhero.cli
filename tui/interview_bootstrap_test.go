@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"io"
+	"os"
 	"strings"
 	"testing"
 )
@@ -107,13 +108,53 @@ func TestValidateBootstrapOptions_CustomRubricRequiresPrompt(t *testing.T) {
 	}
 }
 
-func TestValidateBootstrapOptions_JDRubricRequiresPath(t *testing.T) {
+func TestValidateBootstrapOptions_JDInfluencesProjectRequiresPath(t *testing.T) {
+	// --jd-influences-project tells the project-generation prompt to
+	// read the JD; without a path there's nothing to read. The
+	// validator rejects the combination so the misconfiguration is
+	// caught before the bun subprocess starts.
+	opts := &BootstrapOptions{
+		Role: "x", Stack: "x", Domain: "x", Feature: "x", OutputDir: "x",
+		ModeProject: "A", ModeAnalysis: "ai-assisted", ModeRubric: "default",
+		JDInfluencesProject: true,
+	}
+	msg := ValidateBootstrapOptions(opts)
+	if msg == "" {
+		t.Fatal("expected validation error when --jd-influences-project is set without --jd-path")
+	}
+	if !strings.Contains(msg, "jd-influences-project") {
+		t.Errorf("validation error should mention jd-influences-project; got %q", msg)
+	}
+}
+
+func TestValidateBootstrapOptions_RejectsDefaultPlusJD(t *testing.T) {
+	// "default+jd" is retired. JD attachment is its own field. A caller
+	// still passing the old value should get a clear validation error
+	// rather than the bun subprocess receiving an unsupported rubric.
 	opts := &BootstrapOptions{
 		Role: "x", Stack: "x", Domain: "x", Feature: "x", OutputDir: "x",
 		ModeProject: "A", ModeAnalysis: "ai-assisted", ModeRubric: "default+jd",
 	}
 	if msg := ValidateBootstrapOptions(opts); msg == "" {
-		t.Fatal("expected validation error on missing jd-path")
+		t.Fatal("expected validation error on retired 'default+jd' rubric value")
+	}
+}
+
+func TestValidateBootstrapOptions_AcceptsStandaloneJDPath(t *testing.T) {
+	// JD path is now optional regardless of rubric mode. A caller can
+	// supply --jd-path with --mode-rubric default and it should pass
+	// validation (the JD will be used by the AI observer).
+	jd := t.TempDir() + "/jd.md"
+	if err := os.WriteFile(jd, []byte("# JD"), 0o644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	opts := &BootstrapOptions{
+		Role: "x", Stack: "x", Domain: "x", Feature: "x", OutputDir: "x",
+		ModeProject: "A", ModeAnalysis: "ai-assisted", ModeRubric: "default",
+		JDPath: jd,
+	}
+	if msg := ValidateBootstrapOptions(opts); msg != "" {
+		t.Fatalf("expected validation pass for default rubric + jd-path, got %q", msg)
 	}
 }
 

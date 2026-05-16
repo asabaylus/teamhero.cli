@@ -8,6 +8,8 @@
                                                               │ Engineer                           │
   enter submit                                                │ Stack: Go                          │
                                                               │ Domain: Payments                   │
+                                                              │ JD attached: none                  │
+                                                              │ JD usage: —                        │
                                                               │ Feature source: typed by proctor   │
                                                               │ Feature: build a ledger entry-     │
                                                               │ point                              │

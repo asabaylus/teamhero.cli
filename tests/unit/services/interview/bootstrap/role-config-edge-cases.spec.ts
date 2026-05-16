@@ -196,7 +196,7 @@ describe("writeRoleConfig — persistence edge cases", () => {
 		}
 	});
 
-	it("stores optional jdPath when present", () => {
+	it("stores optional jdPath when present (independent of rubric mode)", () => {
 		const dir = mkdtempSync(join(tmpdir(), "iv-rc-optionals-"));
 		const jdDir = mkdtempSync(join(tmpdir(), "iv-jd-"));
 		try {
@@ -204,7 +204,7 @@ describe("writeRoleConfig — persistence edge cases", () => {
 			writeFileSync(jdPath, "# JD content\n");
 			const cfg: RoleConfig = {
 				...baseConfig(),
-				rubricMode: "default+jd",
+				rubricMode: "default",
 				jdPath,
 			};
 			writeRoleConfig(dir, cfg);

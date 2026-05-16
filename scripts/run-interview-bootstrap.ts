@@ -43,6 +43,7 @@ interface ParsedFlags {
 	maxAttempts?: string;
 	debug?: boolean;
 	stackByCandidate?: boolean;
+	jdInfluencesProject?: boolean;
 }
 
 const FLAGS: readonly FlagSpec[] = [
@@ -73,6 +74,10 @@ function parseArgs(argv: readonly string[]): ParsedFlags {
 		}
 		if (arg === "--stack-by-candidate") {
 			out.stackByCandidate = true;
+			continue;
+		}
+		if (arg === "--jd-influences-project") {
+			out.jdInfluencesProject = true;
 			continue;
 		}
 		const spec = FLAGS.find((f) => f.flag === arg);
@@ -107,13 +112,17 @@ function buildConfig(flags: ParsedFlags): RoleConfig | string {
 	if (!validModeAnalyses.includes(flags.modeAnalysis)) {
 		return `--mode-analysis must be one of ${validModeAnalyses.join("/")} (got ${flags.modeAnalysis})`;
 	}
-	const validModeRubrics = ["default", "custom", "default+jd"];
+	const validModeRubrics = ["default", "custom"];
 	if (!validModeRubrics.includes(flags.modeRubric)) {
 		return `--mode-rubric must be one of ${validModeRubrics.join("/")} (got ${flags.modeRubric})`;
 	}
 
 	if (flags.stackByCandidate && flags.modeProject !== "B") {
 		return "--stack-by-candidate is only valid with --mode-project B";
+	}
+
+	if (flags.jdInfluencesProject && !flags.jdPath) {
+		return "--jd-influences-project requires --jd-path";
 	}
 
 	const config: RoleConfig = {
@@ -130,6 +139,7 @@ function buildConfig(flags: ParsedFlags): RoleConfig | string {
 		...(flags.jdPath ? { jdPath: flags.jdPath } : {}),
 		...(flags.customPrompt ? { customPrompt: flags.customPrompt } : {}),
 		...(flags.stackByCandidate ? { stackByCandidate: true } : {}),
+		...(flags.jdInfluencesProject ? { jdInfluencesProject: true } : {}),
 	};
 	return config;
 }
@@ -158,7 +168,7 @@ async function main() {
 	// Always log: enough run context to triage a failure ticket without
 	// repro. Skip feature/prompt text bodies — those go in --debug.
 	consola.info(
-		`bootstrap.start role=${built.roleSlug} mode=${built.projectMode} stack=${built.stack} stack-by-candidate=${built.stackByCandidate ?? false} domain=${built.domain} time-box=${built.timeBoxMinutes}m rubric=${built.rubricMode} max-attempts=${maxAttempts ?? "(default)"} model=${flags.model ?? "(default)"}`,
+		`bootstrap.start role=${built.roleSlug} mode=${built.projectMode} stack=${built.stack} stack-by-candidate=${built.stackByCandidate ?? false} domain=${built.domain} time-box=${built.timeBoxMinutes}m rubric=${built.rubricMode} jd=${built.jdPath ?? "(none)"} jd-influences-project=${built.jdInfluencesProject ?? false} max-attempts=${maxAttempts ?? "(default)"} model=${flags.model ?? "(default)"}`,
 	);
 	if (flags.debug) {
 		consola.debug(

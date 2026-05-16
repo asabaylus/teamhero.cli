@@ -3,7 +3,11 @@ import { join } from "node:path";
 
 export type ProjectMode = "A" | "B";
 export type AnalysisMode = "ai-assisted" | "human-only";
-export type RubricMode = "default" | "custom" | "default+jd";
+// rubricMode picks the rubric the AI observer uses for post-interview
+// analysis. The job description, when supplied, is treated as an
+// independent input — see jdPath / jdInfluencesProject below — so it
+// can supplement either rubric or be used purely for project generation.
+export type RubricMode = "default" | "custom";
 
 export interface RoleConfig {
 	readonly roleSlug: string;
@@ -17,7 +21,15 @@ export interface RoleConfig {
 	readonly rubricMode: RubricMode;
 	readonly outputDir: string;
 	readonly customPrompt?: string;
+	// jdPath is the absolute or relative path to a markdown/text job
+	// description. Optional in all rubric modes. When supplied, the
+	// AI observer references it during post-interview analysis. When
+	// jdInfluencesProject is also true, the project-generation prompt
+	// reads the JD content and tailors the generated repo to match
+	// the seniority and domain it implies (e.g., a junior healthtech
+	// JD nudges the generator toward an EHR-flavoured feature).
 	readonly jdPath?: string;
+	readonly jdInfluencesProject?: boolean;
 	// stackByCandidate flips Mode B's brief from "use the named stack"
 	// to "candidate picks their own stack". Only meaningful when
 	// projectMode === "B"; validation rejects the combination otherwise.
@@ -93,20 +105,30 @@ export function validateRoleConfig(
 				);
 			}
 			break;
-		case "default+jd":
-			if (
-				typeof config.jdPath !== "string" ||
-				config.jdPath.trim().length === 0
-			) {
-				failures.push("rubricMode 'default+jd' requires a jdPath field");
-			} else if (!existsSync(config.jdPath)) {
-				failures.push(`jdPath does not exist on disk: ${config.jdPath}`);
-			}
-			break;
 		default:
 			failures.push(
-				`rubricMode must be one of 'default', 'custom', 'default+jd' (got ${String(config.rubricMode)})`,
+				`rubricMode must be one of 'default', 'custom' (got ${String(config.rubricMode)})`,
 			);
+	}
+
+	// jdPath is now an independent optional field — validated regardless
+	// of rubric mode. When provided, the file must exist; when
+	// jdInfluencesProject is set, jdPath becomes mandatory because the
+	// generator has nothing to read otherwise.
+	if (typeof config.jdPath === "string" && config.jdPath.trim().length > 0) {
+		if (!existsSync(config.jdPath)) {
+			failures.push(`jdPath does not exist on disk: ${config.jdPath}`);
+		}
+	}
+	if (config.jdInfluencesProject) {
+		if (
+			typeof config.jdPath !== "string" ||
+			config.jdPath.trim().length === 0
+		) {
+			failures.push(
+				"jdInfluencesProject is true but jdPath is missing — provide a JD or unset the influence flag",
+			);
+		}
 	}
 
 	return { ok: failures.length === 0, failures };

@@ -1,4 +1,7 @@
 import { describe, expect, it } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { OpenAIGeneratorClient } from "../../../../../src/services/interview/bootstrap/openai-generator-client.js";
 import type { RoleConfig } from "../../../../../src/services/interview/bootstrap/role-config.js";
 
@@ -195,6 +198,59 @@ describe("OpenAIGeneratorClient.generate", () => {
 		expect(prompt).toMatch(/REQUIRES the candidate to use Go/);
 		// The stack-by-candidate path must NOT activate here.
 		expect(prompt).not.toMatch(/candidate selects their own tech stack/);
+	});
+
+	it("injects JD content into the generation prompt when jdInfluencesProject is true", async () => {
+		// The user's example: a junior healthtech JD should nudge the
+		// generator toward an EHR-flavoured feature. The mechanism is
+		// the project-generation prompt reading the JD body and giving
+		// it to the model as background context. This test pins that
+		// the JD content actually reaches the prompt.
+		const dir = mkdtempSync(join(tmpdir(), "iv-jd-gen-"));
+		try {
+			const jdPath = join(dir, "jd.md");
+			writeFileSync(
+				jdPath,
+				"# Junior Healthcare Engineer\nFamiliarity with FHIR, HL7, EHR concepts.",
+			);
+			const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
+			const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
+			await client.generate({
+				config: role({
+					jdPath,
+					jdInfluencesProject: true,
+				}),
+				attempt: 1,
+			});
+			const prompt = captured.calls[0].input;
+			expect(prompt).toContain("Job description context");
+			expect(prompt).toContain("FHIR, HL7, EHR");
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("omits the JD when jdInfluencesProject is false even if jdPath is set", async () => {
+		// JD-without-influence: the JD goes only to the post-interview
+		// observer, not the project-generation prompt. The proctor might
+		// want the observer to see the JD without letting it leak
+		// EHR-flavoured features into the candidate-facing project.
+		const dir = mkdtempSync(join(tmpdir(), "iv-jd-no-influence-"));
+		try {
+			const jdPath = join(dir, "jd.md");
+			writeFileSync(jdPath, "Sensitive JD content the candidate should not see.");
+			const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
+			const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
+			await client.generate({
+				config: role({ jdPath, jdInfluencesProject: false }),
+				attempt: 1,
+			});
+			const prompt = captured.calls[0].input;
+			expect(prompt).not.toContain("Sensitive JD content");
+			expect(prompt).not.toContain("Job description context");
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
 	});
 
 	it("Mode B with stackByCandidate=true tells the BRIEF.md the candidate picks the stack", async () => {

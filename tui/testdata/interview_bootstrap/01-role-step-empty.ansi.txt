@@ -7,6 +7,8 @@
   ┃ >                                                         │ Role title: —                      │
                                                               │ Stack: —                           │
   enter submit                                                │ Domain: —                          │
+                                                              │ JD attached: —                     │
+                                                              │ JD usage: —                        │
                                                               │ Feature source: —                  │
                                                               │ Feature: —                         │
                                                               │ Time-box: —                        │

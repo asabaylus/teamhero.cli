@@ -55,17 +55,23 @@ describe("role-config validation", () => {
 		expect(validateRoleConfig(c).ok).toBe(true);
 	});
 
-	it("rejects rubricMode=default+jd without a jdPath", () => {
-		const c: RoleConfig = { ...baseConfig(), rubricMode: "default+jd" };
+	it("rejects retired rubricMode 'default+jd'", () => {
+		// "default+jd" was retired in favour of a standalone JD field
+		// (jdPath, jdInfluencesProject). The validator must surface a
+		// clear error if a stale config file still uses the old value.
+		const c = { ...baseConfig(), rubricMode: "default+jd" as never } as RoleConfig;
 		const r = validateRoleConfig(c);
 		expect(r.ok).toBe(false);
-		expect(r.failures.some((f) => /jdPath/i.test(f))).toBe(true);
+		expect(r.failures.some((f) => /rubricMode/i.test(f))).toBe(true);
 	});
 
-	it("rejects rubricMode=default+jd when jdPath does not exist on disk", () => {
+	it("rejects a jdPath that does not exist on disk", () => {
+		// jdPath is now optional regardless of rubric mode, but when
+		// supplied it must point at a real file — otherwise the AI
+		// observer will read nothing.
 		const c: RoleConfig = {
 			...baseConfig(),
-			rubricMode: "default+jd",
+			rubricMode: "default",
 			jdPath: "/definitely/not/a/real/path/jd.md",
 		};
 		const r = validateRoleConfig(c);
@@ -73,15 +79,51 @@ describe("role-config validation", () => {
 		expect(r.failures.some((f) => /jdPath/i.test(f))).toBe(true);
 	});
 
-	it("accepts rubricMode=default+jd when jdPath exists", () => {
+	it("accepts a jdPath alongside the default rubric (independent inputs)", () => {
+		// The proctor can now combine ANY rubric with a JD — the old
+		// coupling was an unnecessary restriction.
 		const dir = mkdtempSync(join(tmpdir(), "iv-jd-"));
 		try {
 			const jdPath = join(dir, "jd.md");
 			writeFileSync(jdPath, "# JD\n");
 			const c: RoleConfig = {
 				...baseConfig(),
-				rubricMode: "default+jd",
+				rubricMode: "default",
 				jdPath,
+			};
+			expect(validateRoleConfig(c).ok).toBe(true);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("rejects jdInfluencesProject=true without a jdPath", () => {
+		// The influence flag tells the generator to read the JD; without
+		// a path there's nothing to read. Caught at validation time so
+		// the bun subprocess never sees an inconsistent config.
+		const c: RoleConfig = {
+			...baseConfig(),
+			rubricMode: "default",
+			jdInfluencesProject: true,
+		};
+		const r = validateRoleConfig(c);
+		expect(r.ok).toBe(false);
+		expect(r.failures.some((f) => /jdInfluencesProject/i.test(f))).toBe(true);
+	});
+
+	it("accepts jdInfluencesProject=true paired with a real jdPath", () => {
+		const dir = mkdtempSync(join(tmpdir(), "iv-jd-influence-"));
+		try {
+			const jdPath = join(dir, "jd.md");
+			writeFileSync(
+				jdPath,
+				"# Junior Healthcare Engineer\nFamiliarity with FHIR, HL7, or EHR concepts.\n",
+			);
+			const c: RoleConfig = {
+				...baseConfig(),
+				rubricMode: "default",
+				jdPath,
+				jdInfluencesProject: true,
 			};
 			expect(validateRoleConfig(c).ok).toBe(true);
 		} finally {

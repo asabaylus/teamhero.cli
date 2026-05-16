@@ -40,10 +40,28 @@ func renderInterviewBootstrapSummary(
 	}
 
 	rubricValue := m.modeRubric
-	if m.modeRubric == "default+jd" && m.jdPath != "" {
-		rubricValue = "default+jd (" + m.jdPath + ")"
-	} else if m.modeRubric == "custom" && m.customPrompt != "" {
+	if m.modeRubric == "custom" && m.customPrompt != "" {
 		rubricValue = "custom (" + truncate(m.customPrompt, 24) + ")"
+	}
+
+	jdValue := "—"
+	if m.jdProvided == "yes" {
+		if m.jdPath != "" {
+			jdValue = truncate(m.jdPath, 28)
+		} else {
+			jdValue = "(path pending)"
+		}
+	} else if m.jdProvided == "no" {
+		jdValue = "none"
+	}
+
+	jdInfluenceValue := "—"
+	if m.jdProvided == "yes" {
+		if m.jdInfluencesProject == "yes" {
+			jdInfluenceValue = "shapes project"
+		} else if m.jdInfluencesProject == "no" {
+			jdInfluenceValue = "review only"
+		}
 	}
 
 	entries := []entry{
@@ -51,6 +69,8 @@ func renderInterviewBootstrapSummary(
 		{"Role title", m.roleTitle, ibStepRoleTitle},
 		{"Stack", m.stack, ibStepStack},
 		{"Domain", m.domain, ibStepDomain},
+		{"JD attached", jdValue, ibStepJDProvided},
+		{"JD usage", jdInfluenceValue, ibStepJDInfluencesProject},
 		{"Feature source", fmtFeatureSource(m.featureSource), ibStepFeatureSource},
 		{"Feature", truncate(m.feature, 28), ibStepFeature},
 		{"Time-box", fmtTimeBox(m.timeBox), ibStepTimeBox},

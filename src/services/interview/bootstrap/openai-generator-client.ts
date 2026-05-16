@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import OpenAI from "openai";
 import { getEnv } from "../../../lib/env.js";
 import { getDimensions, getRubricVersion } from "../shared/rubric.js";
@@ -6,6 +7,26 @@ import type {
 	GeneratorClient,
 } from "./project-generator.js";
 import type { RoleConfig } from "./role-config.js";
+
+// readJobDescription returns the JD body when the role config has
+// asked the JD to shape project generation. Empty string when either
+// the influence flag is off or the file can't be read — the
+// generation prompt simply omits the context block in those cases.
+//
+// We trust the validator to have asserted the file exists before
+// reaching this point; the try/catch is defence in depth so a
+// transient FS error (e.g., the proctor moved the file between
+// validation and generation) downgrades to "no JD context" rather
+// than killing the whole run.
+function readJobDescription(config: RoleConfig): string {
+	if (!config.jdInfluencesProject) return "";
+	if (!config.jdPath || config.jdPath.trim().length === 0) return "";
+	try {
+		return readFileSync(config.jdPath, "utf8").trim();
+	} catch {
+		return "";
+	}
+}
 
 interface GeneratedFileResponse {
 	path: string;
@@ -81,11 +102,25 @@ ${
 - No starter code at all. The candidate writes everything from scratch.
 - DO NOT generate a CLAUDE.md or an AGENTS.md. Those files are provided by the interview kit at copy time.`;
 
+	// Job description context — included only when the proctor opted to
+	// let the JD influence project generation. The model uses this to
+	// calibrate the project's complexity and domain character: e.g., a
+	// junior healthtech JD nudges toward an EHR-flavoured feature; a
+	// staff platform-engineering JD nudges toward systems-level
+	// concerns. Placed BEFORE the rubric so the structural rules
+	// (README required, no tests/glossary/CLAUDE.md) remain the final
+	// authoritative instruction the model reads.
+	const jd = readJobDescription(config);
+	const jdContext =
+		jd.length > 0
+			? `\n\nJob description context — use this to calibrate the project's complexity, seniority, and domain character. Do not echo it back to the candidate or reference it in the README; treat it as background that shapes what you build:\n---\n${jd}\n---\n`
+			: "";
+
 	return `You are generating a candidate coding interview project for the role: ${config.roleTitle}.
 Stack: ${config.stack}. Domain: ${config.domain}. Feature focus: ${config.featureDescription}.
 Time-box: ${config.timeBoxMinutes} minutes.
 
-This is attempt ${attempt}.${retryNote}
+This is attempt ${attempt}.${retryNote}${jdContext}
 
 ${modeSpec}
 

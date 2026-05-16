@@ -12,8 +12,9 @@ import (
 )
 
 // interviewBootstrapStep enumerates the form screens of the bootstrap
-// wizard. Branching for rubric mode (custom vs default+jd) is handled by
-// the advance() transition, not by the enumeration order.
+// wizard. Branching for the JD provided/influences-project pair and
+// the rubric-mode custom-prompt detour is handled by advance(), not by
+// the enumeration order.
 type interviewBootstrapStep int
 
 const (
@@ -21,6 +22,13 @@ const (
 	ibStepRoleTitle
 	ibStepStack
 	ibStepDomain
+	// ibStepJDProvided is the yes/no gate for the standalone JD branch.
+	// "yes" routes through the path + influences-project pair; "no"
+	// skips both. The JD is now collected separately from rubric mode
+	// so the proctor can mix a custom rubric WITH a JD if they want.
+	ibStepJDProvided
+	ibStepJDPath
+	ibStepJDInfluencesProject
 	// ibStepFeatureSource is the either/or step that picks whether the
 	// proctor types the feature description themselves or asks the AI to
 	// suggest project ideas scoped to the role profile. The "Feature"
@@ -43,9 +51,10 @@ const (
 	ibStepTimeBoxCustom
 	ibStepProjectMode
 	ibStepAnalysisMode
+	// ibStepRubricMode is now just default/custom — the "default+jd"
+	// value was retired in favour of the standalone JD branch.
 	ibStepRubricMode
 	ibStepCustomPrompt
-	ibStepJDPath
 	ibStepOutputDir
 	ibStepConfirm
 	ibStepDone
@@ -333,6 +342,15 @@ func (m *interviewBootstrapTeaModel) nextStep(cur interviewBootstrapStep) interv
 	case ibStepStack:
 		return ibStepDomain
 	case ibStepDomain:
+		return ibStepJDProvided
+	case ibStepJDProvided:
+		if m.data.jdProvided == "yes" {
+			return ibStepJDPath
+		}
+		return ibStepFeatureSource
+	case ibStepJDPath:
+		return ibStepJDInfluencesProject
+	case ibStepJDInfluencesProject:
 		return ibStepFeatureSource
 	case ibStepFeatureSource:
 		if m.data.featureSource == "suggest" {
@@ -359,17 +377,11 @@ func (m *interviewBootstrapTeaModel) nextStep(cur interviewBootstrapStep) interv
 	case ibStepAnalysisMode:
 		return ibStepRubricMode
 	case ibStepRubricMode:
-		switch m.data.modeRubric {
-		case "custom":
+		if m.data.modeRubric == "custom" {
 			return ibStepCustomPrompt
-		case "default+jd":
-			return ibStepJDPath
-		default:
-			return ibStepOutputDir
 		}
-	case ibStepCustomPrompt:
 		return ibStepOutputDir
-	case ibStepJDPath:
+	case ibStepCustomPrompt:
 		return ibStepOutputDir
 	case ibStepOutputDir:
 		return ibStepConfirm
@@ -512,9 +524,8 @@ func (m *interviewBootstrapTeaModel) buildForm() *huh.Form {
 	case ibStepRubricMode:
 		// Same short-description discipline as ibStepAnalysisMode —
 		// avoids the huh.ThemeCharm left-bar break on wrapped
-		// Description lines. The three option labels carry the
-		// detail; the Description only nudges the user to look at
-		// them.
+		// Description lines. JD attachment moved to its own earlier
+		// step so the rubric question is now a clean default-vs-custom.
 		return huh.NewForm(huh.NewGroup(
 			huh.NewSelect[string]().
 				Title("How should AI share observations?").
@@ -522,7 +533,6 @@ func (m *interviewBootstrapTeaModel) buildForm() *huh.Form {
 				Options(
 					huh.NewOption("Default — 9 built-in dimensions (recommended)", "default"),
 					huh.NewOption("Custom — write your own prompt", "custom"),
-					huh.NewOption("Default + Job Description", "default+jd"),
 				).
 				Value(&d.modeRubric),
 		)).WithTheme(huh.ThemeCharm()).WithWidth(m.formWidth())
@@ -536,21 +546,54 @@ func (m *interviewBootstrapTeaModel) buildForm() *huh.Form {
 				Validate(nonEmpty("custom prompt")),
 		)).WithTheme(huh.ThemeCharm()).WithWidth(m.formWidth())
 
+	case ibStepJDProvided:
+		// Standalone JD branch. Defaults to "no" so a hiring manager
+		// who pressed enter through everything ends up without a JD
+		// rather than with a broken path. Description kept short to
+		// dodge huh.ThemeCharm's left-bar wrap bug.
+		return huh.NewForm(huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Will you provide a job description?").
+				Description("Optional. Feeds the AI observer when set.").
+				Options(
+					huh.NewOption("No", "no"),
+					huh.NewOption("Yes — I have a JD file", "yes"),
+				).
+				Value(&d.jdProvided),
+		)).WithTheme(huh.ThemeCharm()).WithWidth(m.formWidth())
+
 	case ibStepJDPath:
 		return huh.NewForm(huh.NewGroup(
 			huh.NewInput().
 				Title("Path to job description file").
-				Description("Markdown or text JD the AI reads alongside the default rubric.").
+				Description("Markdown or text JD; AI reads it as evaluation context.").
 				Value(&d.jdPath).
 				Validate(func(s string) error {
 					if err := validateJDPath(s); err != nil {
 						return err
 					}
-					if s == "" {
-						return fmt.Errorf("JD path is required for 'default+jd' rubric mode")
+					if strings.TrimSpace(s) == "" {
+						return fmt.Errorf("JD path is required (or pick No on the previous step)")
 					}
 					return nil
 				}),
+		)).WithTheme(huh.ThemeCharm()).WithWidth(m.formWidth())
+
+	case ibStepJDInfluencesProject:
+		// When "yes", the project-generation prompt reads the JD and
+		// tailors the project's complexity and domain to match — e.g.,
+		// a junior healthtech JD nudges the AI toward an EHR-flavoured
+		// feature. When "no", the JD is still used by the post-interview
+		// observer; it just doesn't shape what the candidate sees.
+		return huh.NewForm(huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Should the JD influence the project?").
+				Description("Tailors the generated project to the JD's seniority and domain.").
+				Options(
+					huh.NewOption("No — JD informs review only", "no"),
+					huh.NewOption("Yes — JD shapes what the candidate sees", "yes"),
+				).
+				Value(&d.jdInfluencesProject),
 		)).WithTheme(huh.ThemeCharm()).WithWidth(m.formWidth())
 
 	case ibStepOutputDir:

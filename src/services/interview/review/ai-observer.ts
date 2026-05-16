@@ -116,18 +116,24 @@ function rubricBlock(): string {
 }
 
 function rubricModeAddendum(config: RoleConfig): string {
+	// Rubric mode picks the base prompt; the JD is appended separately
+	// whenever it's been provided, regardless of mode. The previous
+	// design coupled "JD attached" to a "default+jd" rubric value, which
+	// forced the proctor to pick between custom rubric guidance and JD
+	// context — now they can have both.
+	let addendum = "";
 	switch (config.rubricMode) {
 		case "default":
-			return "";
+			break;
 		case "custom":
-			return `\n\nAdditional rubric guidance from the hiring manager (custom mode):\n${config.customPrompt ?? ""}`;
-		case "default+jd": {
-			const jd = readIfExists(config.jdPath);
-			return jd
-				? `\n\nJob description supplied by the hiring manager (default+jd mode):\n---\n${jd}\n---`
-				: "";
-		}
+			addendum = `\n\nAdditional rubric guidance from the hiring manager (custom mode):\n${config.customPrompt ?? ""}`;
+			break;
 	}
+	const jd = readIfExists(config.jdPath);
+	if (jd) {
+		addendum += `\n\nJob description supplied by the hiring manager — use it as context for what level of work to expect from this candidate:\n---\n${jd}\n---`;
+	}
+	return addendum;
 }
 
 function summarizeEvents(events: readonly EvidenceEvent[]): string {

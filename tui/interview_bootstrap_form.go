@@ -19,13 +19,16 @@ func runHuhBootstrapWizard(d BootstrapWizardDefaults) (*BootstrapWizardResult, e
 // wizard's collected values. Used by the confirm-step description and by
 // callers that want a short config string.
 func summarizeBootstrapModel(m bootstrapWizardModel) string {
-	rub := m.modeRubric
-	if m.modeRubric == "default+jd" && m.jdPath != "" {
-		rub = "default+jd (" + m.jdPath + ")"
+	jd := "none"
+	if m.jdProvided == "yes" && m.jdPath != "" {
+		jd = m.jdPath
+		if m.jdInfluencesProject == "yes" {
+			jd += " (shapes project)"
+		}
 	}
 	return fmt.Sprintf(
-		"role=%s · stack=%s · domain=%s · time-box=%s · project=%s · analysis=%s · rubric=%s · out=%s",
-		m.role, m.stack, m.domain, m.timeBox, m.modeProject, m.modeAnalysis, rub, m.outputDir,
+		"role=%s · stack=%s · domain=%s · time-box=%s · project=%s · analysis=%s · rubric=%s · jd=%s · out=%s",
+		m.role, m.stack, m.domain, m.timeBox, m.modeProject, m.modeAnalysis, m.modeRubric, jd, m.outputDir,
 	)
 }
 

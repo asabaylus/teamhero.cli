@@ -74,16 +74,41 @@ describe("buildObserverPrompt", () => {
 		expect(prompt.instructions).toContain("watch for X");
 	});
 
-	it("includes the JD content when rubricMode is default+jd", () => {
+	it("includes the JD content whenever jdPath is set (independent of rubric mode)", () => {
+		// Standalone JD: the observer now references the JD whenever
+		// it's been provided, regardless of whether the rubric is
+		// "default" or "custom". The old "default+jd" coupling forced
+		// the proctor to choose between custom rubric guidance and JD
+		// context — now they can combine both.
 		const dir = mkdtempSync(join(tmpdir(), "iv-jd-"));
 		try {
 			const path = join(dir, "jd.md");
 			writeFileSync(path, "Looking for someone with payments domain depth.");
 			const prompt = buildObserverPrompt({
-				config: role({ rubricMode: "default+jd", jdPath: path }),
+				config: role({ rubricMode: "default", jdPath: path }),
 				events: [evt],
 			});
 			expect(prompt.instructions).toContain("payments domain depth");
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("combines custom rubric guidance AND JD content when both are supplied", () => {
+		const dir = mkdtempSync(join(tmpdir(), "iv-jd-combo-"));
+		try {
+			const path = join(dir, "jd.md");
+			writeFileSync(path, "Senior engineer, FHIR/HL7 background expected.");
+			const prompt = buildObserverPrompt({
+				config: role({
+					rubricMode: "custom",
+					customPrompt: "watch for X",
+					jdPath: path,
+				}),
+				events: [evt],
+			});
+			expect(prompt.instructions).toContain("watch for X");
+			expect(prompt.instructions).toContain("FHIR/HL7");
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}
