@@ -466,10 +466,15 @@ func (m *interviewBootstrapTeaModel) buildForm() *huh.Form {
 		)).WithTheme(huh.ThemeCharm()).WithWidth(m.formWidth())
 
 	case ibStepAnalysisMode:
+		// Description kept short enough to fit on one line at the
+		// default formWidth (3/5 of an 80-col terminal = 48 chars).
+		// huh.ThemeCharm's left vertical bar fails to extend onto
+		// wrapped Description lines, producing a visual break, so we
+		// pre-shorten static descriptions to dodge huh's wrap path.
 		return huh.NewForm(huh.NewGroup(
 			huh.NewSelect[string]().
 				Title("Analysis mode").
-				Description("ai-assisted: AI generates observations for the manager to review. human-only: manager writes everything.").
+				Description("AI-assisted drafts notes; human-only does not.").
 				Options(
 					huh.NewOption("AI-assisted (recommended)", "ai-assisted"),
 					huh.NewOption("Human-only", "human-only"),
@@ -478,13 +483,18 @@ func (m *interviewBootstrapTeaModel) buildForm() *huh.Form {
 		)).WithTheme(huh.ThemeCharm()).WithWidth(m.formWidth())
 
 	case ibStepRubricMode:
+		// Same short-description discipline as ibStepAnalysisMode —
+		// avoids the huh.ThemeCharm left-bar break on wrapped
+		// Description lines. The three option labels carry the
+		// detail; the Description only nudges the user to look at
+		// them.
 		return huh.NewForm(huh.NewGroup(
 			huh.NewSelect[string]().
 				Title("Rubric mode").
-				Description("default: 9 built-in dimensions. custom: write your own prompt. default+jd: 9 dims plus your JD as additional context.").
+				Description("Pick how the candidate will be assessed.").
 				Options(
-					huh.NewOption("Default (recommended)", "default"),
-					huh.NewOption("Custom prompt", "custom"),
+					huh.NewOption("Default — 9 built-in dimensions (recommended)", "default"),
+					huh.NewOption("Custom — write your own prompt", "custom"),
 					huh.NewOption("Default + Job Description", "default+jd"),
 				).
 				Value(&d.modeRubric),
