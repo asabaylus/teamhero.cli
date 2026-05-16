@@ -21,6 +21,22 @@ Run 'teamhero interview <verb> --help' for verb-specific help.
 `)
 }
 
+// interviewVerbOptions returns the picker choices. Each Value must be a
+// non-empty string distinct from the zero value of `string` — otherwise huh
+// treats Cancel (whose value used to be "") as the bound `verb`'s current
+// value, places the cursor on Cancel (the LAST row), and the viewport
+// scrolls to keep that cursor visible, clipping every option above it. The
+// user only sees "> Cancel" on first paint until they press the up arrow.
+// Regression test: TestInterviewVerbOptions_NoValueMatchesZeroDefault.
+func interviewVerbOptions() []huh.Option[string] {
+	return []huh.Option[string]{
+		huh.NewOption("Bootstrap — generate a candidate coding project", "bootstrap"),
+		huh.NewOption("Review — review a single candidate's interview", "review"),
+		huh.NewOption("Cohort — review all candidates for a role", "cohort"),
+		huh.NewOption("Cancel", "cancel"),
+	}
+}
+
 // interviewVerbPicker returns the verb the user chose ("bootstrap" / "review"
 // / "cohort"), "" if they cancelled, or an error. Tests override this so the
 // dispatcher logic can be exercised without a TTY.
@@ -31,12 +47,7 @@ var interviewVerbPicker = func() (string, error) {
 			huh.NewSelect[string]().
 				Title("teamhero interview").
 				Description("What would you like to do?").
-				Options(
-					huh.NewOption("Bootstrap — generate a candidate coding project", "bootstrap"),
-					huh.NewOption("Review — review a single candidate's interview", "review"),
-					huh.NewOption("Cohort — review all candidates for a role", "cohort"),
-					huh.NewOption("Cancel", ""),
-				).
+				Options(interviewVerbOptions()...).
 				Value(&verb),
 		),
 	)
@@ -45,6 +56,12 @@ var interviewVerbPicker = func() (string, error) {
 			return "", nil
 		}
 		return "", err
+	}
+	// Map the "cancel" sentinel back to the caller's "" no-op convention so
+	// the dispatcher's existing `if verb == ""` check covers both abort
+	// (ctrl-c) and explicit Cancel selection.
+	if verb == "cancel" {
+		return "", nil
 	}
 	return verb, nil
 }

@@ -97,6 +97,71 @@ type pickerErr struct{ msg string }
 
 func (e *pickerErr) Error() string { return e.msg }
 
+// TestInterviewVerbOptions_NoValueMatchesZeroDefault pins the bug where the
+// Cancel option used to have Value == "", which matched the zero value of
+// the picker's `var verb string` binding. huh marked Cancel as the "current
+// value", anchored the cursor on it (the LAST row), and the viewport
+// scrolled so only "> Cancel" was visible on first paint — the user had to
+// press the up arrow to reveal Bootstrap / Review / Cohort above it. Any
+// future option whose value collides with the bound type's zero value would
+// re-introduce the same clipping, so we guard the whole list, not just Cancel.
+func TestInterviewVerbOptions_NoValueMatchesZeroDefault(t *testing.T) {
+	options := interviewVerbOptions()
+	if len(options) == 0 {
+		t.Fatal("interviewVerbOptions returned no choices")
+	}
+	for _, opt := range options {
+		if opt.Value == "" {
+			t.Errorf(
+				"option %q has Value == \"\" — this collides with the picker's `var verb string` zero default. "+
+					"huh will anchor the cursor on it and the viewport will clip the rows above. "+
+					"Give it a distinct non-empty sentinel (e.g. %q).",
+				opt.Key, "cancel",
+			)
+		}
+	}
+}
+
+// TestInterviewVerbOptions_IncludesCancel asserts the menu still surfaces a
+// way out for the user. If a future refactor drops the Cancel row, the
+// dispatcher's `verb == ""` no-op path becomes unreachable from the picker
+// (only ctrl-c aborts work), and users would be forced to commit to a verb.
+func TestInterviewVerbOptions_IncludesCancel(t *testing.T) {
+	for _, opt := range interviewVerbOptions() {
+		if opt.Value == "cancel" {
+			return
+		}
+	}
+	t.Error("interviewVerbOptions must include a Cancel choice with Value == \"cancel\"")
+}
+
+// TestRunInterview_NoVerb_TTY_CancelSentinelTreatedAsNoOp confirms the
+// picker→dispatcher contract still treats the user picking "Cancel"
+// (sentinel "cancel" mapped to "" inside interviewVerbPicker) as a clean
+// exit 0 with no error output — same behavior as ctrl-c abort.
+func TestRunInterview_NoVerb_TTY_CancelSentinelTreatedAsNoOp(t *testing.T) {
+	origTTY := isStdinTTY
+	origPicker := interviewVerbPicker
+	t.Cleanup(func() {
+		isStdinTTY = origTTY
+		interviewVerbPicker = origPicker
+	})
+	isStdinTTY = func() bool { return true }
+	// The real picker maps the "cancel" sentinel to "" before returning;
+	// this stub emulates that contract so the dispatcher sees the no-op
+	// signal exactly as production callers will.
+	interviewVerbPicker = func() (string, error) { return "", nil }
+
+	var out bytes.Buffer
+	code := runInterview(nil, &out)
+	if code != 0 {
+		t.Errorf("Cancel sentinel should exit 0, got %d (stderr-ish output: %q)", code, out.String())
+	}
+	if out.Len() != 0 {
+		t.Errorf("Cancel must not write to output, got %q", out.String())
+	}
+}
+
 func TestRunInterview_BootstrapVerb_RequiresFlags(t *testing.T) {
 	// `bootstrap` with no flags drops into the interactive wizard on a TTY
 	// or exits non-zero otherwise. Pin stdin-is-TTY to false so the test
