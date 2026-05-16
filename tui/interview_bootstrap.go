@@ -230,6 +230,15 @@ func findBootstrapScript() string {
 //   - --time-box defaults to "60" minutes — the recommended length for a
 //     candidate interview project. Override with --time-box per the
 //     original PRD when the role needs more or less runway.
+//   - --kit-dir defaults to `teamhero-interview-kit` (resolved relative
+//     to the current working directory) so the bootstrap scripts,
+//     INTERVIEW_RULES.md, AGENTS.md, PRIVACY_RELEASE.md, .claude/CLAUDE.md,
+//     and other scaffolding files are ALWAYS copied into the generated
+//     repo — regardless of whether the proctor picked a generated
+//     starter project (Mode A) or a brief-only flow (Mode B). Without
+//     this default a proctor who forgot to pass --kit-dir got the AI
+//     output but none of the proctor/candidate guidance, which broke
+//     the recording workflow.
 //
 // Defaults are applied in-place; an explicit user flag always wins.
 func applyBootstrapDefaults(opts *BootstrapOptions) {
@@ -242,6 +251,9 @@ func applyBootstrapDefaults(opts *BootstrapOptions) {
 	}
 	if strings.TrimSpace(opts.TimeBox) == "" {
 		opts.TimeBox = "60"
+	}
+	if strings.TrimSpace(opts.KitDir) == "" {
+		opts.KitDir = "teamhero-interview-kit"
 	}
 }
 

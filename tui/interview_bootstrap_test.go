@@ -323,6 +323,27 @@ func TestApplyBootstrapDefaults_DoesNotOverrideExplicitTimeBox(t *testing.T) {
 	}
 }
 
+func TestApplyBootstrapDefaults_FillsKitDirSoScaffoldingAlwaysShipsToCandidate(t *testing.T) {
+	// Reported gap: proctors who forgot --kit-dir got the AI-generated
+	// project but none of the kit scaffolding (start/end scripts,
+	// INTERVIEW_RULES.md, AGENTS.md, PRIVACY_RELEASE.md, .claude/). The
+	// recording workflow depends on those files, so the default must
+	// always point at the canonical kit directory.
+	opts := &BootstrapOptions{Role: "x"}
+	applyBootstrapDefaults(opts)
+	if opts.KitDir != "teamhero-interview-kit" {
+		t.Errorf("KitDir default should be 'teamhero-interview-kit'; got %q", opts.KitDir)
+	}
+}
+
+func TestApplyBootstrapDefaults_DoesNotOverrideExplicitKitDir(t *testing.T) {
+	opts := &BootstrapOptions{Role: "x", KitDir: "/opt/custom-kit"}
+	applyBootstrapDefaults(opts)
+	if opts.KitDir != "/opt/custom-kit" {
+		t.Errorf("explicit --kit-dir must win; got %q", opts.KitDir)
+	}
+}
+
 func TestApplyBootstrapDefaults_NilSafe(t *testing.T) {
 	// Defensive: panicking on a nil opts pointer would crash production
 	// callers that wire applyBootstrapDefaults into hot paths without an
