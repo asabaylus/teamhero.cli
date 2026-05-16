@@ -416,16 +416,27 @@ func runInterviewBootstrapWithWizard(
 			fmt.Fprintln(stderr, "wizard returned no options; aborting")
 			return 1
 		}
+		// applyBootstrapDefaults fills in --kit-dir (and any other
+		// derived flags) BEFORE validation. The wizard model never sets
+		// KitDir itself, so without this call the bun subprocess runs
+		// with no kit-template-dir and the generated repo ships with
+		// only BRIEF.md / role-config.json — no INTERVIEW_RULES.md,
+		// AGENTS.md, PRIVACY_RELEASE.md, or recording-hook plumbing.
+		// Reported by a proctor whose wizard-driven Mode B run produced
+		// exactly that minimal output.
+		applyBootstrapDefaults(opts)
 		if msg := ValidateBootstrapOptions(opts); msg != "" {
 			fmt.Fprintln(stderr, msg)
 			return 1
 		}
+		logBootstrapRunContext(opts, stderr)
 		// Interactive path: hand off to the bubbletea generate screen so the
 		// user sees a spinner during the bun subprocess and lands on a
 		// persistent result view (with a clickable output path) afterward,
 		// rather than the TUI exiting silently the moment generation ends.
 		code := runBootstrapGenerate(runner, opts, stdout, stderr)
 		if code == 0 {
+			printBootstrapSuccessLink(opts.OutputDir, stdout)
 			// Offer GitHub publish only after successful generation, and
 			// only when the user already configured a GitHub token via
 			// `teamhero setup` (silent skip otherwise — no nag).

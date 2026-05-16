@@ -326,15 +326,24 @@ describe("OpenAIGeneratorClient.generate", () => {
 		expect(prompt).not.toContain("Previous attempt failed");
 	});
 
-	it("includes rubric dimension IDs in the prompt", async () => {
+	it("does NOT inline the full rubric (token-cost regression guard)", async () => {
+		// The full 9-dimension rubric used to be inlined here so the
+		// model could "build for observability." It was ~600 input
+		// tokens of review-side context per call; removing it after a
+		// proctor reported $1.36 for a single Mode B run saves that
+		// per attempt. The summary-style one-liner that replaced it
+		// still nudges the model to leave decision points for the
+		// candidate. ai-observer.ts still injects the full rubric on
+		// the review side, where it actually drives scoring.
 		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
 		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
 		await client.generate({ config: role(), attempt: 1 });
 		const prompt = captured.calls[0].input;
-		// The rubric block from getDimensions() should appear in the prompt
-		expect(prompt).toContain("upfront-design");
-		expect(prompt).toContain("context-engineering");
-		expect(prompt).toContain("verification");
+		expect(prompt).not.toContain("upfront-design");
+		expect(prompt).not.toContain("context-engineering");
+		expect(prompt).not.toContain("interview-reviewer v");
+		// The replacement one-liner is what nudges the model now.
+		expect(prompt).toMatch(/engineering judgment under AI augmentation/i);
 	});
 
 	it("uses the custom model when specified in the constructor", async () => {

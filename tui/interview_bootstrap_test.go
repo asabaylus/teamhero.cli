@@ -332,6 +332,43 @@ func withPublishHooks(t *testing.T, tty bool, onPublish func(opts *BootstrapOpti
 	isStdinTTY = func() bool { return tty }
 }
 
+func TestPrintBootstrapSuccessLink_DisplaysRelativePath(t *testing.T) {
+	// Display label should be cwd-relative — running `teamhero` from
+	// ~/Documents and writing into ~/Documents/interviews/foo should
+	// surface as "interviews/foo", not "/home/<user>/Documents/...".
+	// The underlying OSC 8 file:// URL is still absolute (so the link
+	// actually works on click), but the human-readable label is what
+	// the proctor reads.
+	tmp := t.TempDir()
+	prevCwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(tmp); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(prevCwd) })
+
+	subDir := tmp + "/interviews/foo"
+	if err := os.MkdirAll(subDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	var buf bytes.Buffer
+	printBootstrapSuccessLink(subDir, &buf)
+	got := buf.String()
+	// The OSC 8 envelope wraps the absolute file:// URL around a
+	// human-readable label: ESC]8;;<url>ESC\<label>ESC]8;;ESC\
+	// We want the LABEL (between the inner escapes) to be the
+	// cwd-relative path, while the URL stays absolute so a ctrl-click
+	// still resolves on disk.
+	if !strings.Contains(got, "\\interviews/foo\x1b]8;;\x1b\\") {
+		t.Errorf("expected cwd-relative label 'interviews/foo' between the OSC 8 escapes; got %q", got)
+	}
+	if !strings.Contains(got, "file://"+tmp+"/interviews/foo") {
+		t.Errorf("expected absolute file:// URL embedded for the click target; got %q", got)
+	}
+}
+
 func TestRunInterviewBootstrap_PrintsSuccessLinkOnZeroExit(t *testing.T) {
 	withPublishHooks(t, false, nil) // non-TTY so publish stays out of the way
 	var out, errBuf bytes.Buffer
@@ -611,6 +648,54 @@ func TestRunInterviewBootstrap_FlagsBypassWizard(t *testing.T) {
 	}
 	if stubRun.gotOpts == nil {
 		t.Errorf("runner should be invoked with parsed headless flags")
+	}
+}
+
+func TestRunInterviewBootstrap_WizardPathAppliesKitDirDefault(t *testing.T) {
+	// Regression guard for a manual-test report: a proctor running the
+	// interactive wizard (Mode B) got an output directory containing
+	// only BRIEF.md and role-config.json — none of the kit overlay
+	// (INTERVIEW_RULES.md, AGENTS.md, etc.). Cause: the wizard path
+	// never called applyBootstrapDefaults, so KitDir stayed empty and
+	// the bun subprocess copied no kit templates. The fix calls
+	// applyBootstrapDefaults right after the wizard returns; this test
+	// asserts the runner sees KitDir populated by the time it runs.
+	var out, errBuf bytes.Buffer
+	stubRun := &stubRunner{code: 0}
+	stubLauncher := &stubWizardLauncher{
+		result: &BootstrapWizardResult{
+			Confirmed: true,
+			Options: &BootstrapOptions{
+				Role: "wizard-role", Stack: "TS", Domain: "Payments",
+				Feature: "Add idempotency", ModeProject: "A",
+				ModeAnalysis: "ai-assisted", ModeRubric: "default",
+				OutputDir: "./interviews/wizard-role",
+				// KitDir intentionally NOT set — bootstrapWizardOptionsFromModel
+				// doesn't populate it; the dispatcher must.
+			},
+		},
+	}
+	orig := runBootstrapGenerate
+	t.Cleanup(func() { runBootstrapGenerate = orig })
+	runBootstrapGenerate = func(runner BootstrapRunner, opts *BootstrapOptions, stdout, stderr io.Writer) int {
+		return runner.Run(opts, stdout, stderr)
+	}
+	// The wizard path only fires on a TTY. withPublishHooks(true, ...)
+	// makes isStdinTTY report TTY so the dispatcher enters the wizard
+	// branch instead of falling through to "not a TTY" exit.
+	withPublishHooks(t, true, nil)
+	code := runInterviewBootstrapWithWizard([]string{}, stubRun, stubLauncher, &out, &errBuf)
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d (stderr=%q)", code, errBuf.String())
+	}
+	if stubRun.gotOpts == nil {
+		t.Fatal("runner not invoked")
+	}
+	if stubRun.gotOpts.KitDir != "teamhero-interview-kit" {
+		t.Errorf(
+			"wizard path must fill KitDir via applyBootstrapDefaults; got %q",
+			stubRun.gotOpts.KitDir,
+		)
 	}
 }
 

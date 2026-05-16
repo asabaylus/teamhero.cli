@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/lipgloss"
 )
 
 func printInterviewUsage(out io.Writer) {
@@ -40,7 +41,17 @@ func interviewVerbOptions() []huh.Option[string] {
 // interviewVerbPicker returns the verb the user chose ("bootstrap" / "review"
 // / "cohort"), "" if they cancelled, or an error. Tests override this so the
 // dispatcher logic can be exercised without a TTY.
+//
+// The picker is wrapped with the shared shell-header + hints-footer so the
+// `teamhero interview` no-args screen lands inside the same contextual
+// frame as every other top-level command. Without the frame the user
+// drops out of the app's visual layout and the picker looks like an
+// unrelated tool.
 var interviewVerbPicker = func() (string, error) {
+	w := termWidth()
+	fmt.Println(renderShellHeader(w))
+	fmt.Println()
+
 	var verb string
 	form := huh.NewForm(
 		huh.NewGroup(
@@ -50,13 +61,18 @@ var interviewVerbPicker = func() (string, error) {
 				Options(interviewVerbOptions()...).
 				Value(&verb),
 		),
-	)
+	).WithTheme(huh.ThemeCharm()).WithWidth(w * 3 / 5)
 	if err := form.Run(); err != nil {
 		if err == huh.ErrUserAborted {
 			return "", nil
 		}
 		return "", err
 	}
+
+	hintStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	fmt.Println()
+	fmt.Println(hintStyle.Render("enter continue • ctrl+c quit"))
+
 	// Map the "cancel" sentinel back to the caller's "" no-op convention so
 	// the dispatcher's existing `if verb == ""` check covers both abort
 	// (ctrl-c) and explicit Cancel selection.

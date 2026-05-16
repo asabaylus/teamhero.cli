@@ -1,5 +1,11 @@
 import { describe, expect, it } from "bun:test";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runBootstrap } from "../../../../../src/services/interview/bootstrap/orchestrator.js";
@@ -95,6 +101,79 @@ describe("runBootstrap", () => {
 			);
 			expect(result.ok).toBe(false);
 			expect(called).toBe(false);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("writes an index.html placeholder for Mode B (greenfield) runs", async () => {
+		// The user picking Mode B (candidate brings their own) needs
+		// something concrete to open after running `bun run`. The
+		// orchestrator drops a minimal index.html so a candidate has a
+		// landing pad — without it Mode B output is just a markdown
+		// brief and the empty role-config.json. The stub deliberately
+		// references BRIEF.md and avoids prescribing any framework.
+		const dir = mkdtempSync(join(tmpdir(), "iv-orch-mode-b-"));
+		try {
+			const briefStub: GeneratedProject = {
+				files: [
+					{
+						path: "BRIEF.md",
+						content:
+							"# Brief\n\n## Time-box\n60 minutes\n\n## Acceptance criteria\n- Works.\n\n## Deliverables\n- A repo.\n",
+					},
+				],
+			};
+			const cfg: RoleConfig = { ...baseConfig(dir), projectMode: "B" };
+			const result = await runBootstrap(cfg, { client: client(briefStub) });
+			expect(result.ok).toBe(true);
+			expect(existsSync(join(dir, "index.html"))).toBe(true);
+			const html = readFileSync(join(dir, "index.html"), "utf8");
+			expect(html).toContain("BRIEF.md");
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("does NOT write an index.html stub for Mode A (would clobber generated source)", async () => {
+		// Mode A already has full source files; auto-writing an
+		// index.html could overwrite an AI-generated one or confuse
+		// the candidate about what's source vs scaffold. Pin this so
+		// a refactor can't accidentally extend the stub to Mode A.
+		const dir = mkdtempSync(join(tmpdir(), "iv-orch-mode-a-noindex-"));
+		try {
+			const result = await runBootstrap(baseConfig(dir), {
+				client: client(modeAStub()),
+			});
+			expect(result.ok).toBe(true);
+			expect(existsSync(join(dir, "index.html"))).toBe(false);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("preserves an AI-generated index.html instead of clobbering it", async () => {
+		// If the AI's Mode B output happens to include its own
+		// index.html, the orchestrator must NOT overwrite it. The
+		// stub is a fallback for when the AI didn't author one.
+		const dir = mkdtempSync(join(tmpdir(), "iv-orch-mode-b-keep-"));
+		try {
+			const customHtml = "<!doctype html><h1>AI-authored landing</h1>";
+			const project: GeneratedProject = {
+				files: [
+					{
+						path: "BRIEF.md",
+						content:
+							"# Brief\n\n## Time-box\n60 minutes\n\n## Acceptance criteria\n- Works.\n\n## Deliverables\n- A repo.\n",
+					},
+					{ path: "index.html", content: customHtml },
+				],
+			};
+			const cfg: RoleConfig = { ...baseConfig(dir), projectMode: "B" };
+			const result = await runBootstrap(cfg, { client: client(project) });
+			expect(result.ok).toBe(true);
+			const html = readFileSync(join(dir, "index.html"), "utf8");
+			expect(html).toBe(customHtml);
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}

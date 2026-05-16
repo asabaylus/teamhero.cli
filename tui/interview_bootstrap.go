@@ -352,14 +352,25 @@ func logBootstrapRunContext(opts *BootstrapOptions, w io.Writer) {
 	)
 }
 
-// printBootstrapSuccessLink emits the generated project's absolute path as
-// an OSC 8 hyperlink so the proctor can ctrl-click to open it in their OS
-// file browser. Falls back to a plain path when no file:// URL can be derived.
+// printBootstrapSuccessLink emits the generated project's path as an OSC 8
+// hyperlink so the proctor can ctrl-click to open it in their OS file
+// browser. The display label prefers a path relative to the current
+// working directory (so a project under ~/Documents/interviews shows as
+// "interviews/<role>" rather than "/home/.../Documents/interviews/<role>")
+// — but the underlying file:// URL is always absolute so the click
+// actually opens. Falls back to absolute display if Rel fails or escapes
+// upward via "..".
 func printBootstrapSuccessLink(dir string, w io.Writer) {
 	abs, link := absPathLink(dir)
 	if link == "" {
 		fmt.Fprintf(w, "Project: %s\n", abs)
 		return
 	}
-	fmt.Fprintf(w, "Project: %s\n", osc8Link(link, abs))
+	display := abs
+	if cwd, err := os.Getwd(); err == nil {
+		if rel, err := filepath.Rel(cwd, abs); err == nil && !strings.HasPrefix(rel, "..") {
+			display = rel
+		}
+	}
+	fmt.Fprintf(w, "Project: %s\n", osc8Link(link, display))
 }

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
+import { consola } from "consola";
 import OpenAI from "openai";
 import { getEnv } from "../../../lib/env.js";
-import { getDimensions, getRubricVersion } from "../shared/rubric.js";
 import type {
 	GeneratedProject,
 	GeneratorClient,
@@ -62,11 +62,17 @@ function buildPrompt(
 	attempt: number,
 	previousFailures: readonly string[] = [],
 ): string {
-	const rubric = getDimensions()
-		.map(
-			(d) => `- **${d.title}** (${d.id}, ${d.evidenceMode}): ${d.description}`,
-		)
-		.join("\n");
+	// The full 9-dimension rubric block used to be included verbatim here
+	// so the model could "build for observability against each
+	// dimension." In practice the dimensions are how the AI REVIEWER
+	// scores the candidate — the generator just needs to produce a
+	// substantive project. Inlining ~600 input tokens of review-side
+	// context per call wasn't earning its keep, especially after a
+	// proctor reported a single Mode B run cost $1.36. A one-line
+	// summary preserves the intent without the bloat; the full rubric
+	// still drives the review-side prompt in ai-observer.ts.
+	const rubricSummary =
+		"Build something the candidate can engage with thoughtfully — enough decision points, naming choices, and edge cases for them to demonstrate engineering judgment under AI augmentation. Don't pad or over-design.";
 
 	const retryNote =
 		previousFailures.length > 0
@@ -133,15 +139,14 @@ This is attempt ${attempt}.${retryNote}${jdContext}
 
 ${modeSpec}
 
-Rubric (interview-reviewer v${getRubricVersion()}) — the project must give the candidate room to demonstrate each dimension:
-${rubric}
+Project surface area: ${rubricSummary}
 
 Return a JSON object with a "files" array. Each entry has "path" (repo-relative) and "content" (full file content).`;
 }
 
 export class OpenAIGeneratorClient implements GeneratorClient {
 	private readonly client: OpenAI;
-	private readonly model: string;
+	public readonly model: string;
 
 	constructor(client?: OpenAI, model?: string) {
 		this.client = client ?? new OpenAI({ apiKey: getEnv("OPENAI_API_KEY") });
@@ -161,6 +166,23 @@ export class OpenAIGeneratorClient implements GeneratorClient {
 		const response = await this.client.responses.create({
 			model: this.model,
 			input: prompt,
+			// gpt-5-mini and gpt-5 default to "medium" reasoning effort,
+			// which spends a large number of internal reasoning tokens on
+			// a structured-output generation task. A proctor reported a
+			// single Mode B run cost $1.36 / 143k tokens; reasoning was
+			// the dominant share. "low" still produces high-quality
+			// scaffolds for this kind of file-list task and meaningfully
+			// shortens the billed tokens. Override via AI_REASONING_EFFORT
+			// if a future use case wants medium/high.
+			reasoning: {
+				effort:
+					(getEnv("AI_REASONING_EFFORT") as
+						| "minimal"
+						| "low"
+						| "medium"
+						| "high"
+						| undefined) ?? "low",
+			},
 			text: {
 				format: {
 					type: "json_schema",
@@ -170,6 +192,28 @@ export class OpenAIGeneratorClient implements GeneratorClient {
 				},
 			},
 		});
+		// Log token usage at info level so a proctor can see the
+		// per-attempt cost without --debug. The Responses API returns a
+		// usage object with input/output/(reasoning) counts; field
+		// shape is the standard OpenAI v2 shape (input_tokens,
+		// output_tokens, output_tokens_details.reasoning_tokens). The
+		// cast is defensive — older mocks may omit usage entirely.
+		const usage = (
+			response as {
+				usage?: {
+					input_tokens?: number;
+					output_tokens?: number;
+					total_tokens?: number;
+					output_tokens_details?: { reasoning_tokens?: number };
+				};
+			}
+		).usage;
+		if (usage) {
+			const reasoning = usage.output_tokens_details?.reasoning_tokens ?? 0;
+			consola.info(
+				`openai.usage model=${this.model} attempt=${input.attempt} input=${usage.input_tokens ?? 0} output=${usage.output_tokens ?? 0} reasoning=${reasoning} total=${usage.total_tokens ?? 0}`,
+			);
+		}
 		const text = (response as { output_text?: string }).output_text;
 		if (!text) {
 			throw new Error("OpenAI Responses API returned no output_text");

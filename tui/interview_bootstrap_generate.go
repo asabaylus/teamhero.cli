@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -176,12 +177,26 @@ func (m *bootstrapGenerateModel) View() string {
 func (m *bootstrapGenerateModel) renderRunning() string {
 	label := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	title := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
+	model := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
 	return fmt.Sprintf(
-		"  %s %s\n\n  %s\n",
+		"  %s %s\n\n  %s\n  %s %s\n",
 		m.spin.View(),
 		title.Render("Generating role scaffold…"),
 		label.Render("OpenAI is drafting your role files; this typically takes 30–90 seconds."),
+		label.Render("Model:"),
+		model.Render(bootstrapModelName()),
 	)
+}
+
+// bootstrapModelName returns the OpenAI model the generator is configured
+// to use. Mirrors the precedence in OpenAIGeneratorClient: the
+// AI_MODEL env var overrides the gpt-5-mini default. Surfaced in the
+// TUI so the proctor sees which LLM is on the hook before a $1+ run.
+func bootstrapModelName() string {
+	if v := strings.TrimSpace(os.Getenv("AI_MODEL")); v != "" {
+		return v
+	}
+	return "gpt-5-mini"
 }
 
 func (m *bootstrapGenerateModel) renderSuccess() string {
