@@ -89,13 +89,41 @@ describe("OpenAIGeneratorClient.generate", () => {
 		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
 		await client.generate({ config: role({ projectMode: "A" }), attempt: 1 });
 		const prompt = captured.calls[0].input;
+		// README.md is the only required candidate-facing file. Right-sizing
+		// hint nudges the model toward a substantive decomposition without
+		// encoding a hard LOC band that the validator would auto-reject.
 		expect(prompt).toContain("README.md");
-		expect(prompt).toContain("GLOSSARY.md");
-		// Right-sizing hint — the model still gets nudged toward a
-		// substantive decomposition (multiple modules, time-box-aware),
-		// but the prompt no longer encodes a hard LOC band that gets
-		// auto-rejected at validation time.
 		expect(prompt).toMatch(/cohesive modules/i);
+	});
+
+	it("explicitly forbids the AI from generating test files (Mode A)", async () => {
+		// A pre-existing skipped test like `describe.skip("addUser", ...)`
+		// leaks the API shape and function names the candidate is
+		// expected to design themselves. The prompt must tell the model
+		// not to author tests; the candidate writes their own as part of
+		// the evaluation.
+		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
+		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
+		await client.generate({ config: role({ projectMode: "A" }), attempt: 1 });
+		const prompt = captured.calls[0].input;
+		expect(prompt).toContain("DO NOT GENERATE");
+		expect(prompt).toContain("Any test files");
+		// Regression: the old prompt said "include a failing or skipped
+		// test under tests/". That phrasing must not return — it's
+		// exactly what we just removed.
+		expect(prompt).not.toMatch(/include.*(failing|skipped) test/i);
+	});
+
+	it("explicitly forbids the AI from generating GLOSSARY.md (Mode A)", async () => {
+		// A glossary lists domain concepts; identifying those concepts
+		// is part of what's being evaluated, so a pre-baked GLOSSARY.md
+		// gives away the answer.
+		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
+		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
+		await client.generate({ config: role({ projectMode: "A" }), attempt: 1 });
+		const prompt = captured.calls[0].input;
+		expect(prompt).toContain("DO NOT GENERATE");
+		expect(prompt).toMatch(/GLOSSARY\.md\.\s+A glossary/);
 	});
 
 	it("does NOT encode a hard LOC band or deep-module quota in the prompt", async () => {
@@ -124,8 +152,8 @@ describe("OpenAIGeneratorClient.generate", () => {
 		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
 		await client.generate({ config: role({ projectMode: "A" }), attempt: 1 });
 		const prompt = captured.calls[0].input;
-		expect(prompt).toMatch(/DO NOT (generate|write).*CLAUDE\.md/i);
-		expect(prompt).toMatch(/DO NOT (generate|write).*AGENTS\.md/i);
+		expect(prompt).toContain("DO NOT GENERATE");
+		expect(prompt).toContain("CLAUDE.md or AGENTS.md");
 	});
 
 	it("explicitly forbids the AI from authoring CLAUDE.md or AGENTS.md (Mode B)", async () => {
@@ -133,6 +161,8 @@ describe("OpenAIGeneratorClient.generate", () => {
 		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
 		await client.generate({ config: role({ projectMode: "B" }), attempt: 1 });
 		const prompt = captured.calls[0].input;
+		// Mode B uses a different prompt shape (single-line directives in
+		// the BRIEF.md spec); the original regex still matches there.
 		expect(prompt).toMatch(/DO NOT (generate|write).*CLAUDE\.md/i);
 		expect(prompt).toMatch(/DO NOT (generate|write).*AGENTS\.md/i);
 	});

@@ -13,40 +13,20 @@ function makeTempProject(): string {
 
 function writeModeAFixture(
 	dir: string,
-	opts: {
-		withReadme?: boolean;
-		withGlossary?: boolean;
-		withFailingTests?: boolean;
-	} = {},
+	opts: { withReadme?: boolean } = {},
 ): void {
-	const o = {
-		withReadme: true,
-		withGlossary: true,
-		withFailingTests: true,
-		...opts,
-	};
-
+	const o = { withReadme: true, ...opts };
 	if (o.withReadme) writeFileSync(join(dir, "README.md"), "# Project\n");
-	if (o.withGlossary) writeFileSync(join(dir, "GLOSSARY.md"), "# Glossary\n");
-
 	mkdirSync(join(dir, "src"), { recursive: true });
 	writeFileSync(join(dir, "src", "main.ts"), "export const main = () => {};\n");
-
-	mkdirSync(join(dir, "tests"), { recursive: true });
-	if (o.withFailingTests) {
-		writeFileSync(
-			join(dir, "tests", "feature.spec.ts"),
-			`import { describe, it } from "bun:test";\ndescribe.skip("feature", () => {\n  it("not yet implemented", () => {});\n});\n`,
-		);
-	}
 }
 
 describe("project-validator (Mode A)", () => {
-	it("passes when project has README.md, GLOSSARY.md, and a failing/skipped test", () => {
-		// Structural-only validation. The LOC + deep-module rules that
-		// previously gated this check were removed because they were a
-		// heuristic, not a product requirement, and produced friction on
-		// perfectly serviceable smaller projects.
+	it("passes with only a README.md (the single structural requirement)", () => {
+		// The candidate-facing brief is the only required file. GLOSSARY,
+		// sample tests, and the kit's CLAUDE.md have all been removed —
+		// they hinted at the answer or coached the candidate's agent in
+		// ways that undermined the evaluation.
 		const dir = makeTempProject();
 		try {
 			writeModeAFixture(dir);
@@ -70,95 +50,30 @@ describe("project-validator (Mode A)", () => {
 		}
 	});
 
-	it("fails when GLOSSARY.md is missing", () => {
-		const dir = makeTempProject();
-		try {
-			writeModeAFixture(dir, { withGlossary: false });
-			const result = validateModeAProject(dir);
-			expect(result.ok).toBe(false);
-			expect(result.failures.some((f) => /GLOSSARY\.md/i.test(f))).toBe(true);
-		} finally {
-			rmSync(dir, { recursive: true, force: true });
-		}
-	});
-
-	it("fails when no failing/skipped tests are present", () => {
-		const dir = makeTempProject();
-		try {
-			writeModeAFixture(dir, { withFailingTests: false });
-			const result = validateModeAProject(dir);
-			expect(result.ok).toBe(false);
-			expect(result.failures.some((f) => /failing|skipped test/i.test(f))).toBe(
-				true,
-			);
-		} finally {
-			rmSync(dir, { recursive: true, force: true });
-		}
-	});
-
-	it("does NOT reject a small project on size grounds (regression: LOC validator removed)", () => {
-		// The validator used to reject any project under 400 source LOC.
-		// That rule was a heuristic that produced friction; product spec
-		// only requires the structural files. This test pins the new
-		// contract — a tiny but structurally-complete project must pass.
+	it("does NOT require GLOSSARY.md (regression: glossary leaked domain hints)", () => {
+		// Pin the contract: a project without GLOSSARY.md must pass.
+		// Removed because a glossary lists the domain concepts the
+		// candidate is being evaluated on identifying themselves.
 		const dir = makeTempProject();
 		try {
 			writeFileSync(join(dir, "README.md"), "# Project\n");
-			writeFileSync(join(dir, "GLOSSARY.md"), "# Glossary\n");
-			mkdirSync(join(dir, "src"), { recursive: true });
-			// Single ~10-line source file — would have failed the old
-			// 400-700 LOC + 2-deep-module gates.
-			writeFileSync(
-				join(dir, "src", "tiny.ts"),
-				"export const tiny = () => 1;\n",
-			);
-			mkdirSync(join(dir, "tests"), { recursive: true });
-			writeFileSync(
-				join(dir, "tests", "feature.spec.ts"),
-				`import { describe, it } from "bun:test";\ndescribe.skip("feature", () => { it("todo", () => {}); });\n`,
-			);
 			const result = validateModeAProject(dir);
 			expect(result.ok).toBe(true);
-			expect(result.failures).toEqual([]);
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}
 	});
 
-	it("recognises xUnit Skip-attributed tests in *Tests.cs files", () => {
-		// The polyglot test-file detection still matters — the validator
-		// must recognise a Skip-attributed [Fact] in C# as a failing test
-		// so a .NET interview project passes the failing-test check.
+	it("does NOT require sample tests (regression: pre-existing tests leaked the API shape)", () => {
+		// Pin the contract: a project without any test files must pass.
+		// Removed because a pre-existing `describe.skip("addUser", ...)`
+		// reveals the function name the candidate is expected to write.
+		// The candidate writes their own tests as part of the work.
 		const dir = makeTempProject();
 		try {
 			writeFileSync(join(dir, "README.md"), "# Project\n");
-			writeFileSync(join(dir, "GLOSSARY.md"), "# Glossary\n");
-			mkdirSync(join(dir, "tests"), { recursive: true });
-			writeFileSync(
-				join(dir, "tests", "FeatureTests.cs"),
-				`using Xunit;\npublic class FeatureTests {\n  [Fact(Skip = "not yet implemented")]\n  public void Pending() {}\n}\n`,
-			);
 			const result = validateModeAProject(dir);
 			expect(result.ok).toBe(true);
-			expect(result.failures).toEqual([]);
-		} finally {
-			rmSync(dir, { recursive: true, force: true });
-		}
-	});
-
-	it("recognises pytest skip markers in test_*.py files", () => {
-		const dir = makeTempProject();
-		try {
-			writeFileSync(join(dir, "README.md"), "# Project\n");
-			writeFileSync(join(dir, "GLOSSARY.md"), "# Glossary\n");
-			mkdirSync(join(dir, "tests"), { recursive: true });
-			writeFileSync(
-				join(dir, "tests", "test_feature.py"),
-				`import pytest\n@pytest.mark.skip(reason="not yet implemented")\ndef test_pending():\n    pass\n`,
-			);
-			const result = validateModeAProject(dir);
-			expect(result.ok).toBe(true);
-			expect(result.failures).toEqual([]);
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}

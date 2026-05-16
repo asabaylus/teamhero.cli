@@ -27,27 +27,17 @@ function role(overrides: Partial<RoleConfig> = {}): RoleConfig {
 }
 
 // stubModeAProject returns a minimal Mode A project that passes the
-// (post-size-validator) structural checks: README.md, GLOSSARY.md, and
-// a single failing/skipped test. Optionally suppress the failing test
-// to drive the validator's "no failing test" failure path. The `loc`
-// parameter is now ignored — kept in the signature so existing call
-// sites don't churn — because the validator no longer enforces a line
-// budget.
-function stubModeAProject(_loc?: number, withFailingTest = true): GeneratedProject {
-	void _loc;
-	const files = [
-		{ path: "README.md", content: "# Project\nWhat you're building: a thing.\n" },
-		{ path: "GLOSSARY.md", content: "# Glossary\n- term: definition\n" },
-		{ path: "src/main.ts", content: "export const main = () => {};\n" },
-	];
-	if (withFailingTest) {
-		files.push({
-			path: "tests/feature.spec.ts",
-			content:
-				'import { describe, it } from "bun:test";\ndescribe.skip("feature", () => { it("todo", () => {}); });\n',
-		});
-	}
-	return { files };
+// current validator: README.md and a source file. GLOSSARY.md and
+// sample tests were removed from the requirements (they leaked hints
+// to the candidate), and the kit-overlaid CLAUDE.md was removed for
+// the same reason.
+function stubModeAProject(): GeneratedProject {
+	return {
+		files: [
+			{ path: "README.md", content: "# Project\nWhat you're building: a thing.\n" },
+			{ path: "src/main.ts", content: "export const main = () => {};\n" },
+		],
+	};
 }
 
 function stubModeBProject(): GeneratedProject {
@@ -80,7 +70,6 @@ describe("generateProject (Mode A)", () => {
 			const result = await generateProject(role({ outputDir: dir }), client);
 			expect(result.ok).toBe(true);
 			expect(existsSync(join(dir, "README.md"))).toBe(true);
-			expect(existsSync(join(dir, "GLOSSARY.md"))).toBe(true);
 			expect(existsSync(join(dir, "src", "main.ts"))).toBe(true);
 			expect(result.attempts).toBe(1);
 		} finally {
@@ -113,9 +102,8 @@ describe("generateProject (Mode A)", () => {
 			};
 			// clientReturning clamps to the last project when it runs out, so
 			// this returns malformed for every attempt and exhausts the
-			// default 3-attempt budget. The structural checks (README,
-			// GLOSSARY, failing test) still drive failure here — the size
-			// rule that previously dominated retry behavior was removed.
+			// default 3-attempt budget. The single structural check
+			// (missing README.md) drives failure here.
 			const client = clientReturning(malformed);
 			const result = await generateProject(role({ outputDir: dir }), client);
 			expect(result.ok).toBe(false);

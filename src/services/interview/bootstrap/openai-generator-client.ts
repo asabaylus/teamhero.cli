@@ -60,15 +60,17 @@ REQUIRED FILES:
 - README.md at the root — written FOR THE CANDIDATE in plain language. Sections:
   (1) "What you're building" — what this project is and the feature/extension the candidate will implement (${config.featureDescription}).
   (2) "Time-box" — state the time-box explicitly as ${config.timeBoxMinutes} minutes.
-  (3) "Getting started" — exact command(s) to install deps and run the tests; point the candidate to the failing/skipped test that marks where they pick up.
+  (3) "Getting started" — exact command(s) to install deps. Tell the candidate they are expected to write their own tests; do NOT reference any pre-existing failing test.
   (4) "Acceptance criteria" — bullet list of what "done" looks like for this slice.
   (5) "Process" — one sentence pointing to INTERVIEW_RULES.md for the recording/interview workflow.
   DO NOT write agent operating instructions. DO NOT mention rubric dimensions or what the observer is looking for. DO NOT coach the candidate on how to work with their AI agent. Agent guidance is shipped separately by the kit; the AI generator must not author it.
-- GLOSSARY.md at the root (domain terms).
 - Source files under src/ — split the work into a few cohesive modules (domain types, a service/orchestrator, helpers as appropriate for ${config.stack}). Right-size for the ${config.timeBoxMinutes}-minute time-box: substantive enough that a candidate can demonstrate judgment about architecture and naming, not so large that they can't read it in the first 10 minutes.
-- At least 1 failing or skipped test under tests/ that marks the gap the candidate fills (use describe.skip or "not yet implemented").
-- A working test framework setup (package.json/go.mod/etc as appropriate for ${config.stack}) so the candidate can run tests immediately.
-- DO NOT generate a CLAUDE.md or an AGENTS.md. Those files are provided by the interview kit at copy time. If you write one, you will be overwriting carefully-authored proctor content with hallucinated instructions.`
+- A working test framework setup (package.json/go.mod/etc as appropriate for ${config.stack}) so the candidate can immediately write and run their own tests. Include only the dependency manifest and any required config — NO test files.
+
+DO NOT GENERATE (these would hint at the answer or break the evaluation):
+- Any test files. The candidate writes their own tests as part of the evaluation; pre-existing tests (even skipped ones) would leak the API shape, function names, or expected behaviors.
+- GLOSSARY.md. A glossary would hint at the domain concepts the candidate is expected to identify themselves.
+- CLAUDE.md or AGENTS.md. Those are provided by the interview kit at copy time; writing one would overwrite carefully-authored proctor content with hallucinated instructions.`
 			: `Generate a Mode B "greenfield brief" project. The output MUST include only:
 - BRIEF.md with required sections: ## Time-box (state ${config.timeBoxMinutes} minutes), ## Acceptance criteria, ## Deliverables
 ${
