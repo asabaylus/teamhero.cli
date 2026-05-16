@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"os"
 	"strings"
@@ -43,6 +44,36 @@ func TestParseBootstrapFlags_MissingValueErrors(t *testing.T) {
 	_, parseErr := ParseBootstrapFlags([]string{"--role"})
 	if parseErr == "" {
 		t.Fatal("expected parse error on dangling --role")
+	}
+}
+
+func TestParseBootstrapFlags_EmitJSONFlag(t *testing.T) {
+	// --json switches the bootstrap into agent-payload mode: a single
+	// JSON object goes to stdout describing the run, and human-readable
+	// chatter (Project: link, publish prompt) is routed to stderr.
+	// The flag exists so an orchestrating agent (HR notifier, scheduler,
+	// etc.) can `read` stdout and act on the payload without parsing
+	// our human formatting.
+	opts, parseErr := ParseBootstrapFlags([]string{"--json"})
+	if parseErr != "" {
+		t.Fatalf("unexpected parse error: %s", parseErr)
+	}
+	if !opts.EmitJSON {
+		t.Error("--json should set EmitJSON=true")
+	}
+}
+
+func TestParseBootstrapFlags_PublishFlag(t *testing.T) {
+	// --publish is orthogonal to --json. When set, the dispatcher
+	// auto-publishes to GitHub on success (no prompt), so a downstream
+	// agent caller can pass --publish --json and get a payload with a
+	// real github.url to put in an HR email.
+	opts, parseErr := ParseBootstrapFlags([]string{"--publish"})
+	if parseErr != "" {
+		t.Fatalf("unexpected parse error: %s", parseErr)
+	}
+	if !opts.Publish {
+		t.Error("--publish should set Publish=true")
 	}
 }
 
@@ -366,6 +397,268 @@ func TestPrintBootstrapSuccessLink_DisplaysRelativePath(t *testing.T) {
 	}
 	if !strings.Contains(got, "file://"+tmp+"/interviews/foo") {
 		t.Errorf("expected absolute file:// URL embedded for the click target; got %q", got)
+	}
+}
+
+func TestRunInterviewBootstrap_EmitJSON_WritesPayloadToStdout(t *testing.T) {
+	// With --json, stdout MUST contain exactly one parseable JSON
+	// object describing the run. The schema field is a stable marker
+	// so an orchestrating agent can version-check what it's getting.
+	withPublishHooks(t, false, nil)
+	var out, errBuf bytes.Buffer
+	stub := &stubRunner{code: 0}
+	code := runInterviewBootstrap([]string{
+		"--headless", "--json",
+		"--role", "senior-backend",
+		"--role-title", "Senior Backend Engineer",
+		"--stack", "TypeScript",
+		"--domain", "Payments",
+		"--feature", "Add idempotency keys",
+		"--time-box", "90",
+		"--mode-project", "A",
+		"--mode-analysis", "ai-assisted",
+		"--mode-rubric", "default",
+		"--output-dir", "/tmp/teamhero-emit-json-test",
+	}, stub, &out, &errBuf)
+	if code != 0 {
+		t.Fatalf("exit=%d stderr=%s", code, errBuf.String())
+	}
+
+	var payload struct {
+		Schema string `json:"schema"`
+		Role   struct {
+			Slug   string `json:"slug"`
+			Title  string `json:"title"`
+			Stack  string `json:"stack"`
+			Domain string `json:"domain"`
+		} `json:"role"`
+		Project struct {
+			Mode           string `json:"mode"`
+			OutputDir      string `json:"outputDir"`
+			TimeBoxMinutes int    `json:"timeBoxMinutes"`
+		} `json:"project"`
+		Github *struct {
+			URL string `json:"url"`
+		} `json:"github"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
+		t.Fatalf("stdout was not valid JSON: %v\nstdout: %q", err, out.String())
+	}
+	if payload.Schema != "teamhero.interview.bootstrap/v1" {
+		t.Errorf("schema mismatch: got %q", payload.Schema)
+	}
+	if payload.Role.Slug != "senior-backend" {
+		t.Errorf("role.slug: got %q", payload.Role.Slug)
+	}
+	if payload.Role.Title != "Senior Backend Engineer" {
+		t.Errorf("role.title: got %q", payload.Role.Title)
+	}
+	if payload.Role.Stack != "TypeScript" {
+		t.Errorf("role.stack: got %q", payload.Role.Stack)
+	}
+	if payload.Role.Domain != "Payments" {
+		t.Errorf("role.domain: got %q", payload.Role.Domain)
+	}
+	if payload.Project.Mode != "A" {
+		t.Errorf("project.mode: got %q", payload.Project.Mode)
+	}
+	if payload.Project.TimeBoxMinutes != 90 {
+		t.Errorf("project.timeBoxMinutes: got %d", payload.Project.TimeBoxMinutes)
+	}
+	// github MUST be null when --publish wasn't passed (orthogonal flags).
+	if payload.Github != nil {
+		t.Errorf("github should be null when --publish was not set; got %+v", payload.Github)
+	}
+}
+
+func TestRunInterviewBootstrap_EmitJSON_RoutesHumanOutputToStderr(t *testing.T) {
+	// Stdout must contain ONLY the JSON object. The clickable
+	// "Project: ..." line that printBootstrapSuccessLink normally
+	// writes to stdout has to be either suppressed or routed to
+	// stderr in --json mode, otherwise the calling agent's
+	// json.Unmarshal fails.
+	withPublishHooks(t, false, nil)
+	var out, errBuf bytes.Buffer
+	stub := &stubRunner{code: 0}
+	runInterviewBootstrap([]string{
+		"--headless", "--json",
+		"--role", "x", "--stack", "x", "--domain", "x", "--feature", "x",
+		"--mode-project", "A", "--mode-analysis", "ai-assisted",
+		"--mode-rubric", "default", "--output-dir", "/tmp/teamhero-json-stderr",
+	}, stub, &out, &errBuf)
+	if strings.Contains(out.String(), "Project:") {
+		t.Errorf("stdout must NOT contain the human-readable 'Project:' line in --json mode; got:\n%s", out.String())
+	}
+	if strings.Contains(out.String(), "file://") {
+		t.Errorf("stdout must NOT contain the file:// link in --json mode; got:\n%s", out.String())
+	}
+	// stdout must still be parseable.
+	if !strings.HasPrefix(strings.TrimSpace(out.String()), "{") {
+		t.Errorf("stdout should start with JSON object; got:\n%s", out.String())
+	}
+}
+
+func TestRunInterviewBootstrap_EmitJSON_IncludesAIModel(t *testing.T) {
+	// The orchestrating agent needs to know which LLM produced the
+	// output for cost attribution and audit. The payload's ai.model
+	// field reflects whatever AI_MODEL env override is in play, or
+	// the gpt-5-mini default.
+	t.Setenv("AI_MODEL", "gpt-5.4-mini")
+	withPublishHooks(t, false, nil)
+	var out, errBuf bytes.Buffer
+	stub := &stubRunner{code: 0}
+	code := runInterviewBootstrap([]string{
+		"--headless", "--json",
+		"--role", "x", "--stack", "x", "--domain", "x", "--feature", "x",
+		"--mode-project", "A", "--mode-analysis", "ai-assisted",
+		"--mode-rubric", "default", "--output-dir", "/tmp/teamhero-json-model",
+	}, stub, &out, &errBuf)
+	if code != 0 {
+		t.Fatalf("exit=%d stderr=%s", code, errBuf.String())
+	}
+	var payload struct {
+		AI struct {
+			Model string `json:"model"`
+		} `json:"ai"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
+		t.Fatalf("stdout was not valid JSON: %v", err)
+	}
+	if payload.AI.Model != "gpt-5.4-mini" {
+		t.Errorf("ai.model: got %q, want gpt-5.4-mini (from AI_MODEL env)", payload.AI.Model)
+	}
+}
+
+func TestRunInterviewBootstrap_EmitJSON_IncludesJDFieldsWhenAttached(t *testing.T) {
+	// When the run was driven with a JD attached, the payload's
+	// project.jd block must surface the path + influencesProject flag
+	// so a downstream agent knows whether the AI was JD-shaped.
+	jd := t.TempDir() + "/jd.md"
+	if err := os.WriteFile(jd, []byte("# JD"), 0o644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	withPublishHooks(t, false, nil)
+	var out, errBuf bytes.Buffer
+	stub := &stubRunner{code: 0}
+	code := runInterviewBootstrap([]string{
+		"--headless", "--json",
+		"--role", "x", "--stack", "x", "--feature", "x",
+		"--mode-project", "A", "--mode-analysis", "ai-assisted",
+		"--mode-rubric", "default", "--output-dir", "/tmp/teamhero-json-jd",
+		"--jd-path", jd,
+		"--jd-influences-project",
+	}, stub, &out, &errBuf)
+	if code != 0 {
+		t.Fatalf("exit=%d stderr=%s", code, errBuf.String())
+	}
+	var payload struct {
+		Project struct {
+			JD *struct {
+				Path              string `json:"path"`
+				InfluencesProject bool   `json:"influencesProject"`
+			} `json:"jd"`
+		} `json:"project"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
+		t.Fatalf("stdout was not valid JSON: %v", err)
+	}
+	if payload.Project.JD == nil {
+		t.Fatal("project.jd should be present when --jd-path was supplied")
+	}
+	if payload.Project.JD.Path != jd {
+		t.Errorf("project.jd.path: got %q, want %q", payload.Project.JD.Path, jd)
+	}
+	if !payload.Project.JD.InfluencesProject {
+		t.Error("project.jd.influencesProject should be true when --jd-influences-project was set")
+	}
+}
+
+func TestRunInterviewBootstrap_PublishAndJSON_IncludesGithubURLInPayload(t *testing.T) {
+	// The combination an HR/scheduler agent will actually use:
+	// --publish to push the repo, --json to get a machine-readable
+	// summary back. The payload's github.url must equal whatever the
+	// publish path produced.
+	origPublish := autoPublishToGitHub
+	t.Cleanup(func() { autoPublishToGitHub = origPublish })
+	autoPublishToGitHub = func(opts *BootstrapOptions, _ io.Writer) string {
+		return "https://github.com/acme/iv-senior-backend"
+	}
+	withPublishHooks(t, false, nil)
+	var out, errBuf bytes.Buffer
+	stub := &stubRunner{code: 0}
+	code := runInterviewBootstrap([]string{
+		"--headless", "--json", "--publish",
+		"--role", "senior-backend",
+		"--stack", "TypeScript",
+		"--domain", "Payments",
+		"--feature", "Add idempotency keys",
+		"--mode-project", "A",
+		"--mode-analysis", "ai-assisted",
+		"--mode-rubric", "default",
+		"--output-dir", "/tmp/teamhero-publish-json",
+	}, stub, &out, &errBuf)
+	if code != 0 {
+		t.Fatalf("exit=%d stderr=%s", code, errBuf.String())
+	}
+	var payload struct {
+		Github *struct {
+			URL string `json:"url"`
+		} `json:"github"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &payload); err != nil {
+		t.Fatalf("stdout was not valid JSON: %v", err)
+	}
+	if payload.Github == nil {
+		t.Fatal("github should be present after --publish; got null")
+	}
+	if payload.Github.URL != "https://github.com/acme/iv-senior-backend" {
+		t.Errorf("github.url: got %q", payload.Github.URL)
+	}
+}
+
+func TestRunInterviewBootstrap_PublishWithoutJSON_DoesNotEmitPayload(t *testing.T) {
+	// --publish on its own pushes to GitHub but stdout stays
+	// human-readable; no JSON envelope is emitted unless --json is
+	// also set. Pins the orthogonality from the design discussion.
+	origPublish := autoPublishToGitHub
+	t.Cleanup(func() { autoPublishToGitHub = origPublish })
+	publishCalled := false
+	autoPublishToGitHub = func(opts *BootstrapOptions, _ io.Writer) string {
+		publishCalled = true
+		return "https://github.com/acme/iv-x"
+	}
+	withPublishHooks(t, false, nil) // also disables interactive prompt
+	var out, errBuf bytes.Buffer
+	stub := &stubRunner{code: 0}
+	runInterviewBootstrap([]string{
+		"--headless", "--publish",
+		"--role", "x", "--stack", "x", "--domain", "x", "--feature", "x",
+		"--mode-project", "A", "--mode-analysis", "ai-assisted",
+		"--mode-rubric", "default", "--output-dir", "/tmp/teamhero-publish-only",
+	}, stub, &out, &errBuf)
+	if !publishCalled {
+		t.Error("--publish should trigger autoPublishToGitHub")
+	}
+	if strings.HasPrefix(strings.TrimSpace(out.String()), "{") {
+		t.Errorf("--publish alone should NOT emit a JSON envelope on stdout; got:\n%s", out.String())
+	}
+}
+
+func TestRunInterviewBootstrap_NoJSONFlag_PreservesHumanOutput(t *testing.T) {
+	// Regression guard: when --json is NOT passed, the existing
+	// human-readable "Project: <osc8-link>" stdout behavior must
+	// remain intact.
+	withPublishHooks(t, false, nil)
+	var out, errBuf bytes.Buffer
+	stub := &stubRunner{code: 0}
+	runInterviewBootstrap([]string{
+		"--headless",
+		"--role", "x", "--stack", "x", "--domain", "x", "--feature", "x",
+		"--mode-project", "A", "--mode-analysis", "ai-assisted",
+		"--mode-rubric", "default", "--output-dir", "/tmp/teamhero-no-json",
+	}, stub, &out, &errBuf)
+	if !strings.Contains(out.String(), "Project:") {
+		t.Errorf("without --json the human-readable Project: line should still appear on stdout; got:\n%s", out.String())
 	}
 }
 

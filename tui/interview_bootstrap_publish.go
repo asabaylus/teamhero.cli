@@ -310,11 +310,32 @@ var offerPublishToGitHub = func(opts *BootstrapOptions, stdout, stderr io.Writer
 	if !ok {
 		return
 	}
+	url, err := publishToGitHub(opts, pubOpts, token, stderr)
+	if err != nil {
+		// publishToGitHub already wrote a contextual error.
+		_ = err
+		return
+	}
+	fmt.Fprintf(stdout, "✓ Published to %s\n", url)
+}
+
+// publishToGitHub is the non-interactive publish path shared between
+// the prompt-driven offer (offerPublishToGitHub) and the agent-driven
+// --publish flag (autoPublishToGitHub). Returns the html_url of the
+// created repo on success, empty string with a written stderr message
+// on any failure. Splitting this out lets the auto-publish flag reuse
+// the exact API + git plumbing without re-running the confirm prompt.
+func publishToGitHub(
+	opts *BootstrapOptions,
+	pubOpts PublishOptions,
+	token string,
+	stderr io.Writer,
+) (string, error) {
 	client := &GitHubClient{Token: token, Client: defaultHTTPClient}
 	result, err := client.CreateRepo(pubOpts)
 	if err != nil {
 		fmt.Fprintf(stderr, "GitHub repo creation failed: %v\n", err)
-		return
+		return "", err
 	}
 	// Build https URL for git push. GitHub returns html_url like
 	// "https://github.com/owner/repo"; the clone URL we want is the
@@ -327,8 +348,36 @@ var offerPublishToGitHub = func(opts *BootstrapOptions, stdout, stderr io.Writer
 		CommitMsg:   "Initial commit: teamhero interview scaffold",
 	})
 	if err != nil {
-		fmt.Fprintf(stderr, "git push failed: %v\nThe GitHub repository was created at %s but no commits were pushed. You can push manually from %s.\n", err, result.URL, opts.OutputDir)
-		return
+		fmt.Fprintf(
+			stderr,
+			"git push failed: %v\nThe GitHub repository was created at %s but no commits were pushed. You can push manually from %s.\n",
+			err, result.URL, opts.OutputDir,
+		)
+		return "", err
 	}
-	fmt.Fprintf(stdout, "✓ Published to %s\n", result.URL)
+	return result.URL, nil
+}
+
+// init wires the production autoPublishToGitHub indirection (declared
+// as a `var` in interview_bootstrap.go) to the real GitHub plumbing.
+// Tests override the var to dodge network IO. The function returns the
+// published URL or empty string on any failure (token absence, API
+// rejection, push error) — failures already wrote contextual stderr.
+func init() {
+	autoPublishToGitHub = func(opts *BootstrapOptions, stderr io.Writer) string {
+		token := loadGitHubToken()
+		if token == "" {
+			fmt.Fprintln(stderr, "auto-publish skipped: no GitHub token configured (run `teamhero setup` to fix).")
+			return ""
+		}
+		pubOpts := PublishOptions{
+			Repo:    defaultRepoName(opts.Role),
+			Private: true,
+		}
+		url, err := publishToGitHub(opts, pubOpts, token, stderr)
+		if err != nil {
+			return ""
+		}
+		return url
+	}
 }

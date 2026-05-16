@@ -1,14 +1,118 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 )
+
+// bootstrapPayload is the agent-handoff schema emitted to stdout when
+// --json is passed. Versioned via the Schema field so downstream
+// consumers can fail loud on breaking changes. Pointer types for
+// optional nested objects (jd, github) so absent fields serialize as
+// `null` rather than empty structs — clearer for the consumer.
+type bootstrapPayload struct {
+	Schema  string                  `json:"schema"`
+	Role    bootstrapRolePayload    `json:"role"`
+	Project bootstrapProjectPayload `json:"project"`
+	AI      bootstrapAIPayload      `json:"ai"`
+	Github  *bootstrapGithubPayload `json:"github"`
+}
+
+type bootstrapAIPayload struct {
+	// Model is the OpenAI model used for project generation. Echoes
+	// whatever the bun subprocess saw (AI_MODEL env override or the
+	// gpt-5-mini default). Useful for an orchestrating agent that
+	// wants to attribute costs by model in HR notifications.
+	Model string `json:"model"`
+}
+
+type bootstrapRolePayload struct {
+	Slug   string `json:"slug"`
+	Title  string `json:"title"`
+	Stack  string `json:"stack"`
+	Domain string `json:"domain"`
+}
+
+type bootstrapProjectPayload struct {
+	Mode             string                  `json:"mode"`
+	StackByCandidate bool                    `json:"stackByCandidate"`
+	OutputDir        string                  `json:"outputDir"`
+	TimeBoxMinutes   int                     `json:"timeBoxMinutes"`
+	Feature          string                  `json:"feature"`
+	AnalysisMode     string                  `json:"analysisMode"`
+	RubricMode       string                  `json:"rubricMode"`
+	JD               *bootstrapJDPayload     `json:"jd"`
+}
+
+type bootstrapJDPayload struct {
+	Path              string `json:"path"`
+	InfluencesProject bool   `json:"influencesProject"`
+}
+
+type bootstrapGithubPayload struct {
+	URL string `json:"url"`
+}
+
+// buildBootstrapPayload assembles the agent payload from the run's
+// validated options plus an optional GitHub URL captured from a
+// --publish run. Kept pure so it's trivially unit-testable; the
+// dispatcher composes it with the io.Writer side-effect.
+func buildBootstrapPayload(opts *BootstrapOptions, githubURL string) bootstrapPayload {
+	tb, _ := strconv.Atoi(strings.TrimSpace(opts.TimeBox))
+	outAbs, _ := filepath.Abs(opts.OutputDir)
+	if outAbs == "" {
+		outAbs = opts.OutputDir
+	}
+	var jd *bootstrapJDPayload
+	if strings.TrimSpace(opts.JDPath) != "" {
+		jd = &bootstrapJDPayload{
+			Path:              opts.JDPath,
+			InfluencesProject: opts.JDInfluencesProject,
+		}
+	}
+	var gh *bootstrapGithubPayload
+	if strings.TrimSpace(githubURL) != "" {
+		gh = &bootstrapGithubPayload{URL: githubURL}
+	}
+	model := strings.TrimSpace(os.Getenv("AI_MODEL"))
+	if model == "" {
+		model = "gpt-5-mini"
+	}
+	return bootstrapPayload{
+		Schema: "teamhero.interview.bootstrap/v1",
+		Role: bootstrapRolePayload{
+			Slug:   opts.Role,
+			Title:  opts.RoleTitle,
+			Stack:  opts.Stack,
+			Domain: opts.Domain,
+		},
+		Project: bootstrapProjectPayload{
+			Mode:             opts.ModeProject,
+			StackByCandidate: opts.StackByCandidate,
+			OutputDir:        outAbs,
+			TimeBoxMinutes:   tb,
+			Feature:          opts.Feature,
+			AnalysisMode:     opts.ModeAnalysis,
+			RubricMode:       opts.ModeRubric,
+			JD:               jd,
+		},
+		AI:     bootstrapAIPayload{Model: model},
+		Github: gh,
+	}
+}
+
+func writeBootstrapPayload(w io.Writer, payload bootstrapPayload) error {
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	return enc.Encode(payload)
+}
 
 // BootstrapOptions are the headless flags accepted by `teamhero interview bootstrap`.
 type BootstrapOptions struct {
@@ -46,6 +150,21 @@ type BootstrapOptions struct {
 	// generator client) and the Go dispatcher. Off by default — light
 	// run logs print regardless so failure triage doesn't require a rerun.
 	Debug bool
+	// EmitJSON switches the dispatcher into agent-payload mode. On
+	// success the dispatcher prints a single bootstrapPayload JSON
+	// object to stdout; the regular human-readable "Project: <link>"
+	// output and the publish prompt are routed to stderr (or
+	// suppressed) so stdout stays parseable. Designed for callers
+	// where another agent reads stdout to schedule the interview,
+	// notify HR, etc.
+	EmitJSON bool
+	// Publish auto-publishes the generated repo to GitHub when set.
+	// No interactive prompt — the dispatcher calls the same publish
+	// path the TTY prompt would have called and surfaces the URL.
+	// Orthogonal to EmitJSON: --publish alone pushes silently;
+	// --publish --json includes the URL in the emitted payload;
+	// --json alone leaves github.url null in the payload.
+	Publish bool
 }
 
 // ParseBootstrapFlags parses headless flags from the args following `bootstrap`.
@@ -64,6 +183,10 @@ func ParseBootstrapFlags(args []string) (*BootstrapOptions, string) {
 			opts.Foreground = true
 		case "--debug", "-d":
 			opts.Debug = true
+		case "--json":
+			opts.EmitJSON = true
+		case "--publish":
+			opts.Publish = true
 		case "--stack-by-candidate":
 			opts.StackByCandidate = true
 		case "--jd-influences-project":
@@ -317,17 +440,56 @@ func runInterviewBootstrap(args []string, runner BootstrapRunner, stdout, stderr
 		return 1
 	}
 	logBootstrapRunContext(opts, stderr)
-	exit := runner.Run(opts, stdout, stderr)
-	if exit == 0 {
-		printBootstrapSuccessLink(opts.OutputDir, stdout)
+	// In --json mode, the bun subprocess's progress chatter must not
+	// pollute stdout. Route its stdout to stderr so the calling agent
+	// sees only our final JSON payload on stdout.
+	runnerStdout := stdout
+	if opts.EmitJSON {
+		runnerStdout = stderr
+	}
+	exit := runner.Run(opts, runnerStdout, stderr)
+	if exit != 0 {
+		return exit
+	}
+	githubURL := ""
+	if opts.EmitJSON {
+		// Agent-payload mode: human-readable link goes to stderr (so
+		// it's still visible to a human watching the terminal), then
+		// we emit the structured JSON to stdout. Publish behavior in
+		// this mode is gated on --publish, NOT on the TTY/no-confirm
+		// dance — agent callers want explicit, predictable behavior.
+		printBootstrapSuccessLink(opts.OutputDir, stderr)
+		if opts.Publish {
+			githubURL = autoPublishToGitHub(opts, stderr)
+		}
+		payload := buildBootstrapPayload(opts, githubURL)
+		if err := writeBootstrapPayload(stdout, payload); err != nil {
+			fmt.Fprintf(stderr, "failed to emit JSON payload: %v\n", err)
+			return 1
+		}
+		return 0
+	}
+	// Human-interactive default path.
+	printBootstrapSuccessLink(opts.OutputDir, stdout)
+	if opts.Publish {
+		autoPublishToGitHub(opts, stderr)
+	} else if isStdinTTY() && !opts.NoConfirm {
 		// Suppress the publish prompt on non-interactive runs (CI, piped
 		// stdin) and when --no-confirm explicitly opts out, so scripted
 		// callers never block on a huh form.
-		if isStdinTTY() && !opts.NoConfirm {
-			offerPublishToGitHub(opts, stdout, stderr)
-		}
+		offerPublishToGitHub(opts, stdout, stderr)
 	}
-	return exit
+	return 0
+}
+
+// autoPublishToGitHub is the non-interactive publish path. Returns the
+// resulting repo URL on success, or "" when publish couldn't run
+// (no token configured, push failed, etc.). Real implementation
+// lives in interview_bootstrap_publish.go; the var indirection keeps
+// tests from spawning git/gh subprocesses.
+var autoPublishToGitHub = func(opts *BootstrapOptions, stderr io.Writer) string {
+	fmt.Fprintln(stderr, "auto-publish: not yet wired to a real GitHub client; skipping")
+	return ""
 }
 
 // logBootstrapRunContext emits a single-line summary of the validated

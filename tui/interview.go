@@ -82,17 +82,17 @@ var interviewVerbPicker = func() (string, error) {
 	return verb, nil
 }
 
-func runInterview(args []string, out io.Writer) int {
+func runInterview(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		// Non-TTY callers (CI, piped stdin, `go test`) cannot drive the picker;
 		// keep the legacy usage-and-exit-1 behavior so scripts stay deterministic.
 		if !isStdinTTY() {
-			printInterviewUsage(out)
+			printInterviewUsage(stderr)
 			return 1
 		}
 		verb, err := interviewVerbPicker()
 		if err != nil {
-			fmt.Fprintf(out, "interview menu failed: %v\n", err)
+			fmt.Fprintf(stderr, "interview menu failed: %v\n", err)
 			return 1
 		}
 		if verb == "" {
@@ -105,14 +105,14 @@ func runInterview(args []string, out io.Writer) int {
 	switch verb {
 	case "bootstrap":
 		launcher := newHuhBootstrapWizardLauncher(BootstrapWizardDefaults{})
-		return runInterviewBootstrapWithWizard(rest, bunBootstrapRunner{}, launcher, out, out)
+		return runInterviewBootstrapWithWizard(rest, bunBootstrapRunner{}, launcher, stdout, stderr)
 	case "review":
-		return runInterviewReview(rest, bunReviewRunner{}, out, out)
+		return runInterviewReview(rest, bunReviewRunner{}, stdout, stderr)
 	case "cohort":
-		return runInterviewCohort(rest, bunCohortRunner{}, out, out)
+		return runInterviewCohort(rest, bunCohortRunner{}, stdout, stderr)
 	default:
-		fmt.Fprintf(out, "teamhero interview: unknown verb %q\n", verb)
-		printInterviewUsage(out)
+		fmt.Fprintf(stderr, "teamhero interview: unknown verb %q\n", verb)
+		printInterviewUsage(stderr)
 		return 1
 	}
 }

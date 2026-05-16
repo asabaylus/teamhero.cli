@@ -16,7 +16,7 @@ func TestRunInterview_NoVerb_NoTTY_PrintsUsageAndReturnsNonZero(t *testing.T) {
 	isStdinTTY = func() bool { return false }
 
 	var out bytes.Buffer
-	code := runInterview(nil, &out)
+	code := runInterview(nil, &out, &out)
 	if code == 0 {
 		t.Errorf("expected non-zero exit code, got %d", code)
 	}
@@ -40,7 +40,7 @@ func TestRunInterview_NoVerb_TTY_DispatchesPickedVerb(t *testing.T) {
 	interviewVerbPicker = func() (string, error) { return "cohort", nil }
 
 	var out bytes.Buffer
-	code := runInterview(nil, &out)
+	code := runInterview(nil, &out, &out)
 	if code == 0 {
 		t.Errorf("picked verb with no flags should return non-zero, got %d", code)
 	}
@@ -62,7 +62,7 @@ func TestRunInterview_NoVerb_TTY_CancelReturnsZero(t *testing.T) {
 	interviewVerbPicker = func() (string, error) { return "", nil }
 
 	var out bytes.Buffer
-	code := runInterview(nil, &out)
+	code := runInterview(nil, &out, &out)
 	if code != 0 {
 		t.Errorf("cancel should exit 0, got %d", code)
 	}
@@ -84,7 +84,7 @@ func TestRunInterview_NoVerb_TTY_PickerErrorReturnsNonZero(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	code := runInterview(nil, &out)
+	code := runInterview(nil, &out, &out)
 	if code == 0 {
 		t.Errorf("picker error should return non-zero, got %d", code)
 	}
@@ -153,7 +153,7 @@ func TestRunInterview_NoVerb_TTY_CancelSentinelTreatedAsNoOp(t *testing.T) {
 	interviewVerbPicker = func() (string, error) { return "", nil }
 
 	var out bytes.Buffer
-	code := runInterview(nil, &out)
+	code := runInterview(nil, &out, &out)
 	if code != 0 {
 		t.Errorf("Cancel sentinel should exit 0, got %d (stderr-ish output: %q)", code, out.String())
 	}
@@ -174,7 +174,7 @@ func TestRunInterview_BootstrapVerb_RequiresFlags(t *testing.T) {
 	isStdinTTY = func() bool { return false }
 
 	var out bytes.Buffer
-	code := runInterview([]string{"bootstrap"}, &out)
+	code := runInterview([]string{"bootstrap"}, &out, &out)
 	if code == 0 {
 		t.Errorf("bootstrap without flags and no TTY should return non-zero, got %d", code)
 	}
@@ -184,7 +184,7 @@ func TestRunInterview_ReviewVerb_RequiresFlags(t *testing.T) {
 	// review is implemented in Slice 4; with no flags it should reject
 	// (--candidate and either --repo or --local-repo-path are required).
 	var out bytes.Buffer
-	code := runInterview([]string{"review"}, &out)
+	code := runInterview([]string{"review"}, &out, &out)
 	if code == 0 {
 		t.Errorf("review without flags should return non-zero, got %d", code)
 	}
@@ -194,7 +194,7 @@ func TestRunInterview_CohortVerb_RequiresFlags(t *testing.T) {
 	// cohort is implemented in Slice 5; with no flags it should reject
 	// (--role is required).
 	var out bytes.Buffer
-	code := runInterview([]string{"cohort"}, &out)
+	code := runInterview([]string{"cohort"}, &out, &out)
 	if code == 0 {
 		t.Errorf("cohort without flags should return non-zero, got %d", code)
 	}
@@ -202,7 +202,7 @@ func TestRunInterview_CohortVerb_RequiresFlags(t *testing.T) {
 
 func TestRunInterview_UnknownVerb_ReturnsNonZero(t *testing.T) {
 	var out bytes.Buffer
-	code := runInterview([]string{"not-a-real-verb"}, &out)
+	code := runInterview([]string{"not-a-real-verb"}, &out, &out)
 	if code == 0 {
 		t.Errorf("unknown verb should return non-zero, got %d", code)
 	}

@@ -197,7 +197,11 @@ func main() {
 		os.Exit(exitCode)
 		return
 	case "interview":
-		os.Exit(runInterview(flag.Args(), os.Stderr))
+		// stdout/stderr passed separately so --json mode can keep
+		// stdout pure for the agent payload while human chatter
+		// (Project: link, publish prompts, bun subprocess logs) goes
+		// to stderr. Default subcommand behavior is unchanged.
+		os.Exit(runInterview(flag.Args(), os.Stdout, os.Stderr))
 		return
 	}
 
