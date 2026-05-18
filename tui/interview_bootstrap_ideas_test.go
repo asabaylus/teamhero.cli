@@ -60,6 +60,94 @@ func TestBuildIdeaPrompt_IncludesRoleProfile(t *testing.T) {
 	}
 }
 
+// TestBuildIdeaPrompt_WithoutJD_KeepsExistingShape pins today's prompt
+// output for a fixed input. It guards against the upcoming JD-aware
+// changes accidentally reshaping the no-JD prompt — the byte-equal
+// snapshot fails if any branch of buildIdeaPrompt mutates the
+// no-JD path.
+func TestBuildIdeaPrompt_WithoutJD_KeepsExistingShape(t *testing.T) {
+	p := IdeaProfile{
+		Role:           "senior-backend",
+		RoleTitle:      "Senior Backend Engineer",
+		Stack:          "Go",
+		Domain:         "Payments",
+		Feature:        "Refund idempotency",
+		TimeBoxMinutes: 90,
+		ProjectMode:    "A",
+	}
+	want := `Generate 5 distinct project ideas suitable for a candidate coding interview.
+
+Role context (this is the candidate's profile as captured by the hiring manager):
+- Role: Senior Backend Engineer
+- Stack: Go
+- Domain: Payments
+- Feature focus: Refund idempotency
+- Time-box: 90 minutes
+- Project mode: A
+
+Each idea must be completable within the time-box by a single engineer working with an AI assistant. Vary the ideas — different sub-problems within the same domain, not minor reframings of one idea.
+
+Return JSON with an "ideas" array. Each entry has:
+- title: short headline (4-8 words)
+- blurb: 2-3 sentence description of what the candidate will build and why it tests the role profile above.`
+	got := buildIdeaPrompt(p)
+	if got != want {
+		t.Errorf("no-JD prompt shape changed.\n--- want ---\n%s\n--- got ---\n%s", want, got)
+	}
+}
+
+// TestBuildIdeaPrompt_WithJD_EmitsCompanyDomainInstruction asserts that
+// when a JD body is attached, the prompt names the JD's company/about
+// section as the business-domain anchor AND wraps the body in
+// --- JOB DESCRIPTION --- / --- END JOB DESCRIPTION --- markers so the
+// model can locate the JD unambiguously inside the prompt.
+func TestBuildIdeaPrompt_WithJD_EmitsCompanyDomainInstruction(t *testing.T) {
+	jdBody := "About Acme Robotics\nAcme builds factory-floor automation for tier-2 auto suppliers.\n\nResponsibilities\n- ship pipeline tooling"
+	p := IdeaProfile{
+		Role:            "senior-backend",
+		RoleTitle:       "Senior Backend Engineer",
+		Stack:           "Go",
+		Feature:         "Refund idempotency",
+		TimeBoxMinutes:  90,
+		ProjectMode:     "A",
+		JobDescription:  jdBody,
+	}
+	prompt := buildIdeaPrompt(p)
+	for _, want := range []string{
+		"company/about section",
+		"--- JOB DESCRIPTION ---",
+		"--- END JOB DESCRIPTION ---",
+		jdBody,
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("JD-aware prompt missing %q\nprompt:\n%s", want, prompt)
+		}
+	}
+}
+
+// TestBuildIdeaPrompt_WithJD_OmitsExplicitDomainLine pins the contract
+// that the "Domain: " line is suppressed in the JD branch. The wizard
+// already skips the Domain step when a JD is attached, so leaving an
+// empty "Domain: " line in the prompt would both look broken and
+// double-anchor the domain (once empty, once by JD inference).
+func TestBuildIdeaPrompt_WithJD_OmitsExplicitDomainLine(t *testing.T) {
+	p := IdeaProfile{
+		Role:           "senior-backend",
+		Stack:          "Go",
+		Feature:        "Refund idempotency",
+		TimeBoxMinutes: 90,
+		ProjectMode:    "A",
+		JobDescription: "About Acme Robotics: factory automation.",
+	}
+	prompt := buildIdeaPrompt(p)
+	// Look for the literal "- Domain: " bullet — the JD branch's
+	// "- Business domain: derive this from…" line must not match,
+	// so the hyphen-space prefix on the banned token is load-bearing.
+	if strings.Contains(prompt, "- Domain: ") {
+		t.Errorf("JD-aware prompt should not contain a literal \"- Domain: \" bullet; prompt:\n%s", prompt)
+	}
+}
+
 func TestBuildIdeaPrompt_FallsBackToRoleSlugWhenTitleMissing(t *testing.T) {
 	p := IdeaProfile{Role: "junior-fe", Stack: "TS", Domain: "Storefront", Feature: "x"}
 	prompt := buildIdeaPrompt(p)

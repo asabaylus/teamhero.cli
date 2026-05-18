@@ -391,6 +391,77 @@ func TestInterviewBootstrap_NextStep_OutputDirRoutesToConfirm(t *testing.T) {
 	}
 }
 
+// TestInterviewBootstrap_ReadJD_OnlyWhenInfluencingYes is a table-
+// driven check of the two flags that gate JD inclusion in the
+// idea-generation prompt. Only when BOTH the manager attached a JD
+// (jdProvided="yes") AND opted to let it shape the project
+// (jdInfluencesProject="yes") may the file body cross into the
+// prompt. Every other combination must return the empty string so
+// the downstream IdeaProfile carries an empty JobDescription and
+// buildIdeaPrompt routes to the no-JD branch.
+func TestInterviewBootstrap_ReadJD_OnlyWhenInfluencingYes(t *testing.T) {
+	dir := t.TempDir()
+	jdPath := filepath.Join(dir, "jd.md")
+	const body = "About Acme: factory floor automation for tier-2 auto suppliers."
+	if err := os.WriteFile(jdPath, []byte(body), 0o644); err != nil {
+		t.Fatalf("seed JD file: %v", err)
+	}
+
+	cases := []struct {
+		provided   string
+		influences string
+		wantBody   bool
+	}{
+		{"yes", "yes", true},
+		{"yes", "no", false},
+		{"yes", "", false},
+		{"no", "yes", false},
+		{"no", "no", false},
+		{"", "yes", false},
+		{"", "", false},
+	}
+	for _, tc := range cases {
+		t.Run("provided="+tc.provided+",influences="+tc.influences, func(t *testing.T) {
+			m := newInterviewBootstrapTeaModel(BootstrapWizardDefaults{})
+			m.data.jdProvided = tc.provided
+			m.data.jdInfluencesProject = tc.influences
+			m.data.jdPath = jdPath
+			got := m.readJDIfInfluencing()
+			if tc.wantBody {
+				if got != body {
+					t.Errorf("expected JD body, got %q", got)
+				}
+			} else {
+				if got != "" {
+					t.Errorf("expected empty string, got %q", got)
+				}
+			}
+		})
+	}
+}
+
+// TestInterviewBootstrap_ReadJD_DegradesOnReadError pins the
+// silent-degrade contract: a JD path that no longer resolves (file
+// moved, deleted, permission revoked) must NOT propagate the read
+// error up the stack. The JD is enrichment, not a hard requirement,
+// and the manager should be able to complete the wizard even when
+// the JD is briefly unreadable.
+func TestInterviewBootstrap_ReadJD_DegradesOnReadError(t *testing.T) {
+	m := newInterviewBootstrapTeaModel(BootstrapWizardDefaults{})
+	m.data.jdProvided = "yes"
+	m.data.jdInfluencesProject = "yes"
+	m.data.jdPath = filepath.Join(t.TempDir(), "does-not-exist.md")
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("readJDIfInfluencing panicked on missing file: %v", r)
+		}
+	}()
+	if got := m.readJDIfInfluencing(); got != "" {
+		t.Errorf("expected empty string on read error, got %q", got)
+	}
+}
+
 // normalizeForGolden collapses trailing whitespace on each line so minor
 // width changes don't churn the golden file.
 func normalizeForGolden(s string) string {

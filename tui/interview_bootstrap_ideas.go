@@ -34,6 +34,15 @@ type IdeaProfile struct {
 	Feature        string
 	TimeBoxMinutes int
 	ProjectMode    string
+
+	// JobDescription is the raw JD body. Populated only when the
+	// hiring manager attached a JD AND opted in to letting it shape
+	// the candidate-facing project (the wizard's
+	// jdInfluencesProject="yes" branch). When non-empty,
+	// buildIdeaPrompt swaps the explicit "Domain:" line for an
+	// instruction that tells the model to derive the business domain
+	// from the JD's company/about section.
+	JobDescription string
 }
 
 // IdeaFetcher returns a list of project ideas tailored to the role profile.
@@ -77,6 +86,32 @@ func buildIdeaPrompt(p IdeaProfile) string {
 	roleLabel := p.RoleTitle
 	if strings.TrimSpace(roleLabel) == "" {
 		roleLabel = p.Role
+	}
+	// JD branch: drop the explicit "Domain:" line (the wizard skipped
+	// the Domain step) and replace it with an instruction that names
+	// the JD's company/about paragraph as the domain anchor. Without
+	// this explicit anchor the model drifts to generic SaaS examples
+	// even with the JD attached.
+	if strings.TrimSpace(p.JobDescription) != "" {
+		return fmt.Sprintf(`Generate 5 distinct project ideas suitable for a candidate coding interview.
+
+Role context (this is the candidate's profile as captured by the hiring manager):
+- Role: %s
+- Stack: %s
+- Business domain: derive this from the company/about section at the top of the job description below — that paragraph describes the company's industry and product surface. The ideas must be plausible projects for an engineer at that specific company, not generic SaaS examples.
+- Feature focus: %s
+- Time-box: %d minutes
+- Project mode: %s
+
+Each idea must be completable within the time-box by a single engineer working with an AI assistant. Vary the ideas — different sub-problems within the same domain, not minor reframings of one idea.
+
+Return JSON with an "ideas" array. Each entry has:
+- title: short headline (4-8 words)
+- blurb: 2-3 sentence description of what the candidate will build and why it tests the role profile above.
+
+--- JOB DESCRIPTION ---
+%s
+--- END JOB DESCRIPTION ---`, roleLabel, p.Stack, p.Feature, p.TimeBoxMinutes, p.ProjectMode, p.JobDescription)
 	}
 	return fmt.Sprintf(`Generate 5 distinct project ideas suitable for a candidate coding interview.
 

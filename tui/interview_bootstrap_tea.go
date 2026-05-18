@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 
@@ -327,6 +328,7 @@ func (m *interviewBootstrapTeaModel) fetchIdeasCmd() tea.Cmd {
 			Feature:        m.data.feature,
 			TimeBoxMinutes: tbMin,
 			ProjectMode:    m.data.modeProject,
+			JobDescription: m.readJDIfInfluencing(),
 		}
 		ideas, err := fetcher.Fetch(profile)
 		if err != nil {
@@ -336,6 +338,29 @@ func (m *interviewBootstrapTeaModel) fetchIdeasCmd() tea.Cmd {
 	}
 }
 
+// readJDIfInfluencing returns the JD body for inclusion in the idea-
+// generation prompt, but ONLY when the hiring manager has both attached
+// a JD and explicitly opted to let it shape the candidate-facing
+// project (the wizard's earlier-step toggles). Every other combination
+// — JD declined, JD attached but "informs review only", or either flag
+// blank — yields the empty string and the prompt routes to the no-JD
+// branch.
+//
+// Filesystem failures degrade silently: a missing or unreadable JD
+// path returns "" rather than propagating an error up into the fetch
+// pipeline. The JD is enrichment, not a hard requirement, and the
+// manager should not be blocked from completing the wizard because of
+// a transient file-system issue.
+func (m *interviewBootstrapTeaModel) readJDIfInfluencing() string {
+	if m.data.jdProvided != "yes" || m.data.jdInfluencesProject != "yes" {
+		return ""
+	}
+	body, err := os.ReadFile(m.data.jdPath)
+	if err != nil {
+		return ""
+	}
+	return string(body)
+}
 
 func (m *interviewBootstrapTeaModel) nextStep(cur interviewBootstrapStep) interviewBootstrapStep {
 	switch cur {
