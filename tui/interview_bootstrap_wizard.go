@@ -129,9 +129,15 @@ type bootstrapWizardModel struct {
 
 	// ideas is populated by the Idea-fetch step when featureSource ==
 	// "suggest". ideaSelected indexes into ideas; -1 means none yet.
-	ideas        []ProjectIdea
-	ideaSelected int
-	ideaFetchErr string
+	// rejectedTitles accumulates titles from prior batches that the
+	// manager declined by picking the "Generate a fresh set…"
+	// sentinel — passed into IdeaProfile.RejectedTitles on the next
+	// fetch so the prompt names them as anti-examples. Accumulates
+	// across regenerations.
+	ideas          []ProjectIdea
+	ideaSelected   int
+	ideaFetchErr   string
+	rejectedTitles []string
 
 	confirmed bool
 	aborted   bool

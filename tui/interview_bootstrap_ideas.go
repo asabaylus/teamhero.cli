@@ -43,6 +43,16 @@ type IdeaProfile struct {
 	// instruction that tells the model to derive the business domain
 	// from the JD's company/about section.
 	JobDescription string
+
+	// RejectedTitles carries titles from prior idea batches that the
+	// manager declined by picking "Generate a fresh set…". When
+	// non-empty, buildIdeaPrompt appends an anti-example clause that
+	// names every title and tells the model to vary the sub-problem
+	// within the same domain. Accumulates across regenerations — a
+	// third re-roll sees titles from the first two batches too — so
+	// the model can't drift back into near-duplicates of an already-
+	// rejected idea.
+	RejectedTitles []string
 }
 
 // IdeaFetcher returns a list of project ideas tailored to the role profile.
@@ -87,13 +97,14 @@ func buildIdeaPrompt(p IdeaProfile) string {
 	if strings.TrimSpace(roleLabel) == "" {
 		roleLabel = p.Role
 	}
+	var prompt string
 	// JD branch: drop the explicit "Domain:" line (the wizard skipped
 	// the Domain step) and replace it with an instruction that names
 	// the JD's company/about paragraph as the domain anchor. Without
 	// this explicit anchor the model drifts to generic SaaS examples
 	// even with the JD attached.
 	if strings.TrimSpace(p.JobDescription) != "" {
-		return fmt.Sprintf(`Generate 5 distinct project ideas suitable for a candidate coding interview.
+		prompt = fmt.Sprintf(`Generate 5 distinct project ideas suitable for a candidate coding interview.
 
 Role context (this is the candidate's profile as captured by the hiring manager):
 - Role: %s
@@ -112,8 +123,8 @@ Return JSON with an "ideas" array. Each entry has:
 --- JOB DESCRIPTION ---
 %s
 --- END JOB DESCRIPTION ---`, roleLabel, p.Stack, p.Feature, p.TimeBoxMinutes, p.ProjectMode, p.JobDescription)
-	}
-	return fmt.Sprintf(`Generate 5 distinct project ideas suitable for a candidate coding interview.
+	} else {
+		prompt = fmt.Sprintf(`Generate 5 distinct project ideas suitable for a candidate coding interview.
 
 Role context (this is the candidate's profile as captured by the hiring manager):
 - Role: %s
@@ -128,6 +139,20 @@ Each idea must be completable within the time-box by a single engineer working w
 Return JSON with an "ideas" array. Each entry has:
 - title: short headline (4-8 words)
 - blurb: 2-3 sentence description of what the candidate will build and why it tests the role profile above.`, roleLabel, p.Stack, p.Domain, p.Feature, p.TimeBoxMinutes, p.ProjectMode)
+	}
+	// Anti-example clause: when the manager has rejected one or more
+	// prior batches via the regenerate sentinel, name those titles
+	// verbatim and tell the model to vary the sub-problem inside the
+	// same domain. Listed comma-separated; appended on its own
+	// trailing line so the no-rejections prompt is byte-identical to
+	// today's no-rejections output (regression-guarded by
+	// TestBuildIdeaPrompt_WithoutJD_KeepsExistingShape).
+	if len(p.RejectedTitles) > 0 {
+		prompt += "\n\nDo not repeat or rephrase any of these previously-shown ideas: " +
+			strings.Join(p.RejectedTitles, ", ") +
+			". Vary the sub-problem within the same domain."
+	}
+	return prompt
 }
 
 // ideasResponseSchema is the JSON Schema body we hand to OpenAI's

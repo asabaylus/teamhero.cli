@@ -148,6 +148,89 @@ func TestBuildIdeaPrompt_WithJD_OmitsExplicitDomainLine(t *testing.T) {
 	}
 }
 
+// TestBuildIdeaPrompt_WithoutRejectedTitles_OmitsAntiExamples is a
+// regression guard. With RejectedTitles == nil, today's prompt must not
+// carry the "Do not repeat or rephrase" clause; we lock that before
+// adding the new clause so a future bug that emits the clause
+// unconditionally would fail this test.
+func TestBuildIdeaPrompt_WithoutRejectedTitles_OmitsAntiExamples(t *testing.T) {
+	p := IdeaProfile{
+		Role:           "senior-backend",
+		RoleTitle:      "Senior Backend Engineer",
+		Stack:          "Go",
+		Domain:         "Payments",
+		Feature:        "Refund idempotency",
+		TimeBoxMinutes: 90,
+		ProjectMode:    "A",
+	}
+	prompt := buildIdeaPrompt(p)
+	if strings.Contains(prompt, "Do not repeat or rephrase") {
+		t.Errorf("prompt must NOT contain anti-example clause when RejectedTitles is nil; prompt:\n%s", prompt)
+	}
+}
+
+// TestBuildIdeaPrompt_WithRejectedTitles_EmitsAntiExamples is the
+// positive side of the anti-example contract. When RejectedTitles is
+// non-empty, the prompt MUST emit a "Do not repeat or rephrase" clause
+// AND list each rejected title verbatim so the model has the exact
+// strings to avoid.
+func TestBuildIdeaPrompt_WithRejectedTitles_EmitsAntiExamples(t *testing.T) {
+	p := IdeaProfile{
+		Role:           "senior-backend",
+		RoleTitle:      "Senior Backend Engineer",
+		Stack:          "Go",
+		Domain:         "Payments",
+		Feature:        "Refund idempotency",
+		TimeBoxMinutes: 90,
+		ProjectMode:    "A",
+		RejectedTitles: []string{"A", "B", "C"},
+	}
+	prompt := buildIdeaPrompt(p)
+	if !strings.Contains(prompt, "Do not repeat or rephrase") {
+		t.Errorf("prompt missing anti-example clause; prompt:\n%s", prompt)
+	}
+	for _, title := range []string{"A", "B", "C"} {
+		if !strings.Contains(prompt, title) {
+			t.Errorf("prompt missing rejected title %q; prompt:\n%s", title, prompt)
+		}
+	}
+}
+
+// TestBuildIdeaPrompt_JDAndRejections_BothPresent is the cross-cutting
+// guard called out by the PRD. When BOTH a JD body is attached AND the
+// manager has rejected prior batches, the prompt MUST contain both the
+// JD block (--- JOB DESCRIPTION --- markers + body) AND the
+// anti-example clause. Without this, a future refactor that drops the
+// anti-example into an `else` branch of the JD `if` would silently
+// disable regenerate de-duplication for every JD-attached run.
+func TestBuildIdeaPrompt_JDAndRejections_BothPresent(t *testing.T) {
+	jdBody := "About Acme Robotics: factory-floor automation for tier-2 auto suppliers."
+	p := IdeaProfile{
+		Role:           "senior-backend",
+		RoleTitle:      "Senior Backend Engineer",
+		Stack:          "Go",
+		Feature:        "Refund idempotency",
+		TimeBoxMinutes: 90,
+		ProjectMode:    "A",
+		JobDescription: jdBody,
+		RejectedTitles: []string{"Refund retries", "Audit log"},
+	}
+	prompt := buildIdeaPrompt(p)
+	for _, want := range []string{
+		"--- JOB DESCRIPTION ---",
+		"--- END JOB DESCRIPTION ---",
+		jdBody,
+		"company/about section",
+		"Do not repeat or rephrase",
+		"Refund retries",
+		"Audit log",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("JD+rejections prompt missing %q\nprompt:\n%s", want, prompt)
+		}
+	}
+}
+
 func TestBuildIdeaPrompt_FallsBackToRoleSlugWhenTitleMissing(t *testing.T) {
 	p := IdeaProfile{Role: "junior-fe", Stack: "TS", Domain: "Storefront", Feature: "x"}
 	prompt := buildIdeaPrompt(p)

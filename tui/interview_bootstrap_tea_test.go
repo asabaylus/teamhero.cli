@@ -9,6 +9,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/x/exp/teatest"
 )
 
@@ -388,6 +389,167 @@ func TestInterviewBootstrap_NextStep_OutputDirRoutesToConfirm(t *testing.T) {
 	m.step = ibStepOutputDir
 	if next := m.nextStep(m.step); next != ibStepConfirm {
 		t.Fatalf("output-dir should advance to confirm, got %v", next)
+	}
+}
+
+// TestInterviewBootstrap_IdeaSelectForm_HasSentinelRow pins the
+// sentinel-option contract on the idea-select form: after the real
+// ideas, the form MUST expose one extra huh.Option[int] whose label
+// contains "Generate a fresh set". This is how the wizard offers a
+// regenerate affordance without a new keybinding or a new screen — the
+// existing huh.Select takes one more row of value len(ideas).
+//
+// We drive the form past the real ideas with synthetic "down" key
+// messages so the sentinel scrolls into the visible viewport — huh's
+// View() only renders a window of options, so we can't just call
+// View() and grep for the label.
+func TestInterviewBootstrap_IdeaSelectForm_HasSentinelRow(t *testing.T) {
+	m := newInterviewBootstrapTeaModel(BootstrapWizardDefaults{})
+	m.data.ideas = []ProjectIdea{
+		{Title: "Refund retries", Blurb: "Idempotent retries with backoff."},
+		{Title: "Audit log", Blurb: "Append-only state transitions."},
+		{Title: "Reconciliation", Blurb: "Settlement reconciliation tooling."},
+	}
+	m.step = ibStepIdeaSelect
+	form := m.buildForm()
+	if form == nil {
+		t.Fatal("buildForm returned nil for ibStepIdeaSelect with non-empty ideas")
+	}
+	// Give huh a tall enough terminal that every option fits in the
+	// rendered viewport — without this huh windows the select and only
+	// shows the first 2-3 entries, so the sentinel never reaches
+	// View()'s output even though it exists in the option list.
+	form = form.WithHeight(20)
+	_ = form.Init()
+	// Press down len(ideas) times so the cursor lands on the sentinel
+	// row; huh re-renders with the sentinel inside the viewport.
+	for i := 0; i < len(m.data.ideas); i++ {
+		next, _ := form.Update(tea.KeyMsg{Type: tea.KeyDown})
+		if f, ok := next.(*huh.Form); ok {
+			form = f
+		}
+	}
+	want := "Generate a fresh set"
+	view := form.View()
+	if !strings.Contains(view, want) {
+		t.Errorf("idea-select form view missing sentinel label %q; view:\n%s", want, view)
+	}
+}
+
+// TestInterviewBootstrap_IdeaSelect_RealPickStillCommits is the
+// regression guard around the upcoming sentinel branch in advance().
+// When data.ideaSelected is a valid real-idea index (0..len-1), the
+// existing commit-to-feature path MUST still run: the picked title +
+// blurb lands in data.feature, the step advances to ibStepTimeBox per
+// nextStep(), and the regenerate side-effects (rejectedTitles append,
+// ideas clear) MUST NOT fire.
+func TestInterviewBootstrap_IdeaSelect_RealPickStillCommits(t *testing.T) {
+	m := newInterviewBootstrapTeaModel(BootstrapWizardDefaults{})
+	m.data.ideas = []ProjectIdea{
+		{Title: "Refund retries", Blurb: "Idempotent retries with backoff."},
+		{Title: "Audit log", Blurb: "Append-only state transitions."},
+	}
+	m.data.ideaSelected = 0
+	m.step = ibStepIdeaSelect
+	_, _ = m.advance()
+	if !strings.Contains(m.data.feature, "Refund retries") {
+		t.Errorf("real-index pick must commit chosen title to data.feature; got %q", m.data.feature)
+	}
+	if m.step != ibStepTimeBox {
+		t.Errorf("real-index pick should advance to time-box, got step %v", m.step)
+	}
+	if len(m.data.rejectedTitles) != 0 {
+		t.Errorf("real-index pick must NOT append to rejectedTitles; got %v", m.data.rejectedTitles)
+	}
+	if len(m.data.ideas) == 0 {
+		t.Errorf("real-index pick must NOT clear the ideas slice; got empty")
+	}
+}
+
+// TestInterviewBootstrap_IdeaSelect_SentinelTriggersRefetch pins the
+// regenerate side-effects when the manager picks the sentinel row
+// (ideaSelected == len(ideas)). advance() MUST intercept before
+// commitSelectedIdea fires: every current title is appended to
+// rejectedTitles, the ideas slice clears, the step shunts back to
+// ibStepIdeaFetching (the spinner state), and a non-nil tea.Cmd is
+// returned so Bubble Tea actually kicks off the next fetch.
+func TestInterviewBootstrap_IdeaSelect_SentinelTriggersRefetch(t *testing.T) {
+	m := newInterviewBootstrapTeaModelWithFetcher(BootstrapWizardDefaults{}, stubIdeaFetcher{
+		Ideas: []ProjectIdea{{Title: "fresh", Blurb: "x"}},
+	})
+	m.data.ideas = []ProjectIdea{
+		{Title: "Refund retries", Blurb: "Idempotent retries with backoff."},
+		{Title: "Audit log", Blurb: "Append-only state transitions."},
+	}
+	m.data.ideaSelected = len(m.data.ideas) // sentinel index
+	m.step = ibStepIdeaSelect
+	_, cmd := m.advance()
+	if len(m.data.ideas) != 0 {
+		t.Errorf("sentinel pick must clear data.ideas; got %d entries", len(m.data.ideas))
+	}
+	for _, want := range []string{"Refund retries", "Audit log"} {
+		found := false
+		for _, got := range m.data.rejectedTitles {
+			if got == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("rejectedTitles missing %q; got %v", want, m.data.rejectedTitles)
+		}
+	}
+	if m.step != ibStepIdeaFetching {
+		t.Errorf("sentinel pick should land on idea-fetching, got step %v", m.step)
+	}
+	if cmd == nil {
+		t.Errorf("sentinel pick must return a non-nil tea.Cmd to re-enter the fetch loop")
+	}
+}
+
+// TestInterviewBootstrap_Regenerate_AccumulatesRejectedTitles is the
+// cross-batch contract: rejectedTitles must KEEP every prior title,
+// not overwrite the slice when a second sentinel pick fires. Without
+// this, the third re-roll would only see the second batch's titles
+// and the model could re-emit the first batch's ideas verbatim.
+//
+// Simulates the wizard's user flow: first batch A/B shown → sentinel;
+// second batch C/D loaded → sentinel. After the second sentinel pick
+// rejectedTitles must contain A, B, C, AND D.
+func TestInterviewBootstrap_Regenerate_AccumulatesRejectedTitles(t *testing.T) {
+	m := newInterviewBootstrapTeaModelWithFetcher(BootstrapWizardDefaults{}, stubIdeaFetcher{
+		Ideas: []ProjectIdea{{Title: "fresh", Blurb: "x"}},
+	})
+
+	// First batch.
+	m.data.ideas = []ProjectIdea{
+		{Title: "A", Blurb: "first batch idea A"},
+		{Title: "B", Blurb: "first batch idea B"},
+	}
+	m.data.ideaSelected = len(m.data.ideas)
+	m.step = ibStepIdeaSelect
+	_, _ = m.advance()
+
+	// Simulate the new batch landing (what ideasFetchedMsg would do).
+	m.data.ideas = []ProjectIdea{
+		{Title: "C", Blurb: "second batch idea C"},
+		{Title: "D", Blurb: "second batch idea D"},
+	}
+	m.data.ideaSelected = len(m.data.ideas)
+	m.step = ibStepIdeaSelect
+	_, _ = m.advance()
+
+	for _, want := range []string{"A", "B", "C", "D"} {
+		found := false
+		for _, got := range m.data.rejectedTitles {
+			if got == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("rejectedTitles after two regenerations missing %q; got %v", want, m.data.rejectedTitles)
+		}
 	}
 }
 

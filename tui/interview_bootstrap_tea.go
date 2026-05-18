@@ -252,6 +252,27 @@ func (m *interviewBootstrapTeaModel) formWidth() int {
 // Returns (model, tea.Quit) when the wizard reaches its final state
 // (Confirm answered).
 func (m *interviewBootstrapTeaModel) advance() (tea.Model, tea.Cmd) {
+	// Sentinel branch: when the manager picked the "Generate a fresh
+	// set…" row (its value is one past the last real idea), bypass
+	// the commit-to-feature path entirely. Append every just-shown
+	// title to rejectedTitles so the next prompt names them as
+	// anti-examples, clear the ideas slice, reset the selection
+	// cursor, and re-enter the fetch loop with the same spinner +
+	// Cmd combo the initial fetch uses. The existing
+	// ideasFetchedMsg handler routes back to ibStepIdeaSelect via
+	// nextStep() once the new batch lands. Must run BEFORE the
+	// commitSelectedIdea() block below so the sentinel index never
+	// leaks into data.feature as a chosen "idea".
+	if m.step == ibStepIdeaSelect && m.data.ideaSelected == len(m.data.ideas) && len(m.data.ideas) > 0 {
+		for _, idea := range m.data.ideas {
+			m.data.rejectedTitles = append(m.data.rejectedTitles, idea.Title)
+		}
+		m.data.ideas = nil
+		m.data.ideaSelected = 0
+		m.step = ibStepIdeaFetching
+		m.form = nil
+		return m, tea.Batch(m.spin.Tick, m.fetchIdeasCmd())
+	}
 	// Persist the selected idea into the feature description as the user
 	// leaves the idea-select step — that becomes the candidate-facing
 	// project description AND the AI prompt's feature focus.
@@ -329,6 +350,11 @@ func (m *interviewBootstrapTeaModel) fetchIdeasCmd() tea.Cmd {
 			TimeBoxMinutes: tbMin,
 			ProjectMode:    m.data.modeProject,
 			JobDescription: m.readJDIfInfluencing(),
+			// Defensive copy so a concurrent append on the wizard
+			// side (next sentinel pick) can't mutate the slice the
+			// fetcher is reading. Cheap — the slice is at most a
+			// handful of titles per re-roll.
+			RejectedTitles: append([]string(nil), m.data.rejectedTitles...),
 		}
 		ideas, err := fetcher.Fetch(profile)
 		if err != nil {
@@ -661,11 +687,16 @@ func (m *interviewBootstrapTeaModel) buildForm() *huh.Form {
 					Description(d.ideaFetchErr + "\n\nPress enter to continue; you'll need to back up and type a feature description manually."),
 			)).WithTheme(huh.ThemeCharm()).WithWidth(m.formWidth())
 		}
-		opts := make([]huh.Option[int], 0, len(d.ideas))
+		opts := make([]huh.Option[int], 0, len(d.ideas)+1)
 		for i, idea := range d.ideas {
 			label := fmt.Sprintf("%s — %s", idea.Title, truncate(idea.Blurb, 60))
 			opts = append(opts, huh.NewOption(label, i))
 		}
+		// Sentinel "regenerate" row. Its value is one past the last real
+		// idea (len(d.ideas)), so advance() can detect a regenerate
+		// request by checking `d.ideaSelected == len(d.ideas)` without
+		// extending the huh.Select[int] binding to a richer enum type.
+		opts = append(opts, huh.NewOption("↻ Generate a fresh set…", len(d.ideas)))
 		if d.ideaSelected < 0 {
 			d.ideaSelected = 0
 		}
