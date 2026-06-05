@@ -11,9 +11,11 @@ import type { Measurement } from "../types.js";
  * presence of go.mod. The runner is injectable for tests.
  */
 
-export type TestRunner = (
-	repoDir: string,
-) => { readonly passed: number; readonly failed: number; readonly output: string };
+export type TestRunner = (repoDir: string) => {
+	readonly passed: number;
+	readonly failed: number;
+	readonly output: string;
+};
 
 // Wall-clock cap on a candidate test run. Beyond this the spawn is killed
 // and the extractor reports a timeout rather than hanging the entire grader
@@ -69,7 +71,9 @@ const realRunner: TestRunner = (repoDir) => {
 		const r = runWithTimeout("go", ["test", "./..."], repoDir);
 		const errSummary = summarizeSpawnError(r.error);
 		const timedOut = r.status === 124; // coreutils timeout exit code on hit
-		const timeoutNote = timedOut ? "\nTest run timed out and was killed (process group)." : "";
+		const timeoutNote = timedOut
+			? "\nTest run timed out and was killed (process group)."
+			: "";
 		const output = `${r.stdout ?? ""}\n${r.stderr ?? ""}${errSummary ? `\n${errSummary}` : ""}${timeoutNote}`;
 		return {
 			passed: countMatches(r.stdout ?? "", /^ok\s+/gm),
@@ -81,7 +85,9 @@ const realRunner: TestRunner = (repoDir) => {
 		const r = runWithTimeout("bun", ["test"], repoDir);
 		const errSummary = summarizeSpawnError(r.error);
 		const timedOut = r.status === 124;
-		const timeoutNote = timedOut ? "\nTest run timed out and was killed (process group)." : "";
+		const timeoutNote = timedOut
+			? "\nTest run timed out and was killed (process group)."
+			: "";
 		const combined = `${r.stdout ?? ""}\n${r.stderr ?? ""}${errSummary ? `\n${errSummary}` : ""}${timeoutNote}`;
 		const passMatch = combined.match(/(\d+)\s+pass\b/);
 		const failMatch = combined.match(/(\d+)\s+fail\b/);

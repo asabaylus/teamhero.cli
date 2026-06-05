@@ -59,7 +59,10 @@ describe("role-config validation", () => {
 		// "default+jd" was retired in favour of a standalone JD field
 		// (jdPath, jdInfluencesProject). The validator must surface a
 		// clear error if a stale config file still uses the old value.
-		const c = { ...baseConfig(), rubricMode: "default+jd" as never } as RoleConfig;
+		const c = {
+			...baseConfig(),
+			rubricMode: "default+jd" as never,
+		} as RoleConfig;
 		const r = validateRoleConfig(c);
 		expect(r.ok).toBe(false);
 		expect(r.failures.some((f) => /rubricMode/i.test(f))).toBe(true);

@@ -86,7 +86,9 @@ describe("privacy gate", () => {
 	});
 
 	it("returns non-zero when sections are missing entirely", () => {
-		const { path, cleanup } = tempFile(`# Privacy Release\n\nSome other text.\n`);
+		const { path, cleanup } = tempFile(
+			`# Privacy Release\n\nSome other text.\n`,
+		);
 		try {
 			expect(runGate(path)).not.toBe(0);
 		} finally {

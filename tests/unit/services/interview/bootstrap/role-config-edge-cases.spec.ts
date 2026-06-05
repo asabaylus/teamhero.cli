@@ -82,7 +82,10 @@ describe("validateRoleConfig — boundary and negative cases", () => {
 	});
 
 	it("rejects a non-finite timeBoxMinutes (Infinity)", () => {
-		const c: RoleConfig = { ...baseConfig(), timeBoxMinutes: Number.POSITIVE_INFINITY };
+		const c: RoleConfig = {
+			...baseConfig(),
+			timeBoxMinutes: Number.POSITIVE_INFINITY,
+		};
 		const r = validateRoleConfig(c);
 		expect(r.ok).toBe(false);
 	});

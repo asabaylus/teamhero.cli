@@ -1,17 +1,12 @@
 import { describe, expect, it } from "bun:test";
-import {
-	mkdirSync,
-	mkdtempSync,
-	rmSync,
-	writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AuditFrontmatter } from "../../../../../src/services/interview/review/audit-writer.js";
 import {
 	loadCohort,
 	renderCohortSummary,
 } from "../../../../../src/services/interview/cohort/cohort-summary.js";
+import type { AuditFrontmatter } from "../../../../../src/services/interview/review/audit-writer.js";
 
 function makeCandidate(
 	roleDir: string,
@@ -201,7 +196,11 @@ describe("renderCohortSummary — sorting edge cases", () => {
 	it("does NOT include score, rank, or total columns regardless of data", () => {
 		const dir = mkdtempSync(join(tmpdir(), "iv-cohort-edge-"));
 		try {
-			makeCandidate(dir, "alice", { candidate: "Alice", signed_off: true, recommendation: "Hire" });
+			makeCandidate(dir, "alice", {
+				candidate: "Alice",
+				signed_off: true,
+				recommendation: "Hire",
+			});
 			makeCandidate(dir, "bob", { candidate: "Bob", signed_off: false });
 			const body = renderCohortSummary("senior-backend", loadCohort(dir));
 			expect(body).not.toMatch(/\|\s*Score\s*\|/i);

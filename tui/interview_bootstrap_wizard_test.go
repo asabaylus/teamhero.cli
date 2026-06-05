@@ -71,8 +71,8 @@ func TestBootstrapWizard_DefaultModelHasSensibleDefaults(t *testing.T) {
 	if m.modeProject != "brownfield" {
 		t.Errorf("default project type should be brownfield, got %q", m.modeProject)
 	}
-	if m.modeAnalysis != "ai-assisted" {
-		t.Errorf("default analysis mode should be ai-assisted, got %q", m.modeAnalysis)
+	if m.modeAnalysis != "human-only" {
+		t.Errorf("default analysis mode should be human-only, got %q", m.modeAnalysis)
 	}
 	if m.modeRubric != "default" {
 		t.Errorf("default rubric mode should be 'default', got %q", m.modeRubric)

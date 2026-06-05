@@ -57,8 +57,7 @@ export function parseTranscript(
 	const body = readFileSync(path, "utf8");
 	const lines = body.split("\n");
 	const result: TranscriptLineEvent[] = [];
-	const rawSessionStart =
-		options.sessionStartIso ?? "1970-01-01T00:00:00.000Z";
+	const rawSessionStart = options.sessionStartIso ?? "1970-01-01T00:00:00.000Z";
 	const sessionStart = Number.isFinite(new Date(rawSessionStart).getTime())
 		? rawSessionStart
 		: "1970-01-01T00:00:00.000Z";

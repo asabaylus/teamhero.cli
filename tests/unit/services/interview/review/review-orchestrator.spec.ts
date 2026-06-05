@@ -9,8 +9,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { reviewCandidate } from "../../../../../src/services/interview/review/review-orchestrator.js";
 import { writeRoleConfig } from "../../../../../src/services/interview/bootstrap/role-config.js";
+import { reviewCandidate } from "../../../../../src/services/interview/review/review-orchestrator.js";
 
 function stageRepo(opts: { analysisMode?: "ai-assisted" | "human-only" } = {}) {
 	const dir = mkdtempSync(join(tmpdir(), "iv-review-"));
@@ -64,7 +64,10 @@ function stageRepo(opts: { analysisMode?: "ai-assisted" | "human-only" } = {}) {
 		"# Privacy Release\n## Signed\nJane Doe\n## Date\n2026-05-10\n",
 	);
 	mkdirSync(join(dir, "src"));
-	writeFileSync(join(dir, "package.json"), '{"name":"x","scripts":{"test":"echo nothing"}}');
+	writeFileSync(
+		join(dir, "package.json"),
+		'{"name":"x","scripts":{"test":"echo nothing"}}',
+	);
 	return dir;
 }
 
@@ -112,7 +115,9 @@ describe("reviewCandidate orchestrator", () => {
 			expect(existsSync(outcome.outputs.auditPath)).toBe(true);
 			expect(existsSync(outcome.outputs.auditJsonPath)).toBe(true);
 			// Privacy release is copied to evidence/
-			expect(existsSync(join(outcome.outputs.evidenceDir, "PRIVACY_RELEASE.md"))).toBe(true);
+			expect(
+				existsSync(join(outcome.outputs.evidenceDir, "PRIVACY_RELEASE.md")),
+			).toBe(true);
 		} finally {
 			rmSync(repo, { recursive: true, force: true });
 			rmSync(out, { recursive: true, force: true });

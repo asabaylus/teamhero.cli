@@ -102,6 +102,8 @@ describe("interview rubric", () => {
 	it("getDimension(unknownId) returns undefined", () => {
 		// Cast through unknown — the call site is allowed to pass arbitrary strings
 		// (e.g. user input, deserialized JSON) and must safely return undefined.
-		expect(getDimension("not-a-real-dimension" as unknown as never)).toBeUndefined();
+		expect(
+			getDimension("not-a-real-dimension" as unknown as never),
+		).toBeUndefined();
 	});
 });

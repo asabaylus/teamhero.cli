@@ -34,11 +34,7 @@ function fakeOpenAI(
 ) {
 	return {
 		responses: {
-			create: async (opts: {
-				model: string;
-				input: string;
-				text: unknown;
-			}) => {
+			create: async (opts: { model: string; input: string; text: unknown }) => {
 				if (capturedPrompts) {
 					capturedPrompts.calls.push({ input: opts.input, model: opts.model });
 				}
@@ -76,7 +72,9 @@ describe("OpenAIGeneratorClient.generate", () => {
 	});
 
 	it("passes the role title, stack, and domain in the prompt input", async () => {
-		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
+		const captured: { calls: Array<{ input: string; model: string }> } = {
+			calls: [],
+		};
 		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
 		await client.generate({ config: role(), attempt: 1 });
 		expect(captured.calls).toHaveLength(1);
@@ -88,7 +86,9 @@ describe("OpenAIGeneratorClient.generate", () => {
 	});
 
 	it("includes Mode A scaffold requirements in prompt for projectMode=A", async () => {
-		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
+		const captured: { calls: Array<{ input: string; model: string }> } = {
+			calls: [],
+		};
 		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
 		await client.generate({ config: role({ projectMode: "A" }), attempt: 1 });
 		const prompt = captured.calls[0].input;
@@ -105,7 +105,9 @@ describe("OpenAIGeneratorClient.generate", () => {
 		// expected to design themselves. The prompt must tell the model
 		// not to author tests; the candidate writes their own as part of
 		// the evaluation.
-		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
+		const captured: { calls: Array<{ input: string; model: string }> } = {
+			calls: [],
+		};
 		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
 		await client.generate({ config: role({ projectMode: "A" }), attempt: 1 });
 		const prompt = captured.calls[0].input;
@@ -121,7 +123,9 @@ describe("OpenAIGeneratorClient.generate", () => {
 		// A glossary lists domain concepts; identifying those concepts
 		// is part of what's being evaluated, so a pre-baked GLOSSARY.md
 		// gives away the answer.
-		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
+		const captured: { calls: Array<{ input: string; model: string }> } = {
+			calls: [],
+		};
 		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
 		await client.generate({ config: role({ projectMode: "A" }), attempt: 1 });
 		const prompt = captured.calls[0].input;
@@ -138,7 +142,9 @@ describe("OpenAIGeneratorClient.generate", () => {
 		// perfectly-serviceable 300-LOC outputs). If a future prompt edit
 		// reintroduces these phrases, this test fails so we revisit
 		// whether the matching validator rule should come back too.
-		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
+		const captured: { calls: Array<{ input: string; model: string }> } = {
+			calls: [],
+		};
 		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
 		await client.generate({ config: role({ projectMode: "A" }), attempt: 1 });
 		const prompt = captured.calls[0].input;
@@ -151,7 +157,9 @@ describe("OpenAIGeneratorClient.generate", () => {
 		// The prompt MUST tell the model not to write agent-facing files; those
 		// are owned by the kit. Otherwise the model hallucinates "Agent guidance"
 		// blocks that the candidate's agent then reads at run time.
-		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
+		const captured: { calls: Array<{ input: string; model: string }> } = {
+			calls: [],
+		};
 		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
 		await client.generate({ config: role({ projectMode: "A" }), attempt: 1 });
 		const prompt = captured.calls[0].input;
@@ -160,7 +168,9 @@ describe("OpenAIGeneratorClient.generate", () => {
 	});
 
 	it("explicitly forbids the AI from authoring CLAUDE.md or AGENTS.md (Mode B)", async () => {
-		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
+		const captured: { calls: Array<{ input: string; model: string }> } = {
+			calls: [],
+		};
 		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
 		await client.generate({ config: role({ projectMode: "B" }), attempt: 1 });
 		const prompt = captured.calls[0].input;
@@ -171,7 +181,9 @@ describe("OpenAIGeneratorClient.generate", () => {
 	});
 
 	it("includes Mode B brief requirements in prompt for projectMode=B", async () => {
-		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
+		const captured: { calls: Array<{ input: string; model: string }> } = {
+			calls: [],
+		};
 		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
 		await client.generate({
 			config: role({ projectMode: "B" }),
@@ -188,7 +200,9 @@ describe("OpenAIGeneratorClient.generate", () => {
 		// brief must constrain the candidate to the stack the proctor
 		// already chose at Q3 — otherwise the proctor's stack signal is
 		// wasted.
-		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
+		const captured: { calls: Array<{ input: string; model: string }> } = {
+			calls: [],
+		};
 		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
 		await client.generate({
 			config: role({ projectMode: "B", stack: "Go" }),
@@ -205,7 +219,9 @@ describe("OpenAIGeneratorClient.generate", () => {
 		// (the JD describes the domain). The prompt must NOT render a
 		// bare "Domain: ." — instead it tells the model to derive the
 		// domain from the JD context block.
-		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
+		const captured: { calls: Array<{ input: string; model: string }> } = {
+			calls: [],
+		};
 		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
 		await client.generate({ config: role({ domain: "" }), attempt: 1 });
 		const prompt = captured.calls[0].input;
@@ -214,7 +230,9 @@ describe("OpenAIGeneratorClient.generate", () => {
 	});
 
 	it("renders explicit 'Domain: X.' when the proctor supplied a domain", async () => {
-		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
+		const captured: { calls: Array<{ input: string; model: string }> } = {
+			calls: [],
+		};
 		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
 		await client.generate({
 			config: role({ domain: "Payments" }),
@@ -236,8 +254,12 @@ describe("OpenAIGeneratorClient.generate", () => {
 				jdPath,
 				"# Junior Healthcare Engineer\nFamiliarity with FHIR, HL7, EHR concepts.",
 			);
-			const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
-			const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
+			const captured: { calls: Array<{ input: string; model: string }> } = {
+				calls: [],
+			};
+			const client = new OpenAIGeneratorClient(
+				fakeOpenAI([], captured) as never,
+			);
 			await client.generate({
 				config: role({
 					jdPath,
@@ -261,9 +283,16 @@ describe("OpenAIGeneratorClient.generate", () => {
 		const dir = mkdtempSync(join(tmpdir(), "iv-jd-no-influence-"));
 		try {
 			const jdPath = join(dir, "jd.md");
-			writeFileSync(jdPath, "Sensitive JD content the candidate should not see.");
-			const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
-			const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
+			writeFileSync(
+				jdPath,
+				"Sensitive JD content the candidate should not see.",
+			);
+			const captured: { calls: Array<{ input: string; model: string }> } = {
+				calls: [],
+			};
+			const client = new OpenAIGeneratorClient(
+				fakeOpenAI([], captured) as never,
+			);
 			await client.generate({
 				config: role({ jdPath, jdInfluencesProject: false }),
 				attempt: 1,
@@ -282,7 +311,9 @@ describe("OpenAIGeneratorClient.generate", () => {
 		// choose the tooling — that's part of what's being evaluated.
 		// The proctor-stated stack should appear only as context, not
 		// as a requirement, so the candidate's choice itself is judged.
-		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
+		const captured: { calls: Array<{ input: string; model: string }> } = {
+			calls: [],
+		};
 		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
 		await client.generate({
 			config: role({ projectMode: "B", stack: "Go", stackByCandidate: true }),
@@ -295,7 +326,9 @@ describe("OpenAIGeneratorClient.generate", () => {
 	});
 
 	it("includes the attempt number in the prompt", async () => {
-		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
+		const captured: { calls: Array<{ input: string; model: string }> } = {
+			calls: [],
+		};
 		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
 		await client.generate({ config: role(), attempt: 2 });
 		const prompt = captured.calls[0].input;
@@ -303,7 +336,9 @@ describe("OpenAIGeneratorClient.generate", () => {
 	});
 
 	it("includes previousFailures in the prompt on retry", async () => {
-		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
+		const captured: { calls: Array<{ input: string; model: string }> } = {
+			calls: [],
+		};
 		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
 		await client.generate({
 			config: role(),
@@ -319,7 +354,9 @@ describe("OpenAIGeneratorClient.generate", () => {
 	});
 
 	it("does NOT include previousFailures section on the first attempt", async () => {
-		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
+		const captured: { calls: Array<{ input: string; model: string }> } = {
+			calls: [],
+		};
 		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
 		await client.generate({ config: role(), attempt: 1 });
 		const prompt = captured.calls[0].input;
@@ -335,7 +372,9 @@ describe("OpenAIGeneratorClient.generate", () => {
 		// still nudges the model to leave decision points for the
 		// candidate. ai-observer.ts still injects the full rubric on
 		// the review side, where it actually drives scoring.
-		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
+		const captured: { calls: Array<{ input: string; model: string }> } = {
+			calls: [],
+		};
 		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
 		await client.generate({ config: role(), attempt: 1 });
 		const prompt = captured.calls[0].input;
@@ -347,21 +386,30 @@ describe("OpenAIGeneratorClient.generate", () => {
 	});
 
 	it("uses the custom model when specified in the constructor", async () => {
-		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
-		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never, "gpt-4o");
+		const captured: { calls: Array<{ input: string; model: string }> } = {
+			calls: [],
+		};
+		const client = new OpenAIGeneratorClient(
+			fakeOpenAI([], captured) as never,
+			"gpt-4o",
+		);
 		await client.generate({ config: role(), attempt: 1 });
 		expect(captured.calls[0].model).toBe("gpt-4o");
 	});
 
 	it("passes the time-box in the prompt", async () => {
-		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
+		const captured: { calls: Array<{ input: string; model: string }> } = {
+			calls: [],
+		};
 		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
 		await client.generate({ config: role({ timeBoxMinutes: 60 }), attempt: 1 });
 		expect(captured.calls[0].input).toContain("60");
 	});
 
 	it("does NOT include any 'hiring manager addendum' block (the projectPrompt addendum was removed — the feature description is the single source)", async () => {
-		const captured: { calls: Array<{ input: string; model: string }> } = { calls: [] };
+		const captured: { calls: Array<{ input: string; model: string }> } = {
+			calls: [],
+		};
 		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
 		await client.generate({ config: role(), attempt: 1 });
 		// Regression guard: the proctor-addendum block used to wrap the
@@ -369,7 +417,9 @@ describe("OpenAIGeneratorClient.generate", () => {
 		// "Project prompt" step into the single feature-description either/or,
 		// the addendum block must never resurface — otherwise the prompt
 		// implies a second free-form field the user can't actually set.
-		expect(captured.calls[0].input).not.toContain("Additional instructions from the hiring manager");
+		expect(captured.calls[0].input).not.toContain(
+			"Additional instructions from the hiring manager",
+		);
 	});
 });
 
@@ -388,7 +438,15 @@ describe("OpenAIGeneratorClient — JSON schema guard (PROJECT_RESPONSE_SCHEMA)"
 		};
 		const client = new OpenAIGeneratorClient(interceptOpenAI as never);
 		await client.generate({ config: role(), attempt: 1 });
-		const format = (capturedTextFormat as { format: { type: string; strict: boolean; schema: { properties: { files: unknown } } } }).format;
+		const format = (
+			capturedTextFormat as {
+				format: {
+					type: string;
+					strict: boolean;
+					schema: { properties: { files: unknown } };
+				};
+			}
+		).format;
 		expect(format.type).toBe("json_schema");
 		expect(format.strict).toBe(true);
 		expect(format.schema.properties.files).toBeDefined();

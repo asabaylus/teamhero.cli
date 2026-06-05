@@ -82,7 +82,8 @@ function parseArgs(argv: readonly string[]): ParsedFlags {
 		}
 		const spec = FLAGS.find((f) => f.flag === arg);
 		if (spec && i + 1 < argv.length) {
-			(out as Record<string, string | boolean | undefined>)[spec.target] = argv[i + 1];
+			(out as Record<string, string | boolean | undefined>)[spec.target] =
+				argv[i + 1];
 			i++;
 		}
 	}

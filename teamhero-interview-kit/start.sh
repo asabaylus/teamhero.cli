@@ -25,16 +25,14 @@ if ! check_privacy_release_signed "$RELEASE_PATH"; then
 This interview is recorded. Before you begin, you must:
 
   1. Open PRIVACY_RELEASE.md in this repo.
-  2. Read it carefully — it covers what is recorded, who sees it,
-     the no-training clause, your deletion right, and your appeal
-     mechanism (30 days after the hiring decision).
+  2. Read it carefully — it covers what is recorded during the session
+     and our privacy commitment to you.
   3. Fill in your name in the "## Signed" section.
   4. Fill in today's date in the "## Date" section.
   5. Re-run ./start.sh.
 
 If you do not consent to the recording, do not sign — and let the
-interviewer know. The session can continue without AI-generated
-observations.
+interviewer know.
 EOF
     exit 1
 fi

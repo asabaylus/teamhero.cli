@@ -10,7 +10,8 @@ import type {
  * time-to-first-passing-test as raw timestamps and durations.
  */
 
-const TEST_RUN = /^\s*(bun|npm|yarn|pnpm)\s+(run\s+)?test\b|^\s*go\s+test\b|^\s*pytest\b/;
+const TEST_RUN =
+	/^\s*(bun|npm|yarn|pnpm)\s+(run\s+)?test\b|^\s*go\s+test\b|^\s*pytest\b/;
 
 function isoEpoch(ts: string): number {
 	return new Date(ts).getTime();
@@ -30,9 +31,7 @@ export function extractThroughput(
 	const sorted = [...events].sort((a, b) =>
 		a.timestamp.localeCompare(b.timestamp),
 	);
-	const commits = sorted.filter(
-		(e): e is CommitEvent => e.type === "commit",
-	);
+	const commits = sorted.filter((e): e is CommitEvent => e.type === "commit");
 	const commands = sorted.filter(
 		(e): e is CommandEvent => e.type === "command",
 	);
@@ -40,8 +39,7 @@ export function extractThroughput(
 	const start = sorted[0]?.timestamp ?? null;
 	const end = sorted[sorted.length - 1]?.timestamp ?? null;
 
-	const elapsedMs =
-		start && end ? isoEpoch(end) - isoEpoch(start) : Number.NaN;
+	const elapsedMs = start && end ? isoEpoch(end) - isoEpoch(start) : Number.NaN;
 
 	const firstTestRun = commands.find((c) => TEST_RUN.test(c.command));
 

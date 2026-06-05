@@ -155,12 +155,9 @@ describe("asciinema parser — header and metadata", () => {
 			const header = JSON.stringify({ version: 2, width: 80, height: 24 });
 			writeFileSync(
 				path,
-				[
-					header,
-					ev(1.5, "i", "l"),
-					ev(2.0, "i", "s"),
-					ev(3.0, "i", "\r"),
-				].join("\n"),
+				[header, ev(1.5, "i", "l"), ev(2.0, "i", "s"), ev(3.0, "i", "\r")].join(
+					"\n",
+				),
 			);
 			const result = parseAsciinemaCast(path);
 			// With baseEpoch=0, the timestamp is derived from delta alone

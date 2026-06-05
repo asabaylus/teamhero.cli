@@ -1,8 +1,4 @@
-import type {
-	CommandEvent,
-	EvidenceEvent,
-	Measurement,
-} from "../types.js";
+import type { CommandEvent, EvidenceEvent, Measurement } from "../types.js";
 
 /**
  * Risk-awareness extractor.
@@ -60,9 +56,7 @@ export function extractRiskAwareness(
 	if (detected.length === 0) {
 		return {
 			dimension_id: "risk-awareness",
-			facts: [
-				{ label: "Destructive commands detected", value: 0 },
-			],
+			facts: [{ label: "Destructive commands detected", value: 0 }],
 		};
 	}
 	return {

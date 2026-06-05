@@ -179,7 +179,7 @@ describe("renderAudit — evidence excerpt NOT truncated", () => {
 		// Full content preserved in audit tier
 		expect(body).toContain(long);
 		// No ellipsis for full content
-		expect(body).not.toContain(long.slice(0, 200) + "…");
+		expect(body).not.toContain(`${long.slice(0, 200)}…`);
 	});
 
 	it("renders evidence with optional timestamp when provided", () => {
@@ -232,7 +232,8 @@ describe("renderSummary — caveats field", () => {
 					observation: "Could not determine clearly.",
 					reasoning: "Limited evidence.",
 					evidence_excerpts: [],
-					caveats: "The terminal recording was missing for the first 20 minutes.",
+					caveats:
+						"The terminal recording was missing for the first 20 minutes.",
 				},
 			],
 		};

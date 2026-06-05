@@ -1,9 +1,10 @@
 #!/usr/bin/env bun
+
 // CLI entry for `teamhero interview cohort`. Spawned by the Go TUI.
 
-import { consola } from "consola";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { consola } from "consola";
 import { writeCohortSummary } from "../src/services/interview/cohort/cohort-summary.js";
 
 interface Flags {
@@ -38,8 +39,7 @@ async function main() {
 		process.exit(1);
 	}
 	const roleDir =
-		flags.roleDir ??
-		join(process.cwd(), "docs", "interviews", flags.role);
+		flags.roleDir ?? join(process.cwd(), "docs", "interviews", flags.role);
 	if (!existsSync(roleDir)) {
 		consola.error(`Role directory does not exist: ${roleDir}`);
 		process.exit(1);

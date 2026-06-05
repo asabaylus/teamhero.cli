@@ -25,7 +25,9 @@ export function validateModeAProject(dir: string): ValidationResult {
 	// and works with their agent on their own terms. That's what's
 	// being evaluated.
 	if (!existsSync(join(dir, "README.md"))) {
-		failures.push("Missing README.md at project root (candidate-facing brief).");
+		failures.push(
+			"Missing README.md at project root (candidate-facing brief).",
+		);
 	}
 
 	return { ok: failures.length === 0, failures };

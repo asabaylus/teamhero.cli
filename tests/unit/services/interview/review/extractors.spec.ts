@@ -15,11 +15,7 @@ const prompt = (ts: string, text: string): EvidenceEvent => ({
 	text,
 });
 
-const cmd = (
-	ts: string,
-	command: string,
-	pause?: number,
-): EvidenceEvent => ({
+const cmd = (ts: string, command: string, pause?: number): EvidenceEvent => ({
 	type: "command",
 	timestamp: ts,
 	source: "terminal.cast",

@@ -225,7 +225,9 @@ export function rejectIfScored(response: unknown): void {
 }
 
 export interface ObserverClient {
-	observe(input: BuiltPrompt): Promise<{ readonly observations: readonly Observation[] }>;
+	observe(
+		input: BuiltPrompt,
+	): Promise<{ readonly observations: readonly Observation[] }>;
 }
 
 export class OpenAIObserverClient implements ObserverClient {

@@ -2,10 +2,7 @@ import { readFileSync } from "node:fs";
 import { consola } from "consola";
 import OpenAI from "openai";
 import { getEnv } from "../../../lib/env.js";
-import type {
-	GeneratedProject,
-	GeneratorClient,
-} from "./project-generator.js";
+import type { GeneratedProject, GeneratorClient } from "./project-generator.js";
 import type { RoleConfig } from "./role-config.js";
 
 // readJobDescription returns the JD body when the role config has

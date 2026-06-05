@@ -3,8 +3,8 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-	type GeneratorClient,
 	type GeneratedProject,
+	type GeneratorClient,
 	generateProject,
 	validateGenerated,
 } from "../../../../../src/services/interview/bootstrap/project-generator.js";
@@ -34,7 +34,10 @@ function role(overrides: Partial<RoleConfig> = {}): RoleConfig {
 function stubModeAProject(): GeneratedProject {
 	return {
 		files: [
-			{ path: "README.md", content: "# Project\nWhat you're building: a thing.\n" },
+			{
+				path: "README.md",
+				content: "# Project\nWhat you're building: a thing.\n",
+			},
 			{ path: "src/main.ts", content: "export const main = () => {};\n" },
 		],
 	};
@@ -123,10 +126,7 @@ describe("generateProject (Mode A)", () => {
 			const { writeFileSync, mkdirSync } = await import("node:fs");
 			mkdirSync(join(kitSrc, ".claude"), { recursive: true });
 			writeFileSync(join(kitSrc, "start.sh"), "#!/usr/bin/env bash\n");
-			writeFileSync(
-				join(kitSrc, ".claude", "settings.json"),
-				'{"hooks":{}}\n',
-			);
+			writeFileSync(join(kitSrc, ".claude", "settings.json"), '{"hooks":{}}\n');
 			try {
 				const result = await generateProject(role({ outputDir: dir }), client, {
 					kitTemplateDir: kitSrc,
@@ -174,6 +174,51 @@ describe("generateProject (Mode A)", () => {
 			}
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("injects the {{AI_OBSERVER_DISCLOSURE}} clause only in ai-assisted mode", async () => {
+		const { writeFileSync } = await import("node:fs");
+		const RELEASE =
+			"# Release\n\nCommitment.\n\n{{AI_OBSERVER_DISCLOSURE}}\n---\n";
+
+		// human-only: the token collapses to nothing.
+		const humanDir = mkdtempSync(join(tmpdir(), "iv-gen-ho-"));
+		const humanKit = mkdtempSync(join(tmpdir(), "iv-kit-ho-"));
+		try {
+			writeFileSync(join(humanKit, "PRIVACY_RELEASE.md"), RELEASE);
+			const result = await generateProject(
+				role({ outputDir: humanDir, analysisMode: "human-only" }),
+				clientReturning(stubModeAProject()),
+				{ kitTemplateDir: humanKit },
+			);
+			expect(result.ok).toBe(true);
+			const body = readFileSync(join(humanDir, "PRIVACY_RELEASE.md"), "utf8");
+			expect(body).not.toContain("{{AI_OBSERVER_DISCLOSURE}}");
+			expect(body).not.toMatch(/Automated analysis/);
+		} finally {
+			rmSync(humanKit, { recursive: true, force: true });
+			rmSync(humanDir, { recursive: true, force: true });
+		}
+
+		// ai-assisted: the disclosure clause is substituted in.
+		const aiDir = mkdtempSync(join(tmpdir(), "iv-gen-ai-"));
+		const aiKit = mkdtempSync(join(tmpdir(), "iv-kit-ai-"));
+		try {
+			writeFileSync(join(aiKit, "PRIVACY_RELEASE.md"), RELEASE);
+			const result = await generateProject(
+				role({ outputDir: aiDir, analysisMode: "ai-assisted" }),
+				clientReturning(stubModeAProject()),
+				{ kitTemplateDir: aiKit },
+			);
+			expect(result.ok).toBe(true);
+			const body = readFileSync(join(aiDir, "PRIVACY_RELEASE.md"), "utf8");
+			expect(body).not.toContain("{{AI_OBSERVER_DISCLOSURE}}");
+			expect(body).toMatch(/Automated analysis of this session/);
+			expect(body).toMatch(/never a\s+score/);
+		} finally {
+			rmSync(aiKit, { recursive: true, force: true });
+			rmSync(aiDir, { recursive: true, force: true });
 		}
 	});
 });

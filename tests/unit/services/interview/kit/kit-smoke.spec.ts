@@ -106,18 +106,12 @@ describe("interview kit smoke", () => {
 	});
 
 	it("INTERVIEW_RULES.md mentions WSL setup for Windows candidates", () => {
-		const body = readFileSync(
-			join(KIT_DIR, "INTERVIEW_RULES.md"),
-			"utf8",
-		);
+		const body = readFileSync(join(KIT_DIR, "INTERVIEW_RULES.md"), "utf8");
 		expect(body).toMatch(/WSL/);
 	});
 
 	it("RUBRIC_OVERVIEW.md mentions all 9 dimensions", () => {
-		const body = readFileSync(
-			join(KIT_DIR, "RUBRIC_OVERVIEW.md"),
-			"utf8",
-		);
+		const body = readFileSync(join(KIT_DIR, "RUBRIC_OVERVIEW.md"), "utf8");
 		for (const heading of [
 			"Upfront design",
 			"Context engineering",
@@ -133,14 +127,16 @@ describe("interview kit smoke", () => {
 		}
 	});
 
-	it("PRIVACY_RELEASE.md includes the no-training clause, appeal mechanism, and REVIEW WITH LEGAL warning", () => {
-		const body = readFileSync(
-			join(KIT_DIR, "PRIVACY_RELEASE.md"),
-			"utf8",
-		);
-		expect(body).toMatch(/REVIEW WITH LEGAL/);
-		expect(body).toMatch(/NO training use|not be used to train/i);
-		expect(body).toMatch(/appeal/i);
-		expect(body).toMatch(/30 days/);
+	it("PRIVACY_RELEASE.md states a plain-language, human-proctor privacy commitment", () => {
+		const body = readFileSync(join(KIT_DIR, "PRIVACY_RELEASE.md"), "utf8");
+		expect(body).toMatch(/Our privacy commitment to you/i);
+		expect(body).toMatch(/Human review/);
+		// The candidate-facing default is human-proctored: it carries no
+		// AI-evaluation language. The AI disclosure is injected at generation
+		// time only when the proctor opts into ai-assisted analysis (see the
+		// project-generator spec), so the raw template holds only the token.
+		expect(body).toContain("{{AI_OBSERVER_DISCLOSURE}}");
+		expect(body).not.toMatch(/NO training use/);
+		expect(body).not.toMatch(/AI observer/);
 	});
 });

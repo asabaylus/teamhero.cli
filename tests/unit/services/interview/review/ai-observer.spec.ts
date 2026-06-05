@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { RoleConfig } from "../../../../../src/services/interview/bootstrap/role-config.js";
 import {
 	buildObserverPrompt,
 	humanOnlyObservations,
@@ -10,7 +11,6 @@ import {
 	OpenAIObserverClient,
 	rejectIfScored,
 } from "../../../../../src/services/interview/review/ai-observer.js";
-import type { RoleConfig } from "../../../../../src/services/interview/bootstrap/role-config.js";
 import type { EvidenceEvent } from "../../../../../src/services/interview/review/types.js";
 
 function role(overrides: Partial<RoleConfig> = {}): RoleConfig {
@@ -267,7 +267,9 @@ describe("OpenAIObserverClient", () => {
 			},
 		};
 		const client = new OpenAIObserverClient(
-			fakeOpenAI as unknown as ConstructorParameters<typeof OpenAIObserverClient>[0],
+			fakeOpenAI as unknown as ConstructorParameters<
+				typeof OpenAIObserverClient
+			>[0],
 		);
 		const result = await client.observe({
 			instructions: "test",
@@ -284,7 +286,9 @@ describe("OpenAIObserverClient", () => {
 			},
 		};
 		const client = new OpenAIObserverClient(
-			fakeOpenAI as unknown as ConstructorParameters<typeof OpenAIObserverClient>[0],
+			fakeOpenAI as unknown as ConstructorParameters<
+				typeof OpenAIObserverClient
+			>[0],
 		);
 		await expect(
 			client.observe({ instructions: "test", input: "test" }),
@@ -296,15 +300,15 @@ describe("OpenAIObserverClient", () => {
 			responses: {
 				create: async () => ({
 					output_text: JSON.stringify({
-						observations: [
-							{ dimension_id: "upfront-design", score: 0.7 },
-						],
+						observations: [{ dimension_id: "upfront-design", score: 0.7 }],
 					}),
 				}),
 			},
 		};
 		const client = new OpenAIObserverClient(
-			fakeOpenAI as unknown as ConstructorParameters<typeof OpenAIObserverClient>[0],
+			fakeOpenAI as unknown as ConstructorParameters<
+				typeof OpenAIObserverClient
+			>[0],
 		);
 		await expect(
 			client.observe({ instructions: "test", input: "test" }),

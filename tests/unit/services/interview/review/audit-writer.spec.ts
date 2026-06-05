@@ -10,8 +10,8 @@ import {
 	writeAudit,
 } from "../../../../../src/services/interview/review/audit-writer.js";
 import type {
-	ReviewResult,
 	Observation,
+	ReviewResult,
 } from "../../../../../src/services/interview/review/types.js";
 
 function frontmatter(
@@ -136,9 +136,7 @@ describe("renderSummary", () => {
 		// URL is quoted because it contains characters (`:`, `/`) that YAML
 		// parsers can mishandle in bare scalars. Quoting makes the audit.json
 		// round-trip safe even when the URL has colons, hashes, etc.
-		expect(body).toContain(
-			`session_recording_url: "https://zoom.us/rec/xyz"`,
-		);
+		expect(body).toContain(`session_recording_url: "https://zoom.us/rec/xyz"`);
 		expect(body).toContain("session_platform: zoom");
 	});
 });
@@ -169,9 +167,7 @@ describe("renderAudit", () => {
 			observations: [
 				{
 					...sampleObservation(),
-					evidence_excerpts: [
-						{ source: "interview.log", content: long },
-					],
+					evidence_excerpts: [{ source: "interview.log", content: long }],
 				},
 			],
 		};

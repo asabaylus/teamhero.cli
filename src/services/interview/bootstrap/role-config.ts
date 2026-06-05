@@ -145,9 +145,7 @@ export function validateRoleConfig(
 export function writeRoleConfig(dir: string, config: RoleConfig): void {
 	const result = validateRoleConfig(config);
 	if (!result.ok) {
-		throw new Error(
-			`Invalid role config: ${result.failures.join("; ")}`,
-		);
+		throw new Error(`Invalid role config: ${result.failures.join("; ")}`);
 	}
 	mkdirSync(dir, { recursive: true });
 	writeFileSync(

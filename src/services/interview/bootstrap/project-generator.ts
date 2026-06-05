@@ -1,4 +1,3 @@
-import { homedir } from "node:os";
 import {
 	lstatSync,
 	mkdirSync,
@@ -9,11 +8,12 @@ import {
 	statSync,
 	writeFileSync,
 } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
+	type ValidationResult,
 	validateModeAProject,
 	validateModeBProject,
-	type ValidationResult,
 } from "./project-validator.js";
 import type { RoleConfig } from "./role-config.js";
 
@@ -53,6 +53,22 @@ export interface GenerateResult {
 // cheap; bump if a future validator rule produces more retry pressure.
 const DEFAULT_MAX_ATTEMPTS = 3;
 
+// Conditional disclosure injected into the candidate's PRIVACY_RELEASE.md via
+// the {{AI_OBSERVER_DISCLOSURE}} token. The candidate-facing kit is
+// human-proctor-framed by default and says nothing about AI evaluation. Only
+// when the proctor opts into `analysisMode: "ai-assisted"` at generation time
+// is this clause substituted in — disclosure tracks the mode actually used.
+// In `human-only` mode the token is replaced with an empty string.
+const AI_OBSERVER_DISCLOSURE = `## Automated analysis of this session
+
+In addition to human review, my recorded session (terminal recording, AI
+agent log, git history, and — if present — the audio transcript) may be
+analyzed by an automated tool to help the hiring team review the session.
+The tool produces written observations and measurements only — never a
+score — and carries its own biases, so its output is treated as one input
+among many. The hiring decision is made by humans, who have final say.
+`;
+
 /**
  * Resolves `relPath` relative to `rootAbs` and refuses paths that escape the
  * root via `..`, absolute components, drive letters, or symlinks that point
@@ -72,9 +88,7 @@ function resolveWithinRoot(rootAbs: string, relPath: string): string {
 		);
 	}
 	if (isAbsolute(relPath)) {
-		throw new Error(
-			`Generated file path is absolute, refusing: ${relPath}`,
-		);
+		throw new Error(`Generated file path is absolute, refusing: ${relPath}`);
 	}
 	const target = resolve(rootAbs, relPath);
 	const rel = relative(rootAbs, target);
@@ -277,9 +291,14 @@ export async function generateProject(
 		// {{TIME_BOX}} placeholders in kit text files are substituted with the
 		// configured minutes — INTERVIEW_RULES.md reads this so candidates see
 		// a real number instead of the literal placeholder.
+		// {{AI_OBSERVER_DISCLOSURE}} in PRIVACY_RELEASE.md is filled in only when
+		// the proctor opted into AI-assisted analysis; in human-only mode it
+		// collapses to nothing so the release stays human-proctor-only.
 		if (options.kitTemplateDir) {
 			copyDir(options.kitTemplateDir, config.outputDir, {
 				TIME_BOX: String(config.timeBoxMinutes),
+				AI_OBSERVER_DISCLOSURE:
+					config.analysisMode === "ai-assisted" ? AI_OBSERVER_DISCLOSURE : "",
 			});
 		}
 
@@ -304,4 +323,3 @@ export async function generateProject(
 export function validateGenerated(config: RoleConfig): ValidationResult {
 	return validateOutput(config, config.outputDir);
 }
-

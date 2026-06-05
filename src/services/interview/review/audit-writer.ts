@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { getDimensions } from "../shared/rubric.js";
-import type { ReviewResult, Measurement, Observation } from "./types.js";
+import type { Measurement, Observation, ReviewResult } from "./types.js";
 
 /**
  * Audit writer. Pure transformation from ReviewResult to the per-candidate
@@ -89,7 +89,7 @@ function yamlScalar(value: string): string {
 	if (
 		value.length === 0 ||
 		/[:#\n\r\t"\\]/.test(value) ||
-		/^[\s\-?\[\]{},&*!|>'%@`]/.test(value) ||
+		/^[\s\-?[\]{},&*!|>'%@`]/.test(value) ||
 		value.trim() !== value
 	) {
 		return `"${escapeYamlDoubleQuoted(value)}"`;
@@ -98,7 +98,7 @@ function yamlScalar(value: string): string {
 }
 
 function yamlTag(value: string): string {
-	if (/[:,\[\]{}#&*!|>'"%@`\s]/.test(value)) {
+	if (/[:,[\]{}#&*!|>'"%@`\s]/.test(value)) {
 		return `"${escapeYamlDoubleQuoted(value)}"`;
 	}
 	return value;
@@ -155,7 +155,8 @@ function renderObservation(o: Observation): string {
 		lines.push("**Evidence:**");
 		for (const e of o.evidence_excerpts) {
 			const ts = e.timestamp ? ` [${e.timestamp}]` : "";
-			const content = e.content.length > 200 ? `${e.content.slice(0, 200)}…` : e.content;
+			const content =
+				e.content.length > 200 ? `${e.content.slice(0, 200)}…` : e.content;
 			lines.push(`- (${e.source})${ts} ${content}`);
 		}
 	}

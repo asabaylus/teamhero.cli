@@ -9,12 +9,12 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AuditFrontmatter } from "../../../../../src/services/interview/review/audit-writer.js";
 import {
 	loadCohort,
 	renderCohortSummary,
 	writeCohortSummary,
 } from "../../../../../src/services/interview/cohort/cohort-summary.js";
+import type { AuditFrontmatter } from "../../../../../src/services/interview/review/audit-writer.js";
 
 function makeCandidate(
 	roleDir: string,

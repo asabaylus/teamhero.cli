@@ -9,8 +9,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readRoleConfig } from "../bootstrap/role-config.js";
 import type { RoleConfig } from "../bootstrap/role-config.js";
+import { readRoleConfig } from "../bootstrap/role-config.js";
 import { getRubricVersion } from "../shared/rubric.js";
 import {
 	buildObserverPrompt,
@@ -30,16 +30,9 @@ import { extractRiskAwareness } from "./extractors/risk-awareness.js";
 import { extractTestPass, type TestRunner } from "./extractors/test-pass.js";
 import { extractThroughput } from "./extractors/throughput.js";
 import { extractVerification } from "./extractors/verification.js";
-import type {
-	EvidenceEvent,
-	ReviewResult,
-	Measurement,
-} from "./types.js";
+import type { EvidenceEvent, Measurement, ReviewResult } from "./types.js";
 
-export type Cloner = (
-	repoUrl: string,
-	destDir: string,
-) => void;
+export type Cloner = (repoUrl: string, destDir: string) => void;
 
 const defaultCloner: Cloner = (repoUrl, destDir) => {
 	// execFileSync passes args directly to the spawned process — no shell, so
@@ -93,7 +86,9 @@ function timeSuffix(): string {
 	return new Date().toISOString().slice(11, 19).replace(/:/g, "");
 }
 
-function mergeEvents(streams: readonly (readonly EvidenceEvent[])[]): readonly EvidenceEvent[] {
+function mergeEvents(
+	streams: readonly (readonly EvidenceEvent[])[],
+): readonly EvidenceEvent[] {
 	const flat = streams.flat();
 	return flat.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 }
@@ -271,5 +266,5 @@ function buildFrontmatter(
 }
 
 // Suppress unused-export lint helper for narrow type re-export
-export type { ReviewResult, Measurement };
+export type { Measurement, ReviewResult };
 export { readFileSync as _readFileSync };

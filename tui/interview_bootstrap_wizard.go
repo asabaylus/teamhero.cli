@@ -159,7 +159,9 @@ func newBootstrapWizardModel(d BootstrapWizardDefaults) bootstrapWizardModel {
 		// Legacy "A"/"B" values from BootstrapWizardDefaults are accepted
 		// and translated below so existing callers don't break.
 		modeProject:  normalizeWizardProjectMode(firstNonEmptyStr(d.ModeProject, "brownfield")),
-		modeAnalysis: firstNonEmptyStr(d.ModeAnalysis, "ai-assisted"),
+		// Default to human-only: the interview is human-proctored, and AI
+		// observation is an explicit proctor opt-in, not the default.
+		modeAnalysis: firstNonEmptyStr(d.ModeAnalysis, "human-only"),
 		modeRubric:   firstNonEmptyStr(d.ModeRubric, "default"),
 		outputDir:           firstNonEmptyStr(d.OutputDir, "./interviews/role"),
 		featureSource:       "custom",

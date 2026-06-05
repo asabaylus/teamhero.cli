@@ -1,9 +1,6 @@
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import {
-	generateProject,
-	type GeneratorClient,
-} from "./project-generator.js";
+import { type GeneratorClient, generateProject } from "./project-generator.js";
 import {
 	type RoleConfig,
 	validateRoleConfig,

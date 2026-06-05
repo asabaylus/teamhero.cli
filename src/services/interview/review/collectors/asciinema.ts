@@ -81,7 +81,7 @@ export function parseAsciinemaCast(path: string): AsciinemaParseResult {
 					j++;
 					while (j < chunk.length) {
 						const c = chunk.charCodeAt(j);
-						if ((c >= 0x40 && c <= 0x7e)) {
+						if (c >= 0x40 && c <= 0x7e) {
 							j++;
 							break;
 						}

@@ -1,4 +1,10 @@
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	readdirSync,
+	readFileSync,
+	statSync,
+	writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import type { AuditFrontmatter } from "../review/audit-writer.js";
 
@@ -64,7 +70,10 @@ export function loadCohort(roleDir: string): readonly CandidateAuditRecord[] {
 // "Alice | aka Bob" would otherwise insert an extra column; a name with a
 // newline would terminate the row mid-record.
 function escapeMarkdownTableCell(value: string): string {
-	return value.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
+	return value
+		.replace(/\\/g, "\\\\")
+		.replace(/\|/g, "\\|")
+		.replace(/\r?\n/g, " ");
 }
 
 function renderRow(rec: CandidateAuditRecord): string {

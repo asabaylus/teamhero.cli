@@ -52,7 +52,11 @@ function validModeAProject(): GeneratedProject {
 }
 
 function clientFor(project: GeneratedProject): GeneratorClient {
-	return { async generate() { return project; } };
+	return {
+		async generate() {
+			return project;
+		},
+	};
 }
 
 describe("generateProject — path traversal security (resolveWithinRoot)", () => {
@@ -99,7 +103,10 @@ describe("generateProject — path traversal security (resolveWithinRoot)", () =
 					{ path: "src/nested/deep/module.ts", content: "export const x = 1;" },
 				],
 			};
-			const result = await generateProject(role({ outputDir: dir }), clientFor(safe));
+			const result = await generateProject(
+				role({ outputDir: dir }),
+				clientFor(safe),
+			);
 			expect(result.ok).toBe(true);
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
@@ -114,9 +121,7 @@ describe("generateProject — path traversal security (resolveWithinRoot)", () =
 			// A path like "foo\0../../etc/passwd" resolves before the null byte
 			// on most OS path APIs, so the resolve() call catches this.
 			const malicious: GeneratedProject = {
-				files: [
-					{ path: "src/a.ts\0../../etc/evil", content: "evil" },
-				],
+				files: [{ path: "src/a.ts\0../../etc/evil", content: "evil" }],
 			};
 			// This may throw with any error (path error, traversal error) — the
 			// important thing is that we never silently succeed.
@@ -187,7 +192,10 @@ describe("generateProject — assertSafeToClear guards", () => {
 		const dir = mkdtempSync(join(tmpdir(), "iv-sec-safe-"));
 		try {
 			// A temporary directory nested under tmpdir is safe.
-			const result = await generateProject(role({ outputDir: dir }), clientFor(validModeAProject()));
+			const result = await generateProject(
+				role({ outputDir: dir }),
+				clientFor(validModeAProject()),
+			);
 			expect(result.ok).toBe(true);
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
@@ -205,7 +213,7 @@ describe("generateProject — kit template conflict resolution", () => {
 			// authoring something it must not author per the new contract).
 			const overriddenProject: GeneratedProject = {
 				files: [
-					...validModeAProject().files.filter(f => f.path !== "GLOSSARY.md"),
+					...validModeAProject().files.filter((f) => f.path !== "GLOSSARY.md"),
 					{ path: "GLOSSARY.md", content: "Generator content\n" },
 				],
 			};
@@ -231,10 +239,16 @@ describe("generateProject — retry passes previous failures to the client", () 
 	it("provides previousFailures from the last attempt on retry", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "iv-retry-"));
 		try {
-			const callLog: Array<{ attempt: number; previousFailures: readonly string[] | undefined }> = [];
+			const callLog: Array<{
+				attempt: number;
+				previousFailures: readonly string[] | undefined;
+			}> = [];
 			const trackingClient: GeneratorClient = {
 				async generate(input) {
-					callLog.push({ attempt: input.attempt, previousFailures: input.previousFailures });
+					callLog.push({
+						attempt: input.attempt,
+						previousFailures: input.previousFailures,
+					});
 					if (input.attempt < 2) {
 						// Return a malformed project on first attempt
 						return { files: [{ path: "NOTES.md", content: "incomplete" }] };

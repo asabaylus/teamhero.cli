@@ -12,11 +12,10 @@ interviewer in this section. **`{{TIME_BOX}}`** minutes.
 ## Before you begin
 
 1. **Read `PRIVACY_RELEASE.md` carefully.** It describes what is
-   recorded, how your submission may and may not be used, and your
-   rights (access, appeal, deletion).
+   recorded during the session and our privacy commitment to you.
 2. **If you consent**, fill in the **## Signed** and **## Date**
-   sections of `PRIVACY_RELEASE.md`. If you don't consent, contact your
-   interviewer — the session can continue without AI observation.
+   sections of `PRIVACY_RELEASE.md`. Signing is required to participate.
+   If you don't consent, contact your interviewer.
 3. **Run `./start.sh`** from this repo's root. It checks the release
    is signed and starts terminal recording.
 
@@ -77,24 +76,13 @@ WSL-native. To set up:
 If WSL is not an option for you, contact your interviewer; an
 alternative recording method may be available.
 
-## What the AI sees about your session
-
-The AI observer reads:
-- `terminal.cast` (asciinema recording)
-- `interview.log` (your AI agent's prompts and tool calls)
-- Git history during the session
-- Final state of this repository
-- (Optional, only if your interviewer has set this up) the audio
-  transcript from the video call
-
-The AI observer does **not** see any screen video of your desktop.
-
 ## What we're observing
 
-See `RUBRIC_OVERVIEW.md` for a plain-language summary of the nine
-dimensions we observe. We do not produce a numerical score about you;
-we produce narrative observations and raw measurements that the human
-hiring manager reads alongside the rest of the interview signal.
+See `RUBRIC_OVERVIEW.md` for a plain-language summary of the dimensions
+the proctor observes during the session. The hiring manager reads the
+proctor's report alongside the rest of the interview signal. There is no
+numerical score — the report is narrative observations and raw
+measurements, and a human makes the decision.
 
 ## Questions
 
