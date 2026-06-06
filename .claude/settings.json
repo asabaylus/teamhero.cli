@@ -17,9 +17,6 @@
       "/home/fragnot/.config/teamhero"
     ]
   },
-  "enabledMcpjsonServers": [
-    "beads"
-  ],
   "hooks": {
     "SessionStart": [
       {
