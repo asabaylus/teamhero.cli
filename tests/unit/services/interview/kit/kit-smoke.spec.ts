@@ -68,7 +68,87 @@ describe("interview kit smoke", () => {
 		expect(cfg.hooks.UserPromptSubmit).toBeDefined();
 		expect(cfg.hooks.PreToolUse).toBeDefined();
 		const hookCmd = cfg.hooks.UserPromptSubmit[0].hooks[0].command;
-		expect(hookCmd).toContain("interview.log");
+		// Portable Node script, not jq — jq isn't installed by default on
+		// Windows/WSL and Node is already a project prerequisite.
+		expect(hookCmd).toContain("log-agent-event.mjs");
+		expect(hookCmd).not.toContain("jq");
+	});
+
+	it("ships the cross-platform agent-log hook script (replaces jq)", () => {
+		const body = readFileSync(
+			join(KIT_DIR, "scripts", "log-agent-event.mjs"),
+			"utf8",
+		);
+		expect(body).toContain("interview.log");
+		expect(body).toContain("appendFileSync");
+	});
+
+	it("ships .codex and .cursor hook configs that call the Node script", () => {
+		const codex = JSON.parse(
+			readFileSync(join(KIT_DIR, ".codex", "hooks.json"), "utf8"),
+		);
+		const cursor = JSON.parse(
+			readFileSync(join(KIT_DIR, ".cursor", "hooks.json"), "utf8"),
+		);
+		expect(JSON.stringify(codex)).toContain("log-agent-event.mjs");
+		expect(JSON.stringify(cursor)).toContain("log-agent-event.mjs");
+	});
+
+	it("ships .claude/CLAUDE.md mirroring AGENTS.md (cross-tool agent guidance)", () => {
+		const claude = readFileSync(
+			join(KIT_DIR, ".claude", "CLAUDE.md"),
+			"utf8",
+		);
+		const agents = readFileSync(join(KIT_DIR, "AGENTS.md"), "utf8");
+		expect(claude).toMatch(/candidate/i);
+		expect(agents).toMatch(/mirrors `\.claude\/CLAUDE\.md`/);
+	});
+
+	it("ships PROCESS.md, .gitignore, and the candidate-prep email template", () => {
+		expect(readFileSync(join(KIT_DIR, "PROCESS.md"), "utf8")).toMatch(
+			/AI tools used/,
+		);
+		expect(readFileSync(join(KIT_DIR, ".gitignore"), "utf8")).toMatch(
+			/terminal\.cast/,
+		);
+		expect(
+			readFileSync(join(KIT_DIR, "docs", "candidate-prep-email.md"), "utf8"),
+		).toMatch(/Preparing for Your Technical Interview/);
+	});
+
+	it("start.sh reports optional hooks without hard-failing when they are absent", () => {
+		const { dir, cleanup } = stageKit();
+		try {
+			sign(dir);
+			// Remove all hook configs — start.sh must still pass.
+			rmSync(join(dir, ".claude", "settings.json"), { force: true });
+			rmSync(join(dir, ".codex"), { recursive: true, force: true });
+			rmSync(join(dir, ".cursor"), { recursive: true, force: true });
+			const result = spawnSync("bash", [join(dir, "start.sh")], {
+				env: { ...process.env, SKIP_RECORD: "1" },
+				encoding: "utf8",
+			});
+			expect(result.status).toBe(0);
+			expect(result.stdout).toContain("none found");
+		} finally {
+			cleanup();
+		}
+	});
+
+	it("start.sh lists the present hook configs in its optional report", () => {
+		const { dir, cleanup } = stageKit();
+		try {
+			sign(dir);
+			const result = spawnSync("bash", [join(dir, "start.sh")], {
+				env: { ...process.env, SKIP_RECORD: "1" },
+				encoding: "utf8",
+			});
+			expect(result.status).toBe(0);
+			expect(result.stdout).toContain(".claude/settings.json");
+			expect(result.stdout).toContain(".codex/hooks.json");
+		} finally {
+			cleanup();
+		}
 	});
 
 	it("end.sh refuses when start.sh has not been run", () => {

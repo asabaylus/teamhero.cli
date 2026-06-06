@@ -46,11 +46,21 @@ if [ ! -d .git ]; then
     exit 1
 fi
 
-git add "${STAGE[@]}"
+# -f because terminal.cast (and any in-progress artifacts) are listed in
+# the kit .gitignore so the candidate's own `git add .` never commits the
+# live recording mid-session. end.sh commits them deliberately at the end.
+git add -f "${STAGE[@]}"
+
+# The agent log is optional — it only exists if the candidate's AI tool
+# supports the repo's project hooks. Reflect that in the commit message.
+if [ -f "$LOG_PATH" ]; then
+    COMMIT_MSG="Interview session: signed release + terminal recording + agent log"
+else
+    COMMIT_MSG="Interview session: signed release + terminal recording"
+fi
 
 # Single combined commit so the timestamp matches the recording window.
-git commit -m "Interview session: signed release + terminal recording + agent log" \
-    --no-verify
+git commit -m "$COMMIT_MSG" --no-verify
 
 echo "✓ Committed. Push instructions:"
 echo "  git push origin HEAD"

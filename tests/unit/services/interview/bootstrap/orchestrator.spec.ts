@@ -1,6 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import {
+	chmodSync,
 	existsSync,
+	mkdirSync,
 	mkdtempSync,
 	readFileSync,
 	rmSync,
@@ -8,6 +10,29 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+// Tops up a staged kit dir with every file the post-copy kit-presence
+// validator (§3c) requires, so a copy-mechanics test doesn't trip kit
+// validation.
+function fleshOutKit(kitDir: string): void {
+	const required = [
+		"INTERVIEW_RULES.md",
+		"PRIVACY_RELEASE.md",
+		"RUBRIC_OVERVIEW.md",
+		"start.sh",
+		"end.sh",
+		"lib/privacy-gate.sh",
+	];
+	for (const rel of required) {
+		const full = join(kitDir, rel);
+		if (!existsSync(full)) {
+			if (rel.includes("/"))
+				mkdirSync(join(kitDir, "lib"), { recursive: true });
+			writeFileSync(full, "# kit\n");
+		}
+		if (rel === "start.sh" || rel === "end.sh") chmodSync(full, 0o755);
+	}
+}
 import { runBootstrap } from "../../../../../src/services/interview/bootstrap/orchestrator.js";
 import type {
 	GeneratedProject,
@@ -184,6 +209,7 @@ describe("runBootstrap", () => {
 		const kitDir = mkdtempSync(join(tmpdir(), "iv-kit-"));
 		try {
 			writeFileSync(join(kitDir, "INTERVIEW_RULES.md"), "# Rules\n");
+			fleshOutKit(kitDir);
 			const result = await runBootstrap(baseConfig(projectDir), {
 				client: client(modeAStub()),
 				kitTemplateDir: kitDir,

@@ -1,8 +1,15 @@
 import { describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+	chmodSync,
+	mkdirSync,
+	mkdtempSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+	validateKitFiles,
 	validateModeAProject,
 	validateModeBProject,
 } from "../../../../../src/services/interview/bootstrap/project-validator.js";
@@ -74,6 +81,175 @@ describe("project-validator (Mode A)", () => {
 			writeFileSync(join(dir, "README.md"), "# Project\n");
 			const result = validateModeAProject(dir);
 			expect(result.ok).toBe(true);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("project-validator (Mode A) — in-memory: no database packages (§3a)", () => {
+	const FEATURE = "Build an in-memory spool tracker with no database.";
+
+	it("fails when a .csproj references a database driver and the feature is in-memory", () => {
+		const dir = makeTempProject();
+		try {
+			writeFileSync(join(dir, "README.md"), "# Project\n");
+			mkdirSync(join(dir, "src"), { recursive: true });
+			writeFileSync(
+				join(dir, "src", "Api.csproj"),
+				`<Project Sdk="Microsoft.NET.Sdk.Web">\n  <ItemGroup>\n    <PackageReference Include="MongoDB.Driver" Version="2.24.0" />\n  </ItemGroup>\n</Project>\n`,
+			);
+			const result = validateModeAProject(dir, { featureDescription: FEATURE });
+			expect(result.ok).toBe(false);
+			expect(result.failures.some((f) => /database driver/i.test(f))).toBe(true);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("fails when package.json pulls in a database driver and the feature is in-memory", () => {
+		const dir = makeTempProject();
+		try {
+			writeFileSync(join(dir, "README.md"), "# Project\n");
+			writeFileSync(
+				join(dir, "package.json"),
+				JSON.stringify({ dependencies: { mongoose: "^8.0.0" } }, null, 2),
+			);
+			const result = validateModeAProject(dir, { featureDescription: FEATURE });
+			expect(result.ok).toBe(false);
+			expect(result.failures.some((f) => /database driver/i.test(f))).toBe(true);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("passes when an in-memory project ships no database driver", () => {
+		const dir = makeTempProject();
+		try {
+			writeFileSync(join(dir, "README.md"), "# Project\n");
+			writeFileSync(
+				join(dir, "package.json"),
+				JSON.stringify({ dependencies: { express: "^4.0.0" } }, null, 2),
+			);
+			const result = validateModeAProject(dir, { featureDescription: FEATURE });
+			expect(result.ok).toBe(true);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("does NOT flag a database driver when the feature is not in-memory", () => {
+		// Without the in-memory signal the check is off — some roles do
+		// legitimately want a persistence layer.
+		const dir = makeTempProject();
+		try {
+			writeFileSync(join(dir, "README.md"), "# Project\n");
+			writeFileSync(
+				join(dir, "package.json"),
+				JSON.stringify({ dependencies: { mongoose: "^8.0.0" } }, null, 2),
+			);
+			const result = validateModeAProject(dir, {
+				featureDescription: "Build a persistent user store.",
+			});
+			expect(result.ok).toBe(true);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("project-validator (Mode A) — README code-block formatting (§3b)", () => {
+	it("fails when README has an indented command line instead of a fenced block", () => {
+		const dir = makeTempProject();
+		try {
+			writeFileSync(
+				join(dir, "README.md"),
+				"# Project\n\nGetting started:\n\n dotnet restore\n npm install\n",
+			);
+			const result = validateModeAProject(dir);
+			expect(result.ok).toBe(false);
+			expect(result.failures.some((f) => /indented command/i.test(f))).toBe(
+				true,
+			);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("passes when commands are inside a properly fenced code block", () => {
+		const dir = makeTempProject();
+		try {
+			writeFileSync(
+				join(dir, "README.md"),
+				"# Project\n\n```bash\ndotnet restore\nnpm install\n```\n",
+			);
+			const result = validateModeAProject(dir);
+			expect(result.ok).toBe(true);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+});
+
+describe("project-validator — kit file presence (§3c)", () => {
+	function writeKit(
+		dir: string,
+		opts: { omit?: string; nonExec?: boolean } = {},
+	): void {
+		const files = [
+			"INTERVIEW_RULES.md",
+			"PRIVACY_RELEASE.md",
+			"RUBRIC_OVERVIEW.md",
+			"start.sh",
+			"end.sh",
+			"lib/privacy-gate.sh",
+		];
+		for (const rel of files) {
+			if (rel === opts.omit) continue;
+			const full = join(dir, rel);
+			mkdirSync(join(dir, rel.includes("/") ? "lib" : "."), {
+				recursive: true,
+			});
+			writeFileSync(full, "# kit file\n");
+			if (rel === "start.sh" || rel === "end.sh") {
+				chmodSync(full, opts.nonExec ? 0o644 : 0o755);
+			}
+		}
+	}
+
+	it("passes when all kit files are present and the entrypoints are executable", () => {
+		const dir = makeTempProject();
+		try {
+			writeKit(dir);
+			const result = validateKitFiles(dir);
+			expect(result.ok).toBe(true);
+			expect(result.failures).toEqual([]);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("fails when a required kit file is missing", () => {
+		const dir = makeTempProject();
+		try {
+			writeKit(dir, { omit: "PRIVACY_RELEASE.md" });
+			const result = validateKitFiles(dir);
+			expect(result.ok).toBe(false);
+			expect(
+				result.failures.some((f) => /PRIVACY_RELEASE\.md/.test(f)),
+			).toBe(true);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("fails when start.sh / end.sh are not executable", () => {
+		const dir = makeTempProject();
+		try {
+			writeKit(dir, { nonExec: true });
+			const result = validateKitFiles(dir);
+			expect(result.ok).toBe(false);
+			expect(result.failures.some((f) => /not executable/i.test(f))).toBe(true);
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}

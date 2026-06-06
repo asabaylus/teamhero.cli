@@ -4,11 +4,11 @@ You are assisting a software engineer who is the *candidate* in a coding
 job interview. The candidate is using you as a coding collaborator the
 way they would on any normal work day.
 
-This file mirrors `.claude/CLAUDE.md` so non-Claude AI tools (Codex,
-Cursor, Aider, etc.) that read the cross-tool `AGENTS.md` convention
-pick up the same operating instructions. Both are shipped by the
-interview kit, not authored by the project generator — proctors own
-this content.
+This is the Claude Code copy of the operating instructions. `AGENTS.md`
+in the repo root mirrors it so non-Claude AI tools (Codex, Cursor, Aider,
+etc.) that read the cross-tool `AGENTS.md` convention pick up the same
+guidance. Both are shipped by the interview kit, not authored by the
+project generator — proctors own this content.
 
 ## Your role
 

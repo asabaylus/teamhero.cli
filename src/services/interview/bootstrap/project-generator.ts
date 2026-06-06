@@ -1,4 +1,5 @@
 import {
+	chmodSync,
 	lstatSync,
 	mkdirSync,
 	readdirSync,
@@ -12,6 +13,7 @@ import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
 	type ValidationResult,
+	validateKitFiles,
 	validateModeAProject,
 	validateModeBProject,
 } from "./project-validator.js";
@@ -244,8 +246,16 @@ function copyDir(
 			copyDir(s, d, vars);
 		} else {
 			mkdirSync(dirname(d), { recursive: true });
+			// Preserve the source file's permission bits so executable kit
+			// entrypoints (start.sh / end.sh) stay runnable after the copy.
+			// Without this, writeFileSync creates the destination with the
+			// default 0644 and the candidate's `./start.sh` fails with
+			// "Permission denied" — and the post-copy kit validator rejects
+			// the project for a non-executable entrypoint.
+			const mode = st.mode & 0o777;
 			if (tokenKeys.length === 0) {
 				writeFileSync(d, readFileSync(s));
+				chmodSync(d, mode);
 				continue;
 			}
 			// readFileSync as utf8 — template files (.md, .sh, .json) are text.
@@ -256,6 +266,7 @@ function copyDir(
 				body = body.replaceAll(`{{${key}}}`, vars[key]);
 			}
 			writeFileSync(d, body);
+			chmodSync(d, mode);
 		}
 	}
 }
@@ -264,7 +275,10 @@ function validateOutput(
 	config: RoleConfig,
 	outputDir: string,
 ): ValidationResult {
-	if (config.projectMode === "A") return validateModeAProject(outputDir);
+	if (config.projectMode === "A")
+		return validateModeAProject(outputDir, {
+			featureDescription: config.featureDescription,
+		});
 	return validateModeBProject(outputDir);
 }
 
@@ -300,6 +314,19 @@ export async function generateProject(
 				AI_OBSERVER_DISCLOSURE:
 					config.analysisMode === "ai-assisted" ? AI_OBSERVER_DISCLOSURE : "",
 			});
+
+			// §3c: the kit overlay must land completely. A missing/non-exec
+			// kit file is a misconfiguration (broken kit dir, bad copy) that
+			// regenerating the LLM output won't fix — fail fast instead of
+			// burning the remaining attempts.
+			const kitCheck = validateKitFiles(config.outputDir);
+			if (!kitCheck.ok) {
+				return {
+					ok: false,
+					attempts: attempt,
+					failures: kitCheck.failures,
+				};
+			}
 		}
 
 		const validation = validateOutput(config, config.outputDir);

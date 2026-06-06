@@ -1,7 +1,40 @@
 import { describe, expect, it } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+	chmodSync,
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+// fleshOutKit ensures a staged kit dir contains every file the post-copy
+// kit-presence validator (§3c) requires, with executable entrypoints.
+// Tests that exercise copy mechanics stage only the file(s) they care
+// about; this tops them up so the bootstrap doesn't fail kit validation.
+function fleshOutKit(kitDir: string): void {
+	const required = [
+		"INTERVIEW_RULES.md",
+		"PRIVACY_RELEASE.md",
+		"RUBRIC_OVERVIEW.md",
+		"start.sh",
+		"end.sh",
+		"lib/privacy-gate.sh",
+	];
+	for (const rel of required) {
+		const full = join(kitDir, rel);
+		if (existsSync(full)) {
+			if (rel === "start.sh" || rel === "end.sh") chmodSync(full, 0o755);
+			continue;
+		}
+		if (rel.includes("/")) mkdirSync(join(kitDir, "lib"), { recursive: true });
+		writeFileSync(full, "# kit\n");
+		if (rel === "start.sh" || rel === "end.sh") chmodSync(full, 0o755);
+	}
+}
 import {
 	type GeneratedProject,
 	type GeneratorClient,
@@ -123,10 +156,10 @@ describe("generateProject (Mode A)", () => {
 			const client = clientReturning(stubModeAProject());
 			const kitSrc = mkdtempSync(join(tmpdir(), "iv-kit-"));
 			// stage a fake kit
-			const { writeFileSync, mkdirSync } = await import("node:fs");
 			mkdirSync(join(kitSrc, ".claude"), { recursive: true });
 			writeFileSync(join(kitSrc, "start.sh"), "#!/usr/bin/env bash\n");
 			writeFileSync(join(kitSrc, ".claude", "settings.json"), '{"hooks":{}}\n');
+			fleshOutKit(kitSrc);
 			try {
 				const result = await generateProject(role({ outputDir: dir }), client, {
 					kitTemplateDir: kitSrc,
@@ -134,6 +167,10 @@ describe("generateProject (Mode A)", () => {
 				expect(result.ok).toBe(true);
 				expect(existsSync(join(dir, "start.sh"))).toBe(true);
 				expect(existsSync(join(dir, ".claude", "settings.json"))).toBe(true);
+				// copyDir must preserve the source's executable bits so the
+				// candidate's `./start.sh` runs after a fresh clone.
+				const { statSync } = await import("node:fs");
+				expect(statSync(join(dir, "start.sh")).mode & 0o111).not.toBe(0);
 			} finally {
 				rmSync(kitSrc, { recursive: true, force: true });
 			}
@@ -147,7 +184,6 @@ describe("generateProject (Mode A)", () => {
 		try {
 			const client = clientReturning(stubModeAProject());
 			const kitSrc = mkdtempSync(join(tmpdir(), "iv-kit-tb-"));
-			const { writeFileSync } = await import("node:fs");
 			writeFileSync(
 				join(kitSrc, "INTERVIEW_RULES.md"),
 				"# Rules\n\nTime-box: **`{{TIME_BOX}}`** minutes.\n",
@@ -156,6 +192,7 @@ describe("generateProject (Mode A)", () => {
 				join(kitSrc, "no-template.md"),
 				"This file has no placeholders.\n",
 			);
+			fleshOutKit(kitSrc);
 			try {
 				const result = await generateProject(
 					role({ outputDir: dir, timeBoxMinutes: 75 }),
@@ -187,6 +224,7 @@ describe("generateProject (Mode A)", () => {
 		const humanKit = mkdtempSync(join(tmpdir(), "iv-kit-ho-"));
 		try {
 			writeFileSync(join(humanKit, "PRIVACY_RELEASE.md"), RELEASE);
+			fleshOutKit(humanKit);
 			const result = await generateProject(
 				role({ outputDir: humanDir, analysisMode: "human-only" }),
 				clientReturning(stubModeAProject()),
@@ -206,6 +244,7 @@ describe("generateProject (Mode A)", () => {
 		const aiKit = mkdtempSync(join(tmpdir(), "iv-kit-ai-"));
 		try {
 			writeFileSync(join(aiKit, "PRIVACY_RELEASE.md"), RELEASE);
+			fleshOutKit(aiKit);
 			const result = await generateProject(
 				role({ outputDir: aiDir, analysisMode: "ai-assisted" }),
 				clientReturning(stubModeAProject()),

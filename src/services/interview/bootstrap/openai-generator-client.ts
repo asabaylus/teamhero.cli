@@ -25,6 +25,18 @@ function readJobDescription(config: RoleConfig): string {
 	}
 }
 
+// inMemory reports whether the feature description asks for in-memory /
+// no-database storage. Drives several prompt conditionals: an explicit
+// "no database required" note in the README, the seed/proxy guidance in
+// Getting Started, and the ban on database-driver packages in the
+// generated dependency manifest. Kept deliberately loose (substring
+// match on the common phrasings) — a false positive only adds a
+// "no database required" clarification, which is harmless.
+function inMemory(config: RoleConfig): boolean {
+	const text = config.featureDescription.toLowerCase();
+	return text.includes("in-memory") || text.includes("no database");
+}
+
 interface GeneratedFileResponse {
 	path: string;
 	content: string;
@@ -83,13 +95,19 @@ function buildPrompt(
 REQUIRED FILES:
 - README.md at the root — written FOR THE CANDIDATE in plain language. Sections:
   (1) "What you're building" — what this project is and the feature/extension the candidate will implement (${config.featureDescription}).
-  (2) "Time-box" — state the time-box explicitly as ${config.timeBoxMinutes} minutes.
-  (3) "Getting started" — exact command(s) to install deps. Tell the candidate they are expected to write their own tests; do NOT reference any pre-existing failing test.
-  (4) "Acceptance criteria" — bullet list of what "done" looks like for this slice.
-  (5) "Process" — one sentence pointing to INTERVIEW_RULES.md for the recording/interview workflow.
+  (2) "Prerequisites" — explicit list of exactly what must be installed to run the project for the ${config.stack} stack (e.g., the language SDK and version, Node.js and version if a JS toolchain is involved, and whether a database is needed). ${inMemory(config) ? "This project uses in-memory storage: state explicitly that NO database installation is required." : ""}
+  (3) "What the starter provides" — a short bullet list of what is already in the box (the API/service, any UI, seed data, and the included hook configs) so the candidate knows what NOT to rebuild.
+  (4) "Time-box" — state the time-box explicitly as ${config.timeBoxMinutes} minutes.
+  (5) "Getting started" — exact command(s) to install deps and run the project. Tell the candidate they are expected to write their own tests; do NOT reference any pre-existing failing test. ${inMemory(config) ? "State that no database installation is required and, if the project auto-seeds, name the seed file. If the project serves an API, include the API port; if a dev server proxies to the API, state the proxy target." : "If the project serves an API, include the API port and any dev-server proxy configuration."}
+  (6) "Acceptance criteria" — bullet list of what "done" looks like for this slice.
+  (7) "Interview documents" — a bullet list linking to the interview kit files the candidate must read: PRIVACY_RELEASE.md, INTERVIEW_RULES.md, PROCESS.md, and RUBRIC_OVERVIEW.md. These files are shipped by the kit; just link to them by filename, do not author their content.
+  (8) "Recording the session" — one short paragraph telling the candidate the session is recorded: run ./start.sh before they begin and ./end.sh when they finish (details are in INTERVIEW_RULES.md).
+  (9) "Process" — one sentence pointing to INTERVIEW_RULES.md for the recording/interview workflow.
+  (10) "Maintainer notes" — a brief note (for proctors, not candidates) on how to regenerate any seed data the starter ships with.
+  FORMATTING: every code block MUST use standard markdown fencing (\`\`\`bash) with NO leading whitespace on the command lines. Do not indent commands to form an implicit code block.
   DO NOT write agent operating instructions. DO NOT mention rubric dimensions or what the observer is looking for. DO NOT coach the candidate on how to work with their AI agent. Agent guidance is shipped separately by the kit; the AI generator must not author it.
 - Source files under src/ — split the work into a few cohesive modules (domain types, a service/orchestrator, helpers as appropriate for ${config.stack}). Right-size for the ${config.timeBoxMinutes}-minute time-box: substantive enough that a candidate can demonstrate judgment about architecture and naming, not so large that they can't read it in the first 10 minutes.
-- A working test framework setup (package.json/go.mod/etc as appropriate for ${config.stack}) so the candidate can immediately write and run their own tests. Include only the dependency manifest and any required config — NO test files.
+- A working test framework setup (package.json/go.mod/etc as appropriate for ${config.stack}) so the candidate can immediately write and run their own tests. Include only the dependency manifest and any required config — NO test files.${inMemory(config) ? "\n  This project uses in-memory storage: do NOT include any database driver packages (MongoDB, SQL Server, PostgreSQL, MySQL, SQLite, Redis, etc.) in any dependency manifest (.csproj, package.json, go.mod, etc.)." : ""}
 
 DO NOT GENERATE (these would hint at the answer or break the evaluation):
 - Any test files. The candidate writes their own tests as part of the evaluation; pre-existing tests (even skipped ones) would leak the API shape, function names, or expected behaviors.

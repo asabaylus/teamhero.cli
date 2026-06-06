@@ -1,7 +1,38 @@
 import { describe, expect, it } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+	chmodSync,
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
+
+// Tops up a staged kit dir with every file the post-copy kit-presence
+// validator (§3c) requires (executable entrypoints included), so a
+// test focused on something else doesn't trip kit validation.
+function fleshOutKit(kitDir: string): void {
+	const required = [
+		"INTERVIEW_RULES.md",
+		"PRIVACY_RELEASE.md",
+		"RUBRIC_OVERVIEW.md",
+		"start.sh",
+		"end.sh",
+		"lib/privacy-gate.sh",
+	];
+	for (const rel of required) {
+		const full = join(kitDir, rel);
+		if (!existsSync(full)) {
+			if (rel.includes("/"))
+				mkdirSync(join(kitDir, "lib"), { recursive: true });
+			writeFileSync(full, "# kit\n");
+		}
+		if (rel === "start.sh" || rel === "end.sh") chmodSync(full, 0o755);
+	}
+}
 import {
 	type GeneratedProject,
 	type GeneratorClient,
@@ -219,6 +250,7 @@ describe("generateProject — kit template conflict resolution", () => {
 			};
 			// The kit also has GLOSSARY.md with "Kit content" — kit wins
 			writeFileSync(join(kitDir, "GLOSSARY.md"), "Kit content\n");
+			fleshOutKit(kitDir);
 
 			const result = await generateProject(
 				role({ outputDir: dir }),

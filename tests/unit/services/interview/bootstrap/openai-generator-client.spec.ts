@@ -423,6 +423,72 @@ describe("OpenAIGeneratorClient.generate", () => {
 	});
 });
 
+describe("OpenAIGeneratorClient — README section coverage (§2a/§2b)", () => {
+	async function promptFor(overrides: Partial<RoleConfig> = {}): Promise<string> {
+		const captured: { calls: Array<{ input: string; model: string }> } = {
+			calls: [],
+		};
+		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
+		await client.generate({ config: role(overrides), attempt: 1 });
+		return captured.calls[0].input;
+	}
+
+	it("instructs the model to include the Interview documents section linking the kit files", async () => {
+		const prompt = await promptFor({ projectMode: "A" });
+		expect(prompt).toContain("Interview documents");
+		expect(prompt).toContain("PRIVACY_RELEASE.md");
+		expect(prompt).toContain("INTERVIEW_RULES.md");
+		expect(prompt).toContain("PROCESS.md");
+		expect(prompt).toContain("RUBRIC_OVERVIEW.md");
+	});
+
+	it("instructs the model to include Recording the session, Prerequisites, starter-provides, and Maintainer notes", async () => {
+		const prompt = await promptFor({ projectMode: "A" });
+		expect(prompt).toContain("Recording the session");
+		expect(prompt).toContain("Prerequisites");
+		expect(prompt).toContain("What the starter provides");
+		expect(prompt).toContain("Maintainer notes");
+		expect(prompt).toMatch(/start\.sh/);
+		expect(prompt).toMatch(/end\.sh/);
+	});
+
+	it("requires standard fenced code blocks with no leading whitespace (§2b)", async () => {
+		const prompt = await promptFor({ projectMode: "A" });
+		expect(prompt).toMatch(/standard markdown fencing/i);
+		expect(prompt).toMatch(/no leading whitespace/i);
+	});
+});
+
+describe("OpenAIGeneratorClient — in-memory storage cues (§2c/§2e)", () => {
+	async function promptFor(overrides: Partial<RoleConfig> = {}): Promise<string> {
+		const captured: { calls: Array<{ input: string; model: string }> } = {
+			calls: [],
+		};
+		const client = new OpenAIGeneratorClient(fakeOpenAI([], captured) as never);
+		await client.generate({ config: role(overrides), attempt: 1 });
+		return captured.calls[0].input;
+	}
+
+	it("tells the model no database install is required and to omit DB driver packages when in-memory", async () => {
+		const prompt = await promptFor({
+			projectMode: "A",
+			featureDescription: "Build an in-memory spool tracker; no external DB.",
+		});
+		expect(prompt).toMatch(/NO database installation is required/i);
+		expect(prompt).toMatch(/do NOT include any database driver packages/i);
+		expect(prompt).toMatch(/proxy/i);
+	});
+
+	it("does NOT add the in-memory clauses when the feature is not in-memory", async () => {
+		const prompt = await promptFor({
+			projectMode: "A",
+			featureDescription: "Add a persistent audit log backed by a datastore.",
+		});
+		expect(prompt).not.toMatch(/do NOT include any database driver packages/i);
+		expect(prompt).not.toMatch(/NO database installation is required/i);
+	});
+});
+
 describe("OpenAIGeneratorClient — JSON schema guard (PROJECT_RESPONSE_SCHEMA)", () => {
 	it("the API call uses strict json_schema with a 'files' array", async () => {
 		let capturedTextFormat: unknown;

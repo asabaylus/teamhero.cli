@@ -1,0 +1,6 @@
+{
+  "hooks": {
+    "onSave": "node scripts/log-agent-event.mjs file-save",
+    "onCommand": "node scripts/log-agent-event.mjs command"
+  }
+}

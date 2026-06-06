@@ -21,9 +21,8 @@ interviewer in this section. **`{{TIME_BOX}}`** minutes.
 
 ## During the interview
 
-- The brief for what to build is in either this README, in `BRIEF.md`,
-  or as comments in failing tests under `tests/`. Your interviewer will
-  point you to the right place.
+- The brief for what to build is in [README.md](README.md). Your
+  interviewer will point you to the right place if needed.
 - Use your normal AI coding workflow. Talk to your AI agent the way you
   would on any work day.
 - **Verify the AI's output.** Run tests. Read diffs. Check edge cases.
@@ -34,8 +33,9 @@ interviewer in this section. **`{{TIME_BOX}}`** minutes.
 ## Finishing
 
 1. Exit the asciinema recording shell (Ctrl-D or `exit`).
-2. Run `./end.sh` from this repo's root. It stages the recording, the
-   log, and your signed release into a single git commit.
+2. Run `./end.sh` from this repo's root. It stages the recording, your
+   signed release, and — if your AI tool produced one — the optional
+   agent log (`interview.log`) into a single git commit.
 3. Push the repo to the URL your interviewer provided:
    ```
    git push origin HEAD

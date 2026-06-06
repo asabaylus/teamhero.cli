@@ -8,8 +8,10 @@ the role described in `INTERVIEW_RULES.md` of this repository.
 - **Terminal recording (`terminal.cast`)** — a text-based recording of
   everything visible in my terminal during the interview, captured by
   asciinema.
-- **AI agent log (`interview.log`)** — a JSONL log of prompts I sent to
-  my AI coding agent and the tool calls the agent made.
+- **AI agent log (`interview.log`, optional)** — if my AI tool supports
+  the repo's optional project hooks, a JSONL log of prompts I sent and
+  tool calls the agent made. The terminal recording is the universal
+  capture; this log is supplementary.
 - **Git history** — all commits I make during the session.
 - **(Optional, only if I am informed at the start of the session) Audio
   transcript** — from the video conference platform's transcription
