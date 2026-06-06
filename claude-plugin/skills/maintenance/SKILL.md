@@ -71,7 +71,7 @@ If errors persist after auto-fix, categorize them:
 
 - **Format/organizeImports errors in source files** — These should have been fixed by `--fix --unsafe`. If they reappear, a hook or watcher may be reverting files. Re-run the fix and verify immediately.
 - **Lint rule violations in source code** (e.g., `noNonNullAssertion`, `noExplicitAny`) — If these are pre-existing and widespread, disable the rule in `biome.json` rather than rewriting dozens of files. Add them under `linter.rules.<category>.<rule>: "off"`.
-- **Errors in generated/config files** — Add the directories to `biome.json`'s `files.ignore` list (e.g., `.beads/`, `coverage/`, `.claude/`).
+- **Errors in generated/config files** — Add the directories to `biome.json`'s `files.ignore` list (e.g., `coverage/`, `.claude/`).
 
 ### Critical: verify tests still pass after lint fixes
 
