@@ -25,6 +25,7 @@ specs/
 !.claude/commands/install-hil.md
 !.claude/commands/maintenance.md
 !.claude/commands/land.md
+!.claude/commands/release.md
 
 # Compiled binaries
 codex
