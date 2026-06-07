@@ -102,7 +102,9 @@ describe("project-validator (Mode A) — in-memory: no database packages (§3a)"
 			);
 			const result = validateModeAProject(dir, { featureDescription: FEATURE });
 			expect(result.ok).toBe(false);
-			expect(result.failures.some((f) => /database driver/i.test(f))).toBe(true);
+			expect(result.failures.some((f) => /database driver/i.test(f))).toBe(
+				true,
+			);
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}
@@ -118,7 +120,9 @@ describe("project-validator (Mode A) — in-memory: no database packages (§3a)"
 			);
 			const result = validateModeAProject(dir, { featureDescription: FEATURE });
 			expect(result.ok).toBe(false);
-			expect(result.failures.some((f) => /database driver/i.test(f))).toBe(true);
+			expect(result.failures.some((f) => /database driver/i.test(f))).toBe(
+				true,
+			);
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}
@@ -263,9 +267,9 @@ describe("project-validator — kit file presence (§3c)", () => {
 			writeKit(dir, { omit: "PRIVACY_RELEASE.md" });
 			const result = validateKitFiles(dir);
 			expect(result.ok).toBe(false);
-			expect(
-				result.failures.some((f) => /PRIVACY_RELEASE\.md/.test(f)),
-			).toBe(true);
+			expect(result.failures.some((f) => /PRIVACY_RELEASE\.md/.test(f))).toBe(
+				true,
+			);
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}

@@ -33,6 +33,7 @@ function fleshOutKit(kitDir: string): void {
 		if (rel === "start.sh" || rel === "end.sh") chmodSync(full, 0o755);
 	}
 }
+
 import { runBootstrap } from "../../../../../src/services/interview/bootstrap/orchestrator.js";
 import type {
 	GeneratedProject,

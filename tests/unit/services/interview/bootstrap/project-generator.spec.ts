@@ -35,6 +35,7 @@ function fleshOutKit(kitDir: string): void {
 		if (rel === "start.sh" || rel === "end.sh") chmodSync(full, 0o755);
 	}
 }
+
 import {
 	type GeneratedProject,
 	type GeneratorClient,

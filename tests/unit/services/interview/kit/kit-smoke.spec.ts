@@ -95,10 +95,7 @@ describe("interview kit smoke", () => {
 	});
 
 	it("ships .claude/CLAUDE.md mirroring AGENTS.md (cross-tool agent guidance)", () => {
-		const claude = readFileSync(
-			join(KIT_DIR, ".claude", "CLAUDE.md"),
-			"utf8",
-		);
+		const claude = readFileSync(join(KIT_DIR, ".claude", "CLAUDE.md"), "utf8");
 		const agents = readFileSync(join(KIT_DIR, "AGENTS.md"), "utf8");
 		expect(claude).toMatch(/candidate/i);
 		expect(agents).toMatch(/mirrors `\.claude\/CLAUDE\.md`/);
