@@ -1,4 +1,10 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import {
+	existsSync,
+	lstatSync,
+	readdirSync,
+	readFileSync,
+	statSync,
+} from "node:fs";
 import { join } from "node:path";
 
 export interface ValidationResult {
@@ -80,13 +86,19 @@ function collectFiles(
 			continue;
 		}
 		const full = join(dir, entry);
-		let isDir = false;
+		let st: ReturnType<typeof lstatSync>;
 		try {
-			isDir = statSync(full).isDirectory();
+			st = lstatSync(full);
 		} catch {
 			continue;
 		}
-		if (isDir) {
+		// Skip symlinks: lstatSync does not follow them, so a cyclic link in
+		// generated project content (e.g. `a -> ../`) can't drive unbounded
+		// recursion, and we never walk out of `dir` via a link.
+		if (st.isSymbolicLink()) {
+			continue;
+		}
+		if (st.isDirectory()) {
 			collectFiles(full, predicate, acc);
 		} else if (predicate(entry)) {
 			acc.push(full);

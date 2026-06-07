@@ -4,6 +4,7 @@ import {
 	mkdirSync,
 	mkdtempSync,
 	rmSync,
+	symlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -154,6 +155,33 @@ describe("project-validator (Mode A) — in-memory: no database packages (§3a)"
 			expect(result.ok).toBe(true);
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("does not follow symlinks out of the project when scanning manifests", () => {
+		// The recursive walk previously used statSync, which follows
+		// symlinks — a link to content outside the project (or a cyclic
+		// link) could be walked, escaping `dir` and risking unbounded
+		// recursion. lstatSync + skipping links keeps the scan bounded and
+		// inside the project.
+		const dir = makeTempProject();
+		const outside = makeTempProject();
+		try {
+			writeFileSync(join(dir, "README.md"), "# Project\n");
+			// A DB-driver manifest OUTSIDE the project, reachable only via a
+			// symlink planted inside it.
+			writeFileSync(
+				join(outside, "package.json"),
+				JSON.stringify({ dependencies: { mongoose: "^8.0.0" } }, null, 2),
+			);
+			symlinkSync(outside, join(dir, "linked"));
+			const result = validateModeAProject(dir, { featureDescription: FEATURE });
+			// The symlink is skipped, so the external mongoose manifest is
+			// never scanned and the project validates clean.
+			expect(result.ok).toBe(true);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+			rmSync(outside, { recursive: true, force: true });
 		}
 	});
 });
