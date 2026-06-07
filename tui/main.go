@@ -18,9 +18,10 @@ func printUsage() {
 	fmt.Fprintf(os.Stderr, `Usage: teamhero <command> [flags]
 
 Commands:
-  report    Generate a developer contribution report (default)
-  setup     Configure credentials and preferences
-  doctor    Validate installation health
+  report      Generate a developer contribution report (default)
+  setup       Configure credentials and preferences
+  doctor      Validate installation health
+  interview   Review candidate AI-collaboration interviews
 
 Run 'teamhero <command> --help' for command-specific help.
 
@@ -132,7 +133,7 @@ func main() {
 	// Detect subcommand first so --help can be routed to the right usage.
 	subcommand := ""
 	for _, arg := range os.Args[1:] {
-		if arg == "report" || arg == "doctor" || arg == "setup" {
+		if arg == "report" || arg == "doctor" || arg == "setup" || arg == "interview" {
 			subcommand = arg
 			break
 		}
@@ -152,6 +153,8 @@ func main() {
 			printSetupUsage()
 		case "report":
 			printReportUsage()
+		case "interview":
+			printInterviewUsage(os.Stderr)
 		default:
 			printUsage()
 		}
@@ -192,6 +195,13 @@ func main() {
 	case "doctor":
 		exitCode := runDoctor()
 		os.Exit(exitCode)
+		return
+	case "interview":
+		// stdout/stderr passed separately so --json mode can keep
+		// stdout pure for the agent payload while human chatter
+		// (Project: link, publish prompts, bun subprocess logs) goes
+		// to stderr. Default subcommand behavior is unchanged.
+		os.Exit(runInterview(flag.Args(), os.Stdout, os.Stderr))
 		return
 	}
 

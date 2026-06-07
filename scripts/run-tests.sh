@@ -52,9 +52,13 @@ for f in "${FILES[@]}"; do
     output=$(bun test "$f" 2>&1)
   fi
 
-  file_pass=$(echo "$output" | grep -oP '\d+(?= pass)' || echo 0)
-  file_fail=$(echo "$output" | grep -oP '\d+(?= fail)' || echo 0)
-  file_skip=$(echo "$output" | grep -oP '\d+(?= skip)' || echo 0)
+  # Bun may emit "N pass" / "N fail" / "N skip" multiple times (per-file lines
+  # plus a summary). Take the LAST match to get the file's summary totals;
+  # without `tail -1` the value is multi-line and bash arithmetic fails with
+  # "syntax error in expression" downstream.
+  file_pass=$(echo "$output" | grep -oP '\d+(?= pass)' | tail -1)
+  file_fail=$(echo "$output" | grep -oP '\d+(?= fail)' | tail -1)
+  file_skip=$(echo "$output" | grep -oP '\d+(?= skip)' | tail -1)
 
   [[ -z "$file_pass" ]] && file_pass=0
   [[ -z "$file_fail" ]] && file_fail=0

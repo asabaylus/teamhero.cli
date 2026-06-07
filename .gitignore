@@ -66,6 +66,13 @@ dist/
 teamhero-report-*
 docs/maintenance_results.md
 
+# Interview kit scaffolds — `teamhero interview bootstrap` defaults to
+# ./interviews/<slug>. Both entries are listed: `interviews/` is the current
+# default; `roles/` remains so users with content from the prior default
+# don't accidentally commit it on upgrade.
+interviews/
+roles/
+
 # Cache
 out
 claude-plugin/bin/

@@ -1,0 +1,24 @@
+//// TEAM HERO //////////////////////////////////////////////////////////////////////////////////// 
+                                                                                                    
+                                                              ╭────────────────────────────────────╮
+  ┃ Output directory                                          │ Interview Bootstrap                │
+  ┃ Where the generated repo (and kit overlay) will be        │                                    │
+  ┃ written.                                                  │ Role slug: senior-backend          │
+  ┃ > ./interviews/senior-backend                             │ Role title: Senior Backend         │
+                                                              │ Engineer                           │
+  enter submit                                                │ Stack: Go                          │
+                                                              │ JD attached: none                  │
+                                                              │ JD usage: —                        │
+                                                              │ Domain: Payments                   │
+                                                              │ Feature source: typed by proctor   │
+                                                              │ Feature: build a ledger entry-     │
+                                                              │ point                              │
+                                                              │ Time-box: 60 min                   │
+                                                              │ Project type: Brownfield — AI      │
+                                                              │ scaffolds                          │
+                                                              │ Analysis mode: ai-assisted         │
+                                                              │ Rubric: default                    │
+                                                              │ Output dir: —                      │
+                                                              ╰────────────────────────────────────╯
+                                                                                                    
+enter continue • ctrl+c quit                                                                        
