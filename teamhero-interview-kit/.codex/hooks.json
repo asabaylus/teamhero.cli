@@ -1,8 +1,8 @@
 {
-  "hooks": [
-    {
-      "event": "model_response",
-      "command": "node scripts/log-agent-event.mjs model-response"
-    }
-  ]
+	"hooks": [
+		{
+			"event": "model_response",
+			"command": "node scripts/log-agent-event.mjs model-response"
+		}
+	]
 }

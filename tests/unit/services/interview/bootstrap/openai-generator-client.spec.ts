@@ -424,7 +424,9 @@ describe("OpenAIGeneratorClient.generate", () => {
 });
 
 describe("OpenAIGeneratorClient — README section coverage (§2a/§2b)", () => {
-	async function promptFor(overrides: Partial<RoleConfig> = {}): Promise<string> {
+	async function promptFor(
+		overrides: Partial<RoleConfig> = {},
+	): Promise<string> {
 		const captured: { calls: Array<{ input: string; model: string }> } = {
 			calls: [],
 		};
@@ -460,7 +462,9 @@ describe("OpenAIGeneratorClient — README section coverage (§2a/§2b)", () => 
 });
 
 describe("OpenAIGeneratorClient — in-memory storage cues (§2c/§2e)", () => {
-	async function promptFor(overrides: Partial<RoleConfig> = {}): Promise<string> {
+	async function promptFor(
+		overrides: Partial<RoleConfig> = {},
+	): Promise<string> {
 		const captured: { calls: Array<{ input: string; model: string }> } = {
 			calls: [],
 		};

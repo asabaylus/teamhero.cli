@@ -142,7 +142,8 @@ function checkNoDatabasePackages(dir: string, failures: string[]): void {
 // text (or a stray implicit code block) instead of a fenced command. The
 // generator must emit ```bash fences with no leading whitespace on the
 // command lines.
-const INDENTED_COMMAND = /^ {1,3}(dotnet|npm|npx|node|bun|yarn|pnpm|git|cd|\.\/)\b/;
+const INDENTED_COMMAND =
+	/^ {1,3}(dotnet|npm|npx|node|bun|yarn|pnpm|git|cd|\.\/)\b/;
 
 function checkReadmeCodeBlockFormatting(dir: string, failures: string[]): void {
 	const readmePath = join(dir, "README.md");
