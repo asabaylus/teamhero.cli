@@ -88,7 +88,7 @@ class FetchPool {
 
 const API_ROOT = "https://api.github.com";
 const MAX_PER_PAGE = 100;
-const RETRYABLE_CODES = new Set([403, 429]);
+const RETRYABLE_CODES = new Set([429]); // 403 (rate limit) is not retried — fail fast and let callers skip
 export const REPO_CONCURRENCY = 3;
 
 const pool = new FetchPool(8);
@@ -120,6 +120,11 @@ async function fetchWithRetry(
 async function fetchJson<T>(url: string, token: string): Promise<T> {
 	const response = await fetchWithRetry(url, token);
 	if (!response.ok) {
+		// 409 means the repository exists but has no commits (empty repo / no default branch).
+		// Throw a message that metrics.service.ts recognises as an empty-repo signal.
+		if (response.status === 409) {
+			throw new Error(`Git Repository is empty for ${url}`);
+		}
 		throw new Error(`GitHub request failed (${response.status}) for ${url}`);
 	}
 	return (await response.json()) as T;

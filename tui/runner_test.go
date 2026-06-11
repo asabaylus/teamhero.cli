@@ -567,28 +567,6 @@ func TestRunServiceForeground_ConfigMarshal(t *testing.T) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// resolveDiscoverScript tests (in context of runner — file-system based)
-// ---------------------------------------------------------------------------
-
-func TestResolveDiscoverScript_FromCWD(t *testing.T) {
-	tmpDir := t.TempDir()
-	scriptDir := tmpDir + "/scripts"
-	os.MkdirAll(scriptDir, 0o755)
-	os.WriteFile(scriptDir+"/discover.ts", []byte("// test"), 0o644)
-
-	origDir, _ := os.Getwd()
-	t.Cleanup(func() { os.Chdir(origDir) })
-	os.Chdir(tmpDir)
-
-	got := resolveDiscoverScript()
-	if got != "scripts/discover.ts" {
-		if !strings.Contains(got, "discover.ts") {
-			t.Errorf("resolveDiscoverScript() = %q, expected 'discover.ts'", got)
-		}
-	}
-}
-
 func TestResolveBunBinary_FallbackWhenNotInPath(t *testing.T) {
 	t.Setenv("TEAMHERO_BUN_PATH", "")
 	t.Setenv("PATH", "/does-not-exist-path")

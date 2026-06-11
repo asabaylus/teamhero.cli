@@ -35,12 +35,12 @@ function createThrottleOptions() {
 			_retryAfter: number,
 			options: { method: string; url: string },
 			_octokit: OctokitClient,
-			retryCount: number,
+			_retryCount: number,
 		) => {
 			consola.warn(
-				`Secondary rate limit triggered for ${options.method} ${options.url}. Retry ${retryCount}.`,
+				`Secondary rate limit triggered for ${options.method} ${options.url}. Skipping to avoid long wait.`,
 			);
-			return retryCount <= 1;
+			return false; // Don't retry — caller catches and skips the item
 		},
 	};
 }

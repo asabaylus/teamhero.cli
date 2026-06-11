@@ -1,8 +1,8 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
-	"os/exec"
 	"strings"
 	"testing"
 
@@ -2304,11 +2304,14 @@ func TestWizardUpdate_ActiveForm(t *testing.T) {
 // ===========================================================================
 
 func TestWizardStartFetch_RepoFetch(t *testing.T) {
-	origFn := execCommandFn
-	t.Cleanup(func() { execCommandFn = origFn })
-	execCommandFn = func(_ string, _ ...string) *exec.Cmd {
-		return exec.Command("echo", `["repo1","repo2"]`)
+	setupTokenEnv(t)
+	repos := []map[string]interface{}{
+		{"full_name": "acme/repo1", "archived": false, "is_template": false, "private": false},
+		{"full_name": "acme/repo2", "archived": false, "is_template": false, "private": false},
 	}
+	body, _ := json.Marshal(repos)
+	srv := mockServer(t, []string{string(body)})
+	patchAPIRoot(t, srv)
 
 	cfg := DefaultConfig()
 	cfg.Org = "acme"
@@ -2325,11 +2328,11 @@ func TestWizardStartFetch_RepoFetch(t *testing.T) {
 }
 
 func TestWizardStartFetch_TeamFetch(t *testing.T) {
-	origFn := execCommandFn
-	t.Cleanup(func() { execCommandFn = origFn })
-	execCommandFn = func(_ string, _ ...string) *exec.Cmd {
-		return exec.Command("echo", `[{"name":"Team1","slug":"team1"}]`)
-	}
+	setupTokenEnv(t)
+	teams := []map[string]interface{}{{"name": "Team1", "slug": "team1"}}
+	body, _ := json.Marshal(teams)
+	srv := mockServer(t, []string{string(body)})
+	patchAPIRoot(t, srv)
 
 	cfg := DefaultConfig()
 	cfg.Org = "acme"
@@ -2346,11 +2349,11 @@ func TestWizardStartFetch_TeamFetch(t *testing.T) {
 }
 
 func TestWizardStartFetch_MemberFetch(t *testing.T) {
-	origFn := execCommandFn
-	t.Cleanup(func() { execCommandFn = origFn })
-	execCommandFn = func(_ string, _ ...string) *exec.Cmd {
-		return exec.Command("echo", `["alice","bob"]`)
-	}
+	setupTokenEnv(t)
+	members := []map[string]interface{}{{"login": "alice"}, {"login": "bob"}}
+	body, _ := json.Marshal(members)
+	srv := mockServer(t, []string{string(body)})
+	patchAPIRoot(t, srv)
 
 	cfg := DefaultConfig()
 	cfg.Org = "acme"

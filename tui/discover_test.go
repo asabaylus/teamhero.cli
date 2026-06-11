@@ -1,45 +1,76 @@
 package main
 
 import (
-	"fmt"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
-	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
-// ---------------------------------------------------------------------------
-// TestHelperProcess — fake subprocess used by execCommandFn overrides.
-//
-// When invoked with GO_WANT_HELPER_PROCESS=1 it prints the value of
-// HELPER_OUTPUT to stdout and exits with the code in HELPER_EXIT (default 0).
-// ---------------------------------------------------------------------------
-
-func TestHelperProcess(t *testing.T) {
-	if os.Getenv("GO_WANT_HELPER_PROCESS") != "1" {
-		return
+// setupTokenEnv writes a minimal .env with a fake token into a temp configDir
+// and returns a cleanup function that restores the original XDG_CONFIG_HOME.
+func setupTokenEnv(t *testing.T) {
+	t.Helper()
+	tmpDir := t.TempDir()
+	cfgDir := filepath.Join(tmpDir, "teamhero")
+	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+		t.Fatal(err)
 	}
-	// Print whatever the caller asked for
-	fmt.Print(os.Getenv("HELPER_OUTPUT"))
-
-	exitCode := 0
-	if v := os.Getenv("HELPER_EXIT"); v != "" {
-		fmt.Sscanf(v, "%d", &exitCode)
+	if err := os.WriteFile(filepath.Join(cfgDir, ".env"), []byte("GITHUB_PERSONAL_ACCESS_TOKEN=test-token\n"), 0o600); err != nil {
+		t.Fatal(err)
 	}
-	os.Exit(exitCode)
+	orig := os.Getenv("XDG_CONFIG_HOME")
+	os.Setenv("XDG_CONFIG_HOME", tmpDir)
+	t.Cleanup(func() { os.Setenv("XDG_CONFIG_HOME", orig) })
 }
 
-// helperCmd returns a *exec.Cmd that, when Run/Output is called, executes
-// TestHelperProcess in the current test binary with the given env vars.
-func helperCmd(env ...string) func(string, ...string) *exec.Cmd {
-	return func(name string, args ...string) *exec.Cmd {
-		cs := []string{"-test.run=TestHelperProcess", "--", name}
-		cs = append(cs, args...)
-		cmd := exec.Command(os.Args[0], cs...)
-		cmd.Env = append(os.Environ(), "GO_WANT_HELPER_PROCESS=1")
-		cmd.Env = append(cmd.Env, env...)
-		return cmd
-	}
+// servePages returns an httptest.Server that serves pages of JSON arrays.
+// Each call to pages() is served for one page; subsequent requests get [].
+func mockServer(t *testing.T, pages []string) *httptest.Server {
+	t.Helper()
+	call := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if call < len(pages) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(pages[call]))
+		} else {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("[]"))
+		}
+		call++
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// patchAPIRoot temporarily overrides the GitHub API root to point at srv.
+func patchAPIRoot(t *testing.T, srv *httptest.Server) {
+	t.Helper()
+	orig := githubAPIRoot
+	// package-level const can't be reassigned; use a var shadow via the
+	// existing package variable instead. We'll override httpClient with a
+	// transport that rewrites the host.
+	transport := &rewriteTransport{base: srv.URL}
+	origClient := httpClient
+	httpClient = &http.Client{Transport: transport}
+	t.Cleanup(func() {
+		httpClient = origClient
+		_ = orig
+	})
+}
+
+// rewriteTransport replaces the scheme+host of every request with base.
+type rewriteTransport struct{ base string }
+
+func (rt *rewriteTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	clone := req.Clone(req.Context())
+	clone.URL.Scheme = "http"
+	clone.URL.Host = strings.TrimPrefix(rt.base, "http://")
+	return http.DefaultTransport.RoundTrip(clone)
 }
 
 // ---------------------------------------------------------------------------
@@ -47,74 +78,107 @@ func helperCmd(env ...string) func(string, ...string) *exec.Cmd {
 // ---------------------------------------------------------------------------
 
 func TestDiscoverRepos_Success(t *testing.T) {
-	orig := execCommandFn
-	t.Cleanup(func() { execCommandFn = orig })
+	setupTokenEnv(t)
+	repos := []map[string]interface{}{
+		{"full_name": "org/repo1", "archived": false, "is_template": false, "private": false},
+		{"full_name": "org/repo2", "archived": false, "is_template": false, "private": false},
+	}
+	body, _ := json.Marshal(repos)
+	srv := mockServer(t, []string{string(body)})
+	patchAPIRoot(t, srv)
 
-	execCommandFn = helperCmd(`HELPER_OUTPUT=["repo1","repo2"]`)
-
-	repos, err := DiscoverRepos("myorg", false, false)
+	got, err := DiscoverRepos("org", false, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(repos) != 2 || repos[0] != "repo1" || repos[1] != "repo2" {
-		t.Errorf("got %v, want [repo1 repo2]", repos)
+	if len(got) != 2 || got[0] != "repo1" || got[1] != "repo2" {
+		t.Errorf("got %v, want [repo1 repo2]", got)
 	}
 }
 
-func TestDiscoverRepos_IncludePrivateAndArchived(t *testing.T) {
-	orig := execCommandFn
-	t.Cleanup(func() { execCommandFn = orig })
+func TestDiscoverRepos_FiltersArchivedByDefault(t *testing.T) {
+	setupTokenEnv(t)
+	repos := []map[string]interface{}{
+		{"full_name": "org/active", "archived": false, "is_template": false, "private": false},
+		{"full_name": "org/archived", "archived": true, "is_template": false, "private": false},
+	}
+	body, _ := json.Marshal(repos)
+	srv := mockServer(t, []string{string(body)})
+	patchAPIRoot(t, srv)
 
-	execCommandFn = helperCmd(`HELPER_OUTPUT=["private-repo"]`)
-
-	repos, err := DiscoverRepos("myorg", true, true)
+	got, err := DiscoverRepos("org", false, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(repos) != 1 || repos[0] != "private-repo" {
-		t.Errorf("got %v, want [private-repo]", repos)
+	if len(got) != 1 || got[0] != "active" {
+		t.Errorf("got %v, want [active]", got)
+	}
+}
+
+func TestDiscoverRepos_IncludeArchived(t *testing.T) {
+	setupTokenEnv(t)
+	repos := []map[string]interface{}{
+		{"full_name": "org/active", "archived": false, "is_template": false, "private": false},
+		{"full_name": "org/archived", "archived": true, "is_template": false, "private": false},
+	}
+	body, _ := json.Marshal(repos)
+	srv := mockServer(t, []string{string(body)})
+	patchAPIRoot(t, srv)
+
+	got, err := DiscoverRepos("org", false, true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 2 {
+		t.Errorf("got %v, want 2 repos", got)
+	}
+}
+
+func TestDiscoverRepos_FiltersTemplates(t *testing.T) {
+	setupTokenEnv(t)
+	repos := []map[string]interface{}{
+		{"full_name": "org/normal", "archived": false, "is_template": false, "private": false},
+		{"full_name": "org/template", "archived": false, "is_template": true, "private": false},
+	}
+	body, _ := json.Marshal(repos)
+	srv := mockServer(t, []string{string(body)})
+	patchAPIRoot(t, srv)
+
+	got, err := DiscoverRepos("org", false, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 1 || got[0] != "normal" {
+		t.Errorf("got %v, want [normal]", got)
 	}
 }
 
 func TestDiscoverRepos_EmptyArray(t *testing.T) {
-	orig := execCommandFn
-	t.Cleanup(func() { execCommandFn = orig })
+	setupTokenEnv(t)
+	srv := mockServer(t, []string{"[]"})
+	patchAPIRoot(t, srv)
 
-	execCommandFn = helperCmd(`HELPER_OUTPUT=[]`)
-
-	repos, err := DiscoverRepos("myorg", false, false)
+	got, err := DiscoverRepos("org", false, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(repos) != 0 {
-		t.Errorf("got %v, want empty slice", repos)
+	if len(got) != 0 {
+		t.Errorf("got %v, want empty slice", got)
 	}
 }
 
-func TestDiscoverRepos_InvalidJSON(t *testing.T) {
-	orig := execCommandFn
-	t.Cleanup(func() { execCommandFn = orig })
+func TestDiscoverRepos_APIError(t *testing.T) {
+	setupTokenEnv(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(`{"message":"Resource protected by organization SAML enforcement."}`))
+	}))
+	t.Cleanup(srv.Close)
+	patchAPIRoot(t, srv)
 
-	execCommandFn = helperCmd(`HELPER_OUTPUT=not-json`)
-
-	_, err := DiscoverRepos("myorg", false, false)
+	_, err := DiscoverRepos("org", false, false)
 	if err == nil {
-		t.Fatal("expected error for invalid JSON, got nil")
-	}
-	if !strings.Contains(err.Error(), "parse repos response") {
-		t.Errorf("expected parse error, got: %v", err)
-	}
-}
-
-func TestDiscoverRepos_NonZeroExit(t *testing.T) {
-	orig := execCommandFn
-	t.Cleanup(func() { execCommandFn = orig })
-
-	execCommandFn = helperCmd(`HELPER_OUTPUT=`, `HELPER_EXIT=1`)
-
-	_, err := DiscoverRepos("myorg", false, false)
-	if err == nil {
-		t.Fatal("expected error for non-zero exit, got nil")
+		t.Fatal("expected error, got nil")
 	}
 	if !strings.Contains(err.Error(), "failed to discover repos") {
 		t.Errorf("expected discover repos error, got: %v", err)
@@ -126,65 +190,56 @@ func TestDiscoverRepos_NonZeroExit(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestDiscoverTeams_Success(t *testing.T) {
-	orig := execCommandFn
-	t.Cleanup(func() { execCommandFn = orig })
+	setupTokenEnv(t)
+	teams := []map[string]interface{}{
+		{"name": "Team1", "slug": "team1"},
+		{"name": "Team2", "slug": "team2"},
+	}
+	body, _ := json.Marshal(teams)
+	srv := mockServer(t, []string{string(body)})
+	patchAPIRoot(t, srv)
 
-	execCommandFn = helperCmd(`HELPER_OUTPUT=[{"name":"Team1","slug":"team1"},{"name":"Team2","slug":"team2"}]`)
-
-	teams, err := DiscoverTeams("myorg")
+	got, err := DiscoverTeams("org")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(teams) != 2 {
-		t.Fatalf("got %d teams, want 2", len(teams))
+	if len(got) != 2 {
+		t.Fatalf("got %d teams, want 2", len(got))
 	}
-	if teams[0].Name != "Team1" || teams[0].Slug != "team1" {
-		t.Errorf("teams[0] = %+v, want {Name:Team1 Slug:team1}", teams[0])
+	if got[0].Name != "Team1" || got[0].Slug != "team1" {
+		t.Errorf("teams[0] = %+v, want {Name:Team1 Slug:team1}", got[0])
 	}
-	if teams[1].Name != "Team2" || teams[1].Slug != "team2" {
-		t.Errorf("teams[1] = %+v, want {Name:Team2 Slug:team2}", teams[1])
+	if got[1].Name != "Team2" || got[1].Slug != "team2" {
+		t.Errorf("teams[1] = %+v, want {Name:Team2 Slug:team2}", got[1])
 	}
 }
 
 func TestDiscoverTeams_EmptyArray(t *testing.T) {
-	orig := execCommandFn
-	t.Cleanup(func() { execCommandFn = orig })
+	setupTokenEnv(t)
+	srv := mockServer(t, []string{"[]"})
+	patchAPIRoot(t, srv)
 
-	execCommandFn = helperCmd(`HELPER_OUTPUT=[]`)
-
-	teams, err := DiscoverTeams("myorg")
+	got, err := DiscoverTeams("org")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(teams) != 0 {
-		t.Errorf("got %v, want empty slice", teams)
+	if len(got) != 0 {
+		t.Errorf("got %v, want empty slice", got)
 	}
 }
 
-func TestDiscoverTeams_InvalidJSON(t *testing.T) {
-	orig := execCommandFn
-	t.Cleanup(func() { execCommandFn = orig })
+func TestDiscoverTeams_APIError(t *testing.T) {
+	setupTokenEnv(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"message":"Bad credentials"}`))
+	}))
+	t.Cleanup(srv.Close)
+	patchAPIRoot(t, srv)
 
-	execCommandFn = helperCmd(`HELPER_OUTPUT={broken`)
-
-	_, err := DiscoverTeams("myorg")
+	_, err := DiscoverTeams("org")
 	if err == nil {
-		t.Fatal("expected error for invalid JSON, got nil")
-	}
-	if !strings.Contains(err.Error(), "parse teams response") {
-		t.Errorf("expected parse error, got: %v", err)
-	}
-}
-
-func TestDiscoverTeams_NonZeroExit(t *testing.T) {
-	orig := execCommandFn
-	t.Cleanup(func() { execCommandFn = orig })
-
-	execCommandFn = helperCmd(`HELPER_OUTPUT=`, `HELPER_EXIT=1`)
-
-	_, err := DiscoverTeams("myorg")
-	if err == nil {
-		t.Fatal("expected error for non-zero exit, got nil")
+		t.Fatal("expected error, got nil")
 	}
 	if !strings.Contains(err.Error(), "failed to discover teams") {
 		t.Errorf("expected discover teams error, got: %v", err)
@@ -196,116 +251,54 @@ func TestDiscoverTeams_NonZeroExit(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestDiscoverMembers_Success(t *testing.T) {
-	orig := execCommandFn
-	t.Cleanup(func() { execCommandFn = orig })
+	setupTokenEnv(t)
+	members := []map[string]interface{}{
+		{"login": "user1"},
+		{"login": "user2"},
+		{"login": "user3"},
+	}
+	body, _ := json.Marshal(members)
+	srv := mockServer(t, []string{string(body)})
+	patchAPIRoot(t, srv)
 
-	execCommandFn = helperCmd(`HELPER_OUTPUT=["user1","user2","user3"]`)
-
-	members, err := DiscoverMembers("myorg")
+	got, err := DiscoverMembers("org")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(members) != 3 {
-		t.Fatalf("got %d members, want 3", len(members))
-	}
-	if members[0] != "user1" || members[1] != "user2" || members[2] != "user3" {
-		t.Errorf("got %v, want [user1 user2 user3]", members)
+	if len(got) != 3 || got[0] != "user1" || got[1] != "user2" || got[2] != "user3" {
+		t.Errorf("got %v, want [user1 user2 user3]", got)
 	}
 }
 
 func TestDiscoverMembers_EmptyArray(t *testing.T) {
-	orig := execCommandFn
-	t.Cleanup(func() { execCommandFn = orig })
+	setupTokenEnv(t)
+	srv := mockServer(t, []string{"[]"})
+	patchAPIRoot(t, srv)
 
-	execCommandFn = helperCmd(`HELPER_OUTPUT=[]`)
-
-	members, err := DiscoverMembers("myorg")
+	got, err := DiscoverMembers("org")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(members) != 0 {
-		t.Errorf("got %v, want empty slice", members)
+	if len(got) != 0 {
+		t.Errorf("got %v, want empty slice", got)
 	}
 }
 
-func TestDiscoverMembers_InvalidJSON(t *testing.T) {
-	orig := execCommandFn
-	t.Cleanup(func() { execCommandFn = orig })
+func TestDiscoverMembers_APIError(t *testing.T) {
+	setupTokenEnv(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(`{"message":"Forbidden"}`))
+	}))
+	t.Cleanup(srv.Close)
+	patchAPIRoot(t, srv)
 
-	execCommandFn = helperCmd(`HELPER_OUTPUT=<html>error</html>`)
-
-	_, err := DiscoverMembers("myorg")
+	_, err := DiscoverMembers("org")
 	if err == nil {
-		t.Fatal("expected error for invalid JSON, got nil")
-	}
-	if !strings.Contains(err.Error(), "parse members response") {
-		t.Errorf("expected parse error, got: %v", err)
-	}
-}
-
-func TestDiscoverMembers_NonZeroExit(t *testing.T) {
-	orig := execCommandFn
-	t.Cleanup(func() { execCommandFn = orig })
-
-	execCommandFn = helperCmd(`HELPER_OUTPUT=`, `HELPER_EXIT=2`)
-
-	_, err := DiscoverMembers("myorg")
-	if err == nil {
-		t.Fatal("expected error for non-zero exit, got nil")
+		t.Fatal("expected error, got nil")
 	}
 	if !strings.Contains(err.Error(), "failed to discover members") {
 		t.Errorf("expected discover members error, got: %v", err)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// resolveDiscoverScript
-// ---------------------------------------------------------------------------
-
-func TestResolveDiscoverScript_ReturnsNonEmpty(t *testing.T) {
-	got := resolveDiscoverScript()
-	if got == "" {
-		t.Error("resolveDiscoverScript() returned empty string")
-	}
-}
-
-func TestResolveDiscoverScript_ContainsDiscoverTs(t *testing.T) {
-	got := resolveDiscoverScript()
-	if !strings.Contains(got, "discover.ts") {
-		t.Errorf("resolveDiscoverScript() = %q, expected to contain 'discover.ts'", got)
-	}
-}
-
-func TestResolveDiscoverScript_FallbackWhenNothingExists(t *testing.T) {
-	// Change to an empty temp dir so no scripts/ directory is found relative to CWD
-	tmpDir := t.TempDir()
-	origDir, _ := os.Getwd()
-	t.Cleanup(func() { os.Chdir(origDir) })
-	os.Chdir(tmpDir)
-
-	got := resolveDiscoverScript()
-	// Should return the default fallback path
-	if !strings.Contains(got, "discover.ts") {
-		t.Errorf("resolveDiscoverScript() = %q, expected fallback containing 'discover.ts'", got)
-	}
-}
-
-func TestResolveDiscoverScript_RelativeToCWD(t *testing.T) {
-	tmpDir := t.TempDir()
-	scriptDir := tmpDir + "/scripts"
-	os.MkdirAll(scriptDir, 0o755)
-	os.WriteFile(scriptDir+"/discover.ts", []byte("// test"), 0o644)
-
-	origDir, _ := os.Getwd()
-	t.Cleanup(func() { os.Chdir(origDir) })
-	os.Chdir(tmpDir)
-
-	got := resolveDiscoverScript()
-	if got != "scripts/discover.ts" {
-		// Could also find via binary path or absolute fallback
-		if !strings.Contains(got, "discover.ts") {
-			t.Errorf("resolveDiscoverScript() = %q, expected to contain 'discover.ts'", got)
-		}
 	}
 }
 
@@ -314,9 +307,27 @@ func TestResolveDiscoverScript_RelativeToCWD(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestTeamInfo_JSONTags(t *testing.T) {
-	// Verify the struct marshals/unmarshals correctly
 	info := TeamInfo{Name: "Alpha Team", Slug: "alpha-team"}
 	if info.Name != "Alpha Team" || info.Slug != "alpha-team" {
 		t.Errorf("TeamInfo fields incorrect: %+v", info)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// loadGitHubToken
+// ---------------------------------------------------------------------------
+
+func TestLoadGitHubToken_MissingToken(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfgDir := filepath.Join(tmpDir, "teamhero")
+	os.MkdirAll(cfgDir, 0o755)
+	os.WriteFile(filepath.Join(cfgDir, ".env"), []byte("OPENAI_API_KEY=sk-test\n"), 0o600)
+	orig := os.Getenv("XDG_CONFIG_HOME")
+	os.Setenv("XDG_CONFIG_HOME", tmpDir)
+	t.Cleanup(func() { os.Setenv("XDG_CONFIG_HOME", orig) })
+
+	token := loadGitHubToken()
+	if token != "" {
+		t.Errorf("expected empty token, got %q", token)
 	}
 }
