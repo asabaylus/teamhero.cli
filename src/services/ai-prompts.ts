@@ -443,6 +443,12 @@ function buildIndividualSummaryBlock(
 	return `Contributor ${index}: ${JSON.stringify(data)}`;
 }
 
+// Maximum number of PR and commit highlights to include per member in the AI prompt.
+// Keeps prompt size manageable (≤ ~40 KB/member) even for very active contributors.
+const MAX_HIGHLIGHTS_IN_PROMPT = Number(
+	process.env.TEAMHERO_MAX_HIGHLIGHTS_IN_PROMPT ?? "30",
+);
+
 function buildMemberHighlightsBlock(
 	member: ReportMemberMetrics,
 	windowHuman: string,
@@ -450,6 +456,7 @@ function buildMemberHighlightsBlock(
 ): string {
 	const sanitize = (value: string) => value.replace(/\s+/g, " ").trim();
 	const prHighlights = member.prHighlights
+		.slice(0, MAX_HIGHLIGHTS_IN_PROMPT)
 		.map(sanitize)
 		.filter(
 			(highlight) => highlight !== "No PRs found." && highlight.length > 0,
@@ -479,6 +486,7 @@ function buildMemberHighlightsBlock(
 		prLines.push("Delivered work: none recorded in the window.");
 	}
 	const commitHighlights = member.commitHighlights
+		.slice(0, MAX_HIGHLIGHTS_IN_PROMPT)
 		.map(sanitize)
 		.filter((highlight) => highlight.length > 0);
 	const commitContext =
@@ -512,6 +520,7 @@ function buildMemberHighlightsBlock(
 			? `Operational tasks: ${completedTasks.join("; ")}.`
 			: "Operational tasks: No completed Asana tasks recorded in the window.";
 	const additional = member.highlights
+		.slice(0, MAX_HIGHLIGHTS_IN_PROMPT * 2)
 		.map(sanitize)
 		.filter((highlight) => highlight.length > 0);
 	const additionalLine =

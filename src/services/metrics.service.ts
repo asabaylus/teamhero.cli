@@ -18,7 +18,9 @@ const DEFAULT_MAX_COMMIT_HISTORY_PAGES = Number(
 const DEFAULT_MAX_PULL_REQUEST_PAGES = Number(
 	process.env.TEAMHERO_MAX_PR_PAGES ?? "5",
 );
-const MAX_HIGHLIGHTS_PER_MEMBER = Number.POSITIVE_INFINITY;
+const MAX_HIGHLIGHTS_PER_MEMBER = Number(
+	process.env.TEAMHERO_MAX_HIGHLIGHTS_PER_MEMBER ?? "50",
+);
 
 /** Backward-compatible re-exports — new code should import from core/types.ts. */
 export type CollectMetricsOptions = MetricsCollectionOptions;
