@@ -1,4 +1,5 @@
 import { URL } from "node:url";
+import { consola } from "consola";
 
 export interface CollectLocInput {
 	org?: string;
@@ -392,15 +393,29 @@ export async function collectLocMetricsRest(
 			total,
 			phase: "commits",
 		});
-		const repoMetrics = await collectRepoCommits(
-			owner,
-			name,
-			token,
-			sinceIso,
-			untilIso,
-			input.maxCommitPages,
-			defaultBranches[repo],
-		);
+		let repoMetrics: Map<string, ContributorLocMetrics>;
+		try {
+			repoMetrics = await collectRepoCommits(
+				owner,
+				name,
+				token,
+				sinceIso,
+				untilIso,
+				input.maxCommitPages,
+				defaultBranches[repo],
+			);
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err);
+			consola.warn(`Skipped ${repo}: ${msg}`);
+			completed += 1;
+			input.onRepoProgress?.({
+				repoFullName: repo,
+				index: completed,
+				total,
+				phase: "done",
+			});
+			return;
+		}
 
 		// Merge into global map
 		for (const [login, data] of repoMetrics) {

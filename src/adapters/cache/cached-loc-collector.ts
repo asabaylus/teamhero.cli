@@ -9,6 +9,7 @@
  * LOC cache entries become permanent (commits are immutable once merged).
  */
 
+import { consola } from "consola";
 import type { CacheOptions } from "../../core/types.js";
 import { getEnv } from "../../lib/env.js";
 import { appendUnifiedLog } from "../../lib/unified-log.js";
@@ -125,15 +126,29 @@ export class CachedLocCollector {
 				phase: "commits",
 			});
 
-			const repoMetrics = await collectRepoCommits(
-				owner,
-				name,
-				token,
-				sinceIso,
-				untilIso,
-				input.maxCommitPages,
-				defaultBranches[repo],
-			);
+			let repoMetrics: Map<string, ContributorLocMetrics>;
+			try {
+				repoMetrics = await collectRepoCommits(
+					owner,
+					name,
+					token,
+					sinceIso,
+					untilIso,
+					input.maxCommitPages,
+					defaultBranches[repo],
+				);
+			} catch (err) {
+				const msg = err instanceof Error ? err.message : String(err);
+				consola.warn(`Skipped ${repo}: ${msg}`);
+				completed += 1;
+				input.onRepoProgress?.({
+					repoFullName: repo,
+					index: completed,
+					total,
+					phase: "done",
+				});
+				return;
+			}
 
 			// Cache the per-repo result as an array
 			const asArray = Array.from(repoMetrics.values());
