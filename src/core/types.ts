@@ -8,6 +8,7 @@
 import type { Member } from "../models/member.js";
 import type { ContributionMetricSet } from "../models/metrics.js";
 import type { Organization } from "../models/organization.js";
+import type { Person } from "../models/person.js";
 import type { Repository } from "../models/repository.js";
 import type {
 	NormalizedNote,
@@ -90,6 +91,49 @@ export interface ScopeProvider {
 	getOrganization(org: string): Promise<Organization>;
 	getRepositories(org: string, options: ScopeOptions): Promise<Repository[]>;
 	getMembers(org: string, options: ScopeOptions): Promise<Member[]>;
+}
+
+// ---------------------------------------------------------------------------
+// Contributor identity resolution (Person model)
+// ---------------------------------------------------------------------------
+
+/**
+ * Raw identity fields observed on a single commit or pull request, before
+ * resolution to a canonical Person. Any field may be absent.
+ */
+export interface RawIdentity {
+	/** GitHub login (PR author, or a commit's GitHub-attributed author login). */
+	login?: string;
+	/** Git author email. */
+	email?: string;
+	/** Git author name. */
+	name?: string;
+}
+
+/**
+ * Outcome of resolving a {@link RawIdentity}:
+ * - `resolved`: matched a canonical Person.
+ * - `merge-identity`: the GitHub merge-button / web-flow committer
+ *   (`noreply@github.com`) — non-authoring, never credited.
+ * - `unmapped`: matched no Person; routed to the reconciliation review queue.
+ *   A bare name never instantiates a new Person.
+ */
+export type IdentityResolution =
+	| { type: "resolved"; person: Person }
+	| { type: "merge-identity" }
+	| { type: "unmapped"; identity: RawIdentity };
+
+/**
+ * Pure resolver that maps raw commit/PR identities onto canonical Persons using
+ * a human-maintained identity map. Entries sharing any login/email/name are
+ * unioned (union-find) so transitive links collapse. It never performs I/O and
+ * never creates a Person from a bare name.
+ */
+export interface IdentityResolver {
+	/** Resolve a raw identity to its Person, a merge identity, or unmapped. */
+	resolve(identity: RawIdentity): IdentityResolution;
+	/** All canonical Persons after union, deduplicated. */
+	persons(): Person[];
 }
 
 // ---------------------------------------------------------------------------
