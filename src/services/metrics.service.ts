@@ -10,6 +10,7 @@ import type {
 import { resolveEndEpochMs, resolveStartISO } from "../lib/date-utils.js";
 import { loadIdentityMapFile } from "../lib/identity-map.js";
 import type { OctokitClient } from "../lib/octokit.js";
+import { buildReconciliationReport } from "../lib/reconciliation.js";
 import type { Member } from "../models/member.js";
 import type { ContributionMetricSet } from "../models/metrics.js";
 import type { Repository } from "../models/repository.js";
@@ -206,6 +207,7 @@ export class MetricsService implements MetricsProvider {
 		// Reconciled per-Person metrics (additive; best-effort so a failure here
 		// never breaks the legacy per-login report).
 		let persons: MetricsCollectionResult["persons"];
+		let reconciliation: MetricsCollectionResult["reconciliation"];
 		try {
 			const resolver = await this.getResolver();
 			const personResult = await collectPersonMetrics(this.octokit, resolver, {
@@ -215,6 +217,9 @@ export class MetricsService implements MetricsProvider {
 				until: options.until,
 			});
 			persons = personResult.persons;
+			reconciliation = buildReconciliationReport(resolver, {
+				unmappedCommits: personResult.unmappedCommits,
+			});
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			warnings.push(`Person reconciliation failed: ${message}`);
@@ -229,6 +234,7 @@ export class MetricsService implements MetricsProvider {
 				0,
 			),
 			persons,
+			reconciliation,
 		};
 	}
 

@@ -6,6 +6,7 @@
  */
 
 import type { PersonMetrics } from "../lib/person-metrics.js";
+import type { ReconciliationReport } from "../lib/reconciliation.js";
 import type { Member } from "../models/member.js";
 import type { ContributionMetricSet } from "../models/metrics.js";
 import type { Organization } from "../models/organization.js";
@@ -194,6 +195,12 @@ export interface MetricsCollectionResult {
 	 * `members`. Absent when reconciliation could not run (see `warnings`).
 	 */
 	persons?: PersonMetrics[];
+	/**
+	 * Structured reconciliation report (unmapped identities, duplicate accounts,
+	 * external emails to verify, capped repos) so the identity map's gaps are
+	 * visible every run. Absent when reconciliation could not run.
+	 */
+	reconciliation?: ReconciliationReport;
 }
 
 /** Port for collecting source-control metrics (commits, PRs, reviews, LOC). */
