@@ -51,6 +51,25 @@ const commitsBySha: Record<string, unknown> = {
 	},
 };
 
+// What listCommits returns: author/parents/date but NO files (files come from
+// the getCommit enrichment step, mirroring the real GitHub payloads).
+const listS1 = {
+	sha: "s1",
+	parents: [{}],
+	commit: {
+		author: {
+			name: "Person X",
+			email: "x@example.com",
+			date: "2026-01-10T00:00:00Z",
+		},
+	},
+};
+const listM1 = {
+	sha: "m1",
+	parents: [{}, {}],
+	commit: { author: { email: "x@example.com", date: "2026-01-11T00:00:00Z" } },
+};
+
 describe("collectPersonMetrics", () => {
 	it("fetches PRs per login + commits per repo and aggregates per Person", async () => {
 		const issuesAndPullRequests = mock(async ({ q }: { q: string }) => {
@@ -71,7 +90,7 @@ describe("collectPersonMetrics", () => {
 			return { data: { items: [] } };
 		});
 		const listCommits = mock(async ({ page }: { page: number }) =>
-			page === 1 ? { data: [{ sha: "s1" }, { sha: "m1" }] } : { data: [] },
+			page === 1 ? { data: [listS1, listM1] } : { data: [] },
 		);
 		const getCommit = mock(async ({ ref }: { ref: string }) => ({
 			data: commitsBySha[ref],
@@ -109,6 +128,9 @@ describe("collectPersonMetrics", () => {
 		expect(x.codeLoc).toBe(12);
 		// Queried both logins.
 		expect(issuesAndPullRequests).toHaveBeenCalledTimes(2);
+		// getCommit (the rate-limit-prone step) is called ONLY for the attributable
+		// non-merge commit — not the merge commit.
+		expect(getCommit).toHaveBeenCalledTimes(1);
 	});
 
 	it("skips an empty/inaccessible repo instead of failing the whole run", async () => {
@@ -119,7 +141,7 @@ describe("collectPersonMetrics", () => {
 				if (repo === "empty-repo") {
 					throw new Error("Git Repository is empty. (409)");
 				}
-				return page === 1 ? { data: [{ sha: "s1" }] } : { data: [] };
+				return page === 1 ? { data: [listS1] } : { data: [] };
 			},
 		);
 		const getCommit = mock(async () => ({ data: commitsBySha.s1 }));

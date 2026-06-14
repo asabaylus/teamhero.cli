@@ -1,5 +1,5 @@
 import type { IdentityResolver } from "../core/types.js";
-import type { RawCommit } from "../lib/commit-attribution.js";
+import { isMergeCommit, type RawCommit } from "../lib/commit-attribution.js";
 import {
 	type GitHubCommit,
 	type GitHubSearchItem,
@@ -80,9 +80,10 @@ export async function collectPersonMetrics(
 		prSearchItemsByLogin[login] = items;
 	}
 
-	// 2. Commits per repo: enumerate, then detail each for file stats + parents.
-	// Per-repo and per-commit failures (e.g. 409 "Git Repository is empty",
-	// access errors) are skipped so one bad repo can't sink the whole run.
+	// 2. Commits per repo via listCommits ONLY. The list payload already carries
+	//    author email/name, date, and parents — enough for attribution, monthly
+	//    counts, and merge exclusion — at one cheap call per page. (Empty or
+	//    inaccessible repos, e.g. 409 "Git Repository is empty", are skipped.)
 	const commits: RawCommit[] = [];
 	for (const repository of options.repositories) {
 		const [owner, repo] = splitRepo(repository.name, options.org);
@@ -96,25 +97,42 @@ export async function collectPersonMetrics(
 					per_page: 100,
 					page,
 				});
-				const list = (res.data ?? []) as Array<{ sha: string }>;
+				const list = (res.data ?? []) as GitHubCommit[];
 				for (const entry of list) {
-					try {
-						const detail = await octokit.rest.repos.getCommit({
-							owner,
-							repo,
-							ref: entry.sha,
-						});
-						commits.push(
-							toRawCommit(detail.data as GitHubCommit, `${owner}/${repo}`),
-						);
-					} catch {
-						// Skip a commit we couldn't detail.
-					}
+					commits.push(toRawCommit(entry, `${owner}/${repo}`));
 				}
 				if (list.length < 100) break;
 			}
 		} catch {
 			// Skip an empty or inaccessible repo.
+		}
+	}
+
+	// 3. LoC enrichment: per-file stats need getCommit (N+1), the only step that
+	//    can hit GitHub secondary rate limits. Restrict it to non-merge commits
+	//    that actually attribute to a Person, and treat failures as best-effort —
+	//    so a throttled/incomplete file fetch lowers LoC but never the (already
+	//    complete) monthly commit counts.
+	for (const commit of commits) {
+		if (isMergeCommit(commit)) continue;
+		const resolution = resolver.resolve({
+			email: commit.authorEmail,
+			name: commit.authorName,
+		});
+		if (resolution.type !== "resolved") continue;
+		const [owner, repo] = splitRepo(commit.repo, options.org);
+		try {
+			const detail = await octokit.rest.repos.getCommit({
+				owner,
+				repo,
+				ref: commit.oid,
+			});
+			commit.files = toRawCommit(
+				detail.data as GitHubCommit,
+				commit.repo,
+			).files;
+		} catch {
+			// Leave this commit's LoC unfetched (best-effort).
 		}
 	}
 
