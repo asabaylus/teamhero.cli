@@ -129,21 +129,22 @@ describe("createOctokitClient", () => {
 		);
 	});
 
-	it("onSecondaryRateLimit returns true for retryCount <= 1", async () => {
+	it("onSecondaryRateLimit returns false to skip rather than wait", async () => {
 		await createOctokitClient({ authToken: "ghp_test" });
 
 		const calls = (Octokit as any).mock.calls;
 		const config = calls[calls.length - 1][0];
 		const { onSecondaryRateLimit } = config.throttle;
 
+		// Per repo policy retries are disabled (request.retries === 0); a secondary
+		// rate limit skips the item — the caller catches and moves on — rather than
+		// blocking on a long wait, so the handler never asks for a retry regardless
+		// of retryCount.
 		expect(
 			onSecondaryRateLimit(60, { method: "GET", url: "/repos" }, {}, 0),
-		).toBe(true);
+		).toBe(false);
 		expect(
 			onSecondaryRateLimit(60, { method: "GET", url: "/repos" }, {}, 1),
-		).toBe(true);
-		expect(
-			onSecondaryRateLimit(60, { method: "GET", url: "/repos" }, {}, 2),
 		).toBe(false);
 	});
 });
