@@ -1,6 +1,6 @@
 import { describe, expect, it, mock } from "bun:test";
-import type { MetricsCollectionResult } from "../../../src/core/types.js";
 import type { PersonMetrics } from "../../../src/lib/person-metrics.js";
+import type { ReconciliationReport } from "../../../src/lib/reconciliation.js";
 import { runWeeklyUpdate } from "../../../src/services/weekly-update.service.js";
 
 function personMetrics(login: string): PersonMetrics {
@@ -24,24 +24,19 @@ function personMetrics(login: string): PersonMetrics {
 	};
 }
 
+const emptyReconciliation: ReconciliationReport = {
+	unmappedCommitAuthors: [],
+	duplicateAccountPersons: [],
+	unverifiedExternalEmails: [],
+	cappedRepos: [],
+};
+
 function fakeScope() {
-	return {
-		getOrganization: mock(async () => ({ login: "the-org" })),
-		getRepositories: mock(async () => [{ name: "r1" }]),
-		getMembers: mock(async () => [{ login: "login-1" }]),
-	} as never;
+	return { getRepositories: mock(async () => [{ name: "r1" }]) } as never;
 }
 
-function fakeMetrics(result: Partial<MetricsCollectionResult>) {
-	return {
-		collect: mock(async () => ({
-			members: [],
-			warnings: [],
-			errors: [],
-			mergedTotal: 0,
-			...result,
-		})),
-	} as never;
+function fakeCollectPersons(persons: PersonMetrics[]) {
+	return mock(async () => ({ persons, reconciliation: emptyReconciliation }));
 }
 
 const baseOpts = {
@@ -53,22 +48,11 @@ const baseOpts = {
 };
 
 describe("runWeeklyUpdate", () => {
-	it("collects, formats reconciliation, and writes the workbook", async () => {
+	it("collects Persons directly, formats reconciliation, and writes the workbook", async () => {
 		const writeWorkbook = mock(async () => {});
+		const collectPersons = fakeCollectPersons([personMetrics("login-1")]);
 		const result = await runWeeklyUpdate(
-			{
-				scope: fakeScope(),
-				metrics: fakeMetrics({
-					persons: [personMetrics("login-1")],
-					reconciliation: {
-						unmappedCommitAuthors: [],
-						duplicateAccountPersons: [],
-						unverifiedExternalEmails: [],
-						cappedRepos: [],
-					},
-				}),
-				writeWorkbook,
-			},
+			{ scope: fakeScope(), collectPersons, writeWorkbook },
 			{ ...baseOpts, workbook: "/tmp/wb.xlsx" },
 		);
 
@@ -76,7 +60,6 @@ describe("runWeeklyUpdate", () => {
 		expect(result.reconciliationText).toContain("no gaps");
 		expect(result.caveat).toContain("not a performance metric");
 		expect(result.workbookWritten).toBe("/tmp/wb.xlsx");
-		expect(writeWorkbook).toHaveBeenCalledTimes(1);
 		expect(writeWorkbook).toHaveBeenCalledWith(
 			"/tmp/wb.xlsx",
 			expect.any(Array),
@@ -85,6 +68,8 @@ describe("runWeeklyUpdate", () => {
 				monthKey: "2026-01",
 			},
 		);
+		// Collected Persons directly — no legacy metrics.collect() pass.
+		expect(collectPersons).toHaveBeenCalledTimes(1);
 	});
 
 	it("does NOT write the workbook with --dry-run", async () => {
@@ -92,7 +77,7 @@ describe("runWeeklyUpdate", () => {
 		const result = await runWeeklyUpdate(
 			{
 				scope: fakeScope(),
-				metrics: fakeMetrics({ persons: [personMetrics("login-1")] }),
+				collectPersons: fakeCollectPersons([personMetrics("login-1")]),
 				writeWorkbook,
 			},
 			{ ...baseOpts, workbook: "/tmp/wb.xlsx", dryRun: true },
@@ -106,7 +91,7 @@ describe("runWeeklyUpdate", () => {
 		await runWeeklyUpdate(
 			{
 				scope: fakeScope(),
-				metrics: fakeMetrics({ persons: [personMetrics("login-1")] }),
+				collectPersons: fakeCollectPersons([personMetrics("login-1")]),
 				writeWorkbook,
 			},
 			{ ...baseOpts, workbook: "/tmp/wb.xlsx", reconcileOnly: true },
@@ -119,7 +104,7 @@ describe("runWeeklyUpdate", () => {
 		await runWeeklyUpdate(
 			{
 				scope: fakeScope(),
-				metrics: fakeMetrics({ persons: [personMetrics("login-1")] }),
+				collectPersons: fakeCollectPersons([personMetrics("login-1")]),
 				writeWorkbook,
 			},
 			{ ...baseOpts },

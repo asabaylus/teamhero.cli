@@ -1,26 +1,42 @@
-import type {
-	MetricsProvider,
-	ScopeOptions,
-	ScopeProvider,
-} from "../core/types.js";
-import { formatReconciliation } from "../lib/reconciliation.js";
+import type { ScopeOptions, ScopeProvider } from "../core/types.js";
+import type { PersonMetrics } from "../lib/person-metrics.js";
+import {
+	formatReconciliation,
+	type ReconciliationReport,
+} from "../lib/reconciliation.js";
 import { writeWeeklyMetrics } from "../lib/spreadsheet-writer.js";
 
 /**
- * Orchestrates the weekly tracking-spreadsheet update: scope → collect →
- * reconcile → write workbook → emit. Contains NO business logic of its own —
- * it sequences the providers and the pure helpers — so the `teamhero weekly`
- * command (and the teamhero-weekly skill) stay thin. See
- * `docs/issues/08-weekly-skill-orchestration.md`.
+ * Orchestrates the weekly tracking-spreadsheet update: scope → collect Persons →
+ * reconcile → write workbook → emit. Contains NO business logic of its own — it
+ * sequences a repository lister, a Person collector, and the pure helpers — so
+ * the `teamhero weekly` command (and the teamhero-weekly skill) stay thin.
+ *
+ * It collects Persons directly rather than going through MetricsProvider.collect(),
+ * which would also run the legacy per-login collection the report path needs but
+ * this flow discards. See `docs/issues/08-weekly-skill-orchestration.md`.
  */
 
 export const SANITY_CAVEAT =
 	"Caveat: these per-engineer PR / commit / LoC counts are a coarse, gameable " +
 	"sanity check — not a performance metric. Manage on outcomes.";
 
+/** Reconciled Person metrics + report for a window, as fetched by the collector. */
+export interface PersonCollection {
+	persons: PersonMetrics[];
+	reconciliation: ReconciliationReport;
+}
+
 export interface WeeklyUpdateDeps {
-	scope: ScopeProvider;
-	metrics: MetricsProvider;
+	/** Resolves the org's repositories to enumerate. */
+	scope: Pick<ScopeProvider, "getRepositories">;
+	/** Fetches reconciled per-Person metrics for the window (no legacy work). */
+	collectPersons: (input: {
+		org: string;
+		repositories: { name: string }[];
+		since: string;
+		until: string;
+	}) => Promise<PersonCollection>;
 	/** Injectable for tests; defaults to the real exceljs writer. */
 	writeWorkbook?: typeof writeWeeklyMetrics;
 }
@@ -43,7 +59,6 @@ export interface WeeklyUpdateResult {
 	caveat: string;
 	/** Path of the workbook written, when a write happened. */
 	workbookWritten?: string;
-	warnings: string[];
 }
 
 export async function runWeeklyUpdate(
@@ -57,24 +72,19 @@ export async function runWeeklyUpdate(
 		...options.scopeOptions,
 	};
 
-	const organization = await deps.scope.getOrganization(options.org);
-	const [repositories, members] = await Promise.all([
-		deps.scope.getRepositories(options.org, scopeOptions),
-		deps.scope.getMembers(options.org, scopeOptions),
-	]);
+	const repositories = await deps.scope.getRepositories(
+		options.org,
+		scopeOptions,
+	);
 
-	const result = await deps.metrics.collect({
-		organization,
-		members,
+	const { persons, reconciliation } = await deps.collectPersons({
+		org: options.org,
 		repositories,
 		since: options.since,
 		until: options.until,
 	});
 
-	const persons = result.persons ?? [];
-	const reconciliationText = result.reconciliation
-		? formatReconciliation(result.reconciliation)
-		: "No reconciliation report produced.";
+	const reconciliationText = formatReconciliation(reconciliation);
 
 	let workbookWritten: string | undefined;
 	const shouldWrite =
@@ -96,6 +106,5 @@ export async function runWeeklyUpdate(
 		reconciliationText,
 		caveat: SANITY_CAVEAT,
 		workbookWritten,
-		warnings: result.warnings,
 	};
 }

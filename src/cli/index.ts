@@ -219,24 +219,52 @@ export function createCli(
 		.option("--dry-run", "compute but do not write the workbook", false)
 		.option("--reconcile-only", "only emit the reconciliation report", false)
 		.action(async (opts) => {
-			// Lazy-load the heavy providers so `createCli` stays cheap to construct.
+			// Lazy-load the heavy modules so `createCli` stays cheap to construct.
 			const { loadOctokitFromEnv } = await import("../lib/octokit.js");
 			const { ScopeService } = await import("../services/scope.service.js");
-			const { MetricsService } = await import("../services/metrics.service.js");
+			const { loadIdentityMapFile } = await import("../lib/identity-map.js");
+			const { createIdentityResolver } = await import(
+				"../services/identity-resolver.service.js"
+			);
+			const { collectPersonMetrics } = await import(
+				"../services/person-metrics-collector.js"
+			);
+			const { buildReconciliationReport } = await import(
+				"../lib/reconciliation.js"
+			);
 			const { runWeeklyUpdate } = await import(
 				"../services/weekly-update.service.js"
 			);
 
 			const octokit = await loadOctokitFromEnv();
 			const scope = new ScopeService(octokit);
-			const metrics = new MetricsService(
-				octokit,
-				deps.logger.withTag("metrics"),
+			const resolver = createIdentityResolver(
+				await loadIdentityMapFile(".teamhero/local/identity-map.yaml"),
 			);
 			const monthKey = opts.month ?? String(opts.until ?? "").slice(0, 7);
 
+			// Collect Persons directly — no legacy per-login collection.
+			const collectPersons = async (input: {
+				org: string;
+				repositories: { name: string }[];
+				since: string;
+				until: string;
+			}) => {
+				const { persons, unmappedCommits } = await collectPersonMetrics(
+					octokit,
+					resolver,
+					input,
+				);
+				return {
+					persons,
+					reconciliation: buildReconciliationReport(resolver, {
+						unmappedCommits,
+					}),
+				};
+			};
+
 			const result = await runWeeklyUpdate(
-				{ scope, metrics },
+				{ scope, collectPersons },
 				{
 					org: opts.org,
 					since: opts.since,
@@ -258,7 +286,6 @@ export function createCli(
 					`No workbook written; ${result.personCount} Person(s) reconciled.`,
 				);
 			}
-			for (const warning of result.warnings) deps.logger.warn(warning);
 		});
 
 	return program;
