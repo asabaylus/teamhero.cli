@@ -205,6 +205,62 @@ export function createCli(
 			await spawnTui(deps, argsToPass);
 		});
 
+	program
+		.command("weekly")
+		.description(
+			"Update the weekly tracking spreadsheet with reconciled per-Person metrics",
+		)
+		.requiredOption("--org <org>", "GitHub organization login")
+		.requiredOption("--since <date>", "window start (YYYY-MM-DD)")
+		.requiredOption("--until <date>", "window end (YYYY-MM-DD)")
+		.option("--workbook <path>", "tracking workbook (.xlsx) to update in place")
+		.option("--week-index <n>", "weekly block to write (0-5)", "0")
+		.option("--month <YYYY-MM>", "calendar month for the commit column")
+		.option("--dry-run", "compute but do not write the workbook", false)
+		.option("--reconcile-only", "only emit the reconciliation report", false)
+		.action(async (opts) => {
+			// Lazy-load the heavy providers so `createCli` stays cheap to construct.
+			const { loadOctokitFromEnv } = await import("../lib/octokit.js");
+			const { ScopeService } = await import("../services/scope.service.js");
+			const { MetricsService } = await import("../services/metrics.service.js");
+			const { runWeeklyUpdate } = await import(
+				"../services/weekly-update.service.js"
+			);
+
+			const octokit = await loadOctokitFromEnv();
+			const scope = new ScopeService(octokit);
+			const metrics = new MetricsService(
+				octokit,
+				deps.logger.withTag("metrics"),
+			);
+			const monthKey = opts.month ?? String(opts.until ?? "").slice(0, 7);
+
+			const result = await runWeeklyUpdate(
+				{ scope, metrics },
+				{
+					org: opts.org,
+					since: opts.since,
+					until: opts.until,
+					workbook: opts.workbook,
+					weekIndex: Number(opts.weekIndex),
+					monthKey,
+					dryRun: Boolean(opts.dryRun),
+					reconcileOnly: Boolean(opts.reconcileOnly),
+				},
+			);
+
+			deps.logger.info(result.reconciliationText);
+			deps.logger.info(result.caveat);
+			if (result.workbookWritten) {
+				deps.logger.info(`Updated workbook: ${result.workbookWritten}`);
+			} else {
+				deps.logger.info(
+					`No workbook written; ${result.personCount} Person(s) reconciled.`,
+				);
+			}
+			for (const warning of result.warnings) deps.logger.warn(warning);
+		});
+
 	return program;
 }
 
