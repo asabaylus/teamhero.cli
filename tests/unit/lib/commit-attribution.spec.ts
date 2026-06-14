@@ -138,4 +138,21 @@ describe("attributeCommitsByMonth", () => {
 			{ email: "nobody@example.com", name: "Nobody", count: 2 },
 		]);
 	});
+
+	it("excludes bot authors — not counted and not surfaced as unmapped", () => {
+		const result = attributeCommitsByMonth(
+			[
+				commit({
+					oid: "bot1",
+					authorEmail: "github-actions[bot]@users.noreply.github.com",
+					authorName: "github-actions[bot]",
+				}),
+				commit({ oid: "ok", authoredAtISO: "2026-01-05T00:00:00Z" }),
+			],
+			resolver,
+		);
+		// Only the real commit counts; the bot is not in byPerson or unmapped.
+		expect(result.byPerson.get("person-a")?.total).toBe(1);
+		expect(result.unmapped).toEqual([]);
+	});
 });
