@@ -1,5 +1,6 @@
 import { type ConsolaInstance, consola } from "consola";
 import type {
+	IdentityResolver,
 	MetricsCollectionOptions,
 	MetricsCollectionResult,
 	MetricsMemberResult,
@@ -7,10 +8,15 @@ import type {
 	RawPullRequestInfo,
 } from "../core/types.js";
 import { resolveEndEpochMs, resolveStartISO } from "../lib/date-utils.js";
+import { loadIdentityMapFile } from "../lib/identity-map.js";
 import type { OctokitClient } from "../lib/octokit.js";
 import type { Member } from "../models/member.js";
 import type { ContributionMetricSet } from "../models/metrics.js";
 import type { Repository } from "../models/repository.js";
+import { createIdentityResolver } from "./identity-resolver.service.js";
+import { collectPersonMetrics } from "./person-metrics-collector.js";
+
+const IDENTITY_MAP_PATH = ".teamhero/local/identity-map.yaml";
 
 const DEFAULT_MAX_COMMIT_HISTORY_PAGES = Number(
 	process.env.TEAMHERO_MAX_COMMIT_PAGES ?? "5",
@@ -59,17 +65,35 @@ export class MetricsService implements MetricsProvider {
 	private readonly defaultMaxCommitPages: number;
 	private readonly defaultMaxPullRequestPages: number;
 
+	private resolverPromise?: Promise<IdentityResolver>;
+
 	constructor(
 		private readonly octokit: OctokitClient,
 		private readonly logger: ConsolaInstance = consola.withTag(
 			"teamhero:metrics",
 		),
 		defaults?: { maxCommitPages?: number; maxPullRequestPages?: number },
+		private readonly resolver?: IdentityResolver,
 	) {
 		this.defaultMaxCommitPages =
 			defaults?.maxCommitPages ?? DEFAULT_MAX_COMMIT_HISTORY_PAGES;
 		this.defaultMaxPullRequestPages =
 			defaults?.maxPullRequestPages ?? DEFAULT_MAX_PULL_REQUEST_PAGES;
+	}
+
+	/**
+	 * The injected resolver, else one lazily built from the gitignored local
+	 * identity map (empty map if none — reconciliation then surfaces every
+	 * identity as unmapped rather than crashing).
+	 */
+	private getResolver(): Promise<IdentityResolver> {
+		if (this.resolver) return Promise.resolve(this.resolver);
+		if (!this.resolverPromise) {
+			this.resolverPromise = loadIdentityMapFile(IDENTITY_MAP_PATH)
+				.then((map) => createIdentityResolver(map))
+				.catch(() => createIdentityResolver([]));
+		}
+		return this.resolverPromise;
 	}
 
 	async collect(
@@ -179,6 +203,23 @@ export class MetricsService implements MetricsProvider {
 			this.logger.debug(`Computed metrics for ${members.length} members`);
 		}
 
+		// Reconciled per-Person metrics (additive; best-effort so a failure here
+		// never breaks the legacy per-login report).
+		let persons: MetricsCollectionResult["persons"];
+		try {
+			const resolver = await this.getResolver();
+			const personResult = await collectPersonMetrics(this.octokit, resolver, {
+				org: options.organization.login,
+				repositories: options.repositories,
+				since: options.since,
+				until: options.until,
+			});
+			persons = personResult.persons;
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			warnings.push(`Person reconciliation failed: ${message}`);
+		}
+
 		return {
 			members,
 			warnings,
@@ -187,6 +228,7 @@ export class MetricsService implements MetricsProvider {
 				(sum, agg) => sum + agg.merged,
 				0,
 			),
+			persons,
 		};
 	}
 

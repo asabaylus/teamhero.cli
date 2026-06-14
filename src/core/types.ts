@@ -5,6 +5,7 @@
  * ALL port interfaces live here — never elsewhere, never as type aliases.
  */
 
+import type { PersonMetrics } from "../lib/person-metrics.js";
 import type { Member } from "../models/member.js";
 import type { ContributionMetricSet } from "../models/metrics.js";
 import type { Organization } from "../models/organization.js";
@@ -187,6 +188,12 @@ export interface MetricsCollectionResult {
 	warnings: string[];
 	errors: string[];
 	mergedTotal: number;
+	/**
+	 * Reconciled per-Person metrics (org-wide search PRs, monthly commits, raw/
+	 * code LoC) — the Person-model output, alongside the legacy per-login
+	 * `members`. Absent when reconciliation could not run (see `warnings`).
+	 */
+	persons?: PersonMetrics[];
 }
 
 /** Port for collecting source-control metrics (commits, PRs, reviews, LOC). */
