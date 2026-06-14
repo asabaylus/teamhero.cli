@@ -116,19 +116,28 @@ export async function writeWeeklyMetrics(
 		if (!rowNum) continue; // Person not present in the sheet — leave untouched.
 
 		const row = ws.getRow(rowNum);
+
+		// PRs come from the org-wide search and are authoritative even at 0 — always write.
 		row.getCell(colIndex(prCol)).value = totalPrs(pm);
-		row.getCell(colIndex(locCol)).value = pm.codeLoc;
-		row.getCell(monthCol).value = pm.commitsByMonth[opts.monthKey] ?? 0;
 		row.getCell(colIndex(TOTAL_PR_COL)).value = sumColumns(
 			row,
 			PR_COLS,
 			colIndex,
 		);
-		row.getCell(colIndex(TOTAL_LOC_COL)).value = sumColumns(
-			row,
-			LOC_COLS,
-			colIndex,
-		);
+
+		// LoC and monthly commits derive from attributed commits. When NO commits
+		// were attributed to this Person, we have no basis to change them — leave
+		// the existing cells untouched rather than destroy good data with a 0
+		// (e.g. when the identity map is incomplete or the commit fetch was capped).
+		if (pm.commitsTotal > 0) {
+			row.getCell(colIndex(locCol)).value = pm.codeLoc;
+			row.getCell(monthCol).value = pm.commitsByMonth[opts.monthKey] ?? 0;
+			row.getCell(colIndex(TOTAL_LOC_COL)).value = sumColumns(
+				row,
+				LOC_COLS,
+				colIndex,
+			);
+		}
 	}
 
 	await wb.xlsx.writeFile(opts.outPath ?? workbookPath);

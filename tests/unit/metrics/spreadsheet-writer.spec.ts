@@ -53,11 +53,13 @@ describe("writeWeeklyMetrics", () => {
 		prsClosedUnmerged: 2,
 		prsOpen: 1,
 		codeLoc: 123,
+		commitsTotal: 9,
 		commitsByMonth: { "2026-01": 9 },
 	});
 	const personB = person("login-2", {
 		prsMerged: 3,
 		codeLoc: 45,
+		commitsTotal: 4,
 		commitsByMonth: { "2026-01": 4 },
 	});
 
@@ -118,6 +120,31 @@ describe("writeWeeklyMetrics", () => {
 				count++;
 		}
 		expect(count).toBe(1);
+	});
+
+	it("does NOT overwrite LoC when a Person has no attributed commits", async () => {
+		const path = freshCopy();
+		const before = await load(path);
+		const locBefore = before.getCell("O3").value; // wk0 LoC, row 3 (login-1)
+
+		// No commits attributed (commitsTotal 0) but PRs present from search.
+		const noCommits = person("login-1", {
+			prsMerged: 4,
+			prsClosedUnmerged: 0,
+			prsOpen: 0,
+			codeLoc: 0,
+			commitsTotal: 0,
+		});
+		await writeWeeklyMetrics(path, [noCommits], {
+			weekIndex: 0,
+			monthKey: "2026-01",
+		});
+
+		const ws = await load(path);
+		// PR cell IS updated (search is authoritative)...
+		expect(ws.getCell("M3").value).toBe(4);
+		// ...but the existing LoC cell is preserved, not zeroed.
+		expect(ws.getCell("O3").value).toEqual(locBefore);
 	});
 
 	afterAll(() => {
