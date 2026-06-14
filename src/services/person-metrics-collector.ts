@@ -39,6 +39,14 @@ export async function collectPersonMetrics(
 	resolver: IdentityResolver,
 	options: CollectPersonMetricsOptions,
 ): Promise<PersonMetricsResult> {
+	// With no identity map there are no Persons to attribute to, so skip all
+	// fetching — reconciliation is a no-op rather than an expensive walk that
+	// resolves nothing. (Also keeps reconciliation from adding GitHub calls in
+	// environments without the gitignored local map.)
+	if (resolver.persons().length === 0) {
+		return { persons: [], unmappedCommits: [] };
+	}
+
 	const logins = [
 		...new Set(resolver.persons().flatMap((person) => person.logins)),
 	];
