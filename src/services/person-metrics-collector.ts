@@ -62,44 +62,59 @@ export async function collectPersonMetrics(
 			endISO: options.until,
 		});
 		const items: PrSearchItem[] = [];
-		for (let page = 1; page <= maxPages; page++) {
-			const res = await octokit.rest.search.issuesAndPullRequests({
-				q,
-				per_page: 100,
-				page,
-			});
-			const pageItems = (res.data?.items ?? []) as GitHubSearchItem[];
-			for (const item of pageItems) items.push(toPrSearchItem(item));
-			if (pageItems.length < 100) break;
+		try {
+			for (let page = 1; page <= maxPages; page++) {
+				const res = await octokit.rest.search.issuesAndPullRequests({
+					q,
+					per_page: 100,
+					page,
+				});
+				const pageItems = (res.data?.items ?? []) as GitHubSearchItem[];
+				for (const item of pageItems) items.push(toPrSearchItem(item));
+				if (pageItems.length < 100) break;
+			}
+		} catch {
+			// Skip a login whose search failed (rate limit / transient) — partial
+			// counts beat failing the whole reconciliation.
 		}
 		prSearchItemsByLogin[login] = items;
 	}
 
 	// 2. Commits per repo: enumerate, then detail each for file stats + parents.
+	// Per-repo and per-commit failures (e.g. 409 "Git Repository is empty",
+	// access errors) are skipped so one bad repo can't sink the whole run.
 	const commits: RawCommit[] = [];
 	for (const repository of options.repositories) {
 		const [owner, repo] = splitRepo(repository.name, options.org);
-		for (let page = 1; page <= maxPages; page++) {
-			const res = await octokit.rest.repos.listCommits({
-				owner,
-				repo,
-				since: options.since,
-				until: options.until,
-				per_page: 100,
-				page,
-			});
-			const list = (res.data ?? []) as Array<{ sha: string }>;
-			for (const entry of list) {
-				const detail = await octokit.rest.repos.getCommit({
+		try {
+			for (let page = 1; page <= maxPages; page++) {
+				const res = await octokit.rest.repos.listCommits({
 					owner,
 					repo,
-					ref: entry.sha,
+					since: options.since,
+					until: options.until,
+					per_page: 100,
+					page,
 				});
-				commits.push(
-					toRawCommit(detail.data as GitHubCommit, `${owner}/${repo}`),
-				);
+				const list = (res.data ?? []) as Array<{ sha: string }>;
+				for (const entry of list) {
+					try {
+						const detail = await octokit.rest.repos.getCommit({
+							owner,
+							repo,
+							ref: entry.sha,
+						});
+						commits.push(
+							toRawCommit(detail.data as GitHubCommit, `${owner}/${repo}`),
+						);
+					} catch {
+						// Skip a commit we couldn't detail.
+					}
+				}
+				if (list.length < 100) break;
 			}
-			if (list.length < 100) break;
+		} catch {
+			// Skip an empty or inaccessible repo.
 		}
 	}
 

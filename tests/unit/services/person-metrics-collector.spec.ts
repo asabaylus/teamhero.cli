@@ -110,4 +110,42 @@ describe("collectPersonMetrics", () => {
 		// Queried both logins.
 		expect(issuesAndPullRequests).toHaveBeenCalledTimes(2);
 	});
+
+	it("skips an empty/inaccessible repo instead of failing the whole run", async () => {
+		const issuesAndPullRequests = mock(async () => ({ data: { items: [] } }));
+		// First repo throws "Git Repository is empty" (409); second yields a commit.
+		const listCommits = mock(
+			async ({ repo, page }: { repo: string; page: number }) => {
+				if (repo === "empty-repo") {
+					throw new Error("Git Repository is empty. (409)");
+				}
+				return page === 1 ? { data: [{ sha: "s1" }] } : { data: [] };
+			},
+		);
+		const getCommit = mock(async () => ({ data: commitsBySha.s1 }));
+
+		const octokit = {
+			rest: {
+				search: { issuesAndPullRequests },
+				repos: { listCommits, getCommit },
+			},
+		};
+
+		const result = await collectPersonMetrics(
+			octokit as never,
+			createIdentityResolver(map),
+			{
+				org: "the-org",
+				repositories: [
+					{ name: "the-org/empty-repo" },
+					{ name: "the-org/good-repo" },
+				],
+				since: "2026-01-01T00:00:00.000Z",
+				until: "2026-02-01T00:00:00.000Z",
+			},
+		);
+
+		// The empty repo is skipped; the good repo's commit still counts.
+		expect(result.persons[0].commitsTotal).toBe(1);
+	});
 });
