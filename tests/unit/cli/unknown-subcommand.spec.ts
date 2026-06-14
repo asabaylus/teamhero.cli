@@ -98,4 +98,28 @@ describe("teamhero CLI rejects unknown subcommands", () => {
 			process.exit = originalExit;
 		}
 	});
+
+	it("accepts the native weekly subcommand at the guard", async () => {
+		const errorSpy = mock(() => {});
+		const deps = makeDeps(errorSpy);
+		const exitSpy = mock((_code?: number) => {
+			throw new Error("__exit__");
+		});
+		const originalExit = process.exit;
+		process.exit = exitSpy as unknown as typeof process.exit;
+
+		try {
+			// `weekly --help` is handled by Commander (native command); the action
+			// never runs. We only assert it is not rejected as an unknown subcommand.
+			await run(["node", "teamhero", "weekly", "--help"], deps).catch(() => {});
+		} finally {
+			process.exit = originalExit;
+		}
+
+		const errorCalls = errorSpy.mock.calls.map((c) => String(c[0] ?? ""));
+		const unknownSubcommandError = errorCalls.find((m) =>
+			m.toLowerCase().includes("unknown subcommand"),
+		);
+		expect(unknownSubcommandError).toBeUndefined();
+	});
 });

@@ -282,7 +282,9 @@ export async function createDefaultDependencies(): Promise<CliDependencies> {
 	} satisfies CliDependencies;
 }
 
-const KNOWN_SUBCOMMANDS = ["report", "doctor", "setup", "interview"];
+// Subcommands that delegate to the Go TUI binary (their --help is handled there).
+// Native TypeScript commands like `weekly` are NOT in this list.
+const TUI_SUBCOMMANDS = ["report", "doctor", "setup", "interview"];
 
 export async function run(
 	argv: string[] = process.argv,
@@ -290,6 +292,9 @@ export async function run(
 ): Promise<void> {
 	const resolvedDeps = deps ?? (await createDefaultDependencies());
 	const program = createCli(resolvedDeps);
+	// Accept any command registered on the program (TUI passthroughs + native
+	// commands like `weekly`); reject anything else.
+	const registered = new Set(program.commands.map((cmd) => cmd.name()));
 
 	const args = argv.slice(2);
 	const first = args[0];
@@ -301,7 +306,7 @@ export async function run(
 		typeof first === "string" &&
 		first.length > 0 &&
 		!first.startsWith("-") &&
-		!KNOWN_SUBCOMMANDS.includes(first)
+		!registered.has(first)
 	) {
 		resolvedDeps.logger.error(
 			`Unknown subcommand: ${first}. Run \`teamhero --help\` to see available commands.`,
@@ -309,11 +314,12 @@ export async function run(
 		process.exit(1);
 	}
 
-	// If a subcommand is followed by --help, pass through to the Go binary
-	// instead of letting Commander handle it (which prints the top-level help).
+	// If a TUI-backed subcommand is followed by --help, pass through to the Go
+	// binary instead of letting Commander handle it (native commands keep their
+	// own Commander help).
 	if (
 		args.length >= 1 &&
-		KNOWN_SUBCOMMANDS.includes(args[0]) &&
+		TUI_SUBCOMMANDS.includes(args[0]) &&
 		args.includes("--help")
 	) {
 		await spawnTui(resolvedDeps, args);
