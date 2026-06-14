@@ -10,7 +10,7 @@ import type {
 } from "../models/person.js";
 
 /** The GitHub merge-button / web-flow committer — non-authoring, never credited. */
-const GITHUB_MERGE_EMAIL = "noreply@github.com";
+export const GITHUB_MERGE_EMAIL = "noreply@github.com";
 
 /** `<digits>+login@users.noreply.github.com` or `login@users.noreply.github.com`. */
 const NOREPLY_RE = /^(?:\d+\+)?([^@]+)@users\.noreply\.github\.com$/i;
