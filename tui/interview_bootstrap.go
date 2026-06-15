@@ -530,7 +530,16 @@ func printBootstrapSuccessLink(dir string, w io.Writer) {
 	}
 	display := abs
 	if cwd, err := os.Getwd(); err == nil {
-		if rel, err := filepath.Rel(cwd, abs); err == nil && !strings.HasPrefix(rel, "..") {
+		// Resolve symlinks on both sides before computing Rel so that
+		// macOS /var → /private/var doesn't produce mismatched prefixes.
+		relBase, relTarget := cwd, abs
+		if realCwd, err := filepath.EvalSymlinks(cwd); err == nil {
+			relBase = realCwd
+		}
+		if realAbs, err := filepath.EvalSymlinks(abs); err == nil {
+			relTarget = realAbs
+		}
+		if rel, err := filepath.Rel(relBase, relTarget); err == nil && !strings.HasPrefix(rel, "..") {
 			display = rel
 		}
 	}
