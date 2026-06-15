@@ -64,21 +64,40 @@ function globToRegex(glob: string): RegExp {
 	return new RegExp(`${re}$`);
 }
 
+/**
+ * Whether a glob is matched against the full path rather than the basename. A
+ * `**` glob spans directories, so it matches the full path even without a
+ * literal slash (e.g. `**.json`) — mirror the module contract.
+ */
+function globMatchesFullPath(glob: string): boolean {
+	return glob.includes("/") || glob.includes("**");
+}
+
 /** True when `filePath` matches `glob` (basename for slashless globs, else full path). */
 export function matchesGlob(filePath: string, glob: string): boolean {
 	const normalized = filePath.replace(/^\.\//, "");
-	// A `**` glob spans directories, so it must match the full path even when it
-	// contains no literal slash (e.g. `**.json`) — mirror the module contract.
-	const target =
-		glob.includes("/") || glob.includes("**")
-			? normalized
-			: (normalized.split("/").pop() ?? normalized);
+	const target = globMatchesFullPath(glob)
+		? normalized
+		: (normalized.split("/").pop() ?? normalized);
 	return globToRegex(glob).test(target);
 }
 
+// Precompile the static exclusion set once: globToRegex + the full-path decision
+// never change per file, so compiling them on every isExcludedFromCodeLoc call
+// would waste work across large commit sets.
+const COMPILED_EXCLUDE_GLOBS: readonly { regex: RegExp; fullPath: boolean }[] =
+	CODE_LOC_EXCLUDE_GLOBS.map((glob) => ({
+		regex: globToRegex(glob),
+		fullPath: globMatchesFullPath(glob),
+	}));
+
 /** True when a file is data/generated and must be excluded from code LoC. */
 export function isExcludedFromCodeLoc(filePath: string): boolean {
-	return CODE_LOC_EXCLUDE_GLOBS.some((glob) => matchesGlob(filePath, glob));
+	const normalized = filePath.replace(/^\.\//, "");
+	const basename = normalized.split("/").pop() ?? normalized;
+	return COMPILED_EXCLUDE_GLOBS.some(({ regex, fullPath }) =>
+		regex.test(fullPath ? normalized : basename),
+	);
 }
 
 /** A per-file line change as reported by the GitHub commit/compare file stats. */
