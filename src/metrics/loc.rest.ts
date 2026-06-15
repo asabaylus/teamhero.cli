@@ -89,7 +89,9 @@ class FetchPool {
 
 const API_ROOT = "https://api.github.com";
 const MAX_PER_PAGE = 100;
-const RETRYABLE_CODES = new Set([429]); // 403 (rate limit) is not retried — fail fast and let callers skip
+const MAX_FETCH_ATTEMPTS = 3;
+const BASE_BACKOFF_MS = 500;
+const MAX_BACKOFF_MS = 8000;
 export const REPO_CONCURRENCY = 3;
 
 const pool = new FetchPool(8);
@@ -98,21 +100,67 @@ async function delay(ms: number): Promise<void> {
 	await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function fetchWithRetry(
-	url: string,
-	token: string,
-	attempt = 1,
-): Promise<Response> {
+/**
+ * Whether a response should be retried. GitHub signals rate limits two ways: a
+ * 429, or a 403 with the quota exhausted (`x-ratelimit-remaining: 0`) or a
+ * `Retry-After` (the secondary-limit shape). A 403 WITHOUT those markers is a
+ * real auth/permission failure — fail fast, never retry. 5xx are transient.
+ */
+function isRetryable(response: Response): boolean {
+	if (response.status === 429 || response.status >= 500) return true;
+	if (response.status === 403) {
+		return (
+			response.headers.get("x-ratelimit-remaining") === "0" ||
+			response.headers.has("retry-after")
+		);
+	}
+	return false;
+}
+
+/** Wait before the next attempt: honor Retry-After / reset, else exponential backoff. */
+function backoffMs(response: Response, attempt: number): number {
+	const retryAfter = Number(response.headers.get("retry-after"));
+	if (Number.isFinite(retryAfter) && retryAfter > 0) {
+		return Math.min(retryAfter * 1000, MAX_BACKOFF_MS);
+	}
+	if (response.headers.get("x-ratelimit-remaining") === "0") {
+		const resetMs = Number(response.headers.get("x-ratelimit-reset")) * 1000;
+		const waitMs = resetMs - Date.now();
+		if (Number.isFinite(waitMs) && waitMs > 0) {
+			return Math.min(waitMs, MAX_BACKOFF_MS);
+		}
+	}
+	return Math.min(BASE_BACKOFF_MS * 2 ** (attempt - 1), MAX_BACKOFF_MS);
+}
+
+async function fetchWithRetry(url: string, token: string): Promise<Response> {
+	// One pool slot held for the whole retry sequence so a backoff never frees a
+	// slot for work that would just contend with the request it's backing off for.
 	return await pool.run(async () => {
-		const response = await fetch(url, {
+		let response = await fetch(url, {
 			headers: {
 				Authorization: `token ${token}`,
 				Accept: "application/vnd.github+json",
 			},
 		});
-		if (RETRYABLE_CODES.has(response.status) && attempt < 3) {
-			await delay(500 * attempt);
-			return await fetchWithRetry(url, token, attempt + 1);
+		for (let attempt = 1; attempt < MAX_FETCH_ATTEMPTS; attempt++) {
+			if (!isRetryable(response)) return response;
+			const wait = backoffMs(response, attempt);
+			consola.warn(
+				`GitHub ${response.status} for ${url}; retry ${attempt}/${MAX_FETCH_ATTEMPTS - 1} in ${wait}ms.`,
+			);
+			await delay(wait);
+			response = await fetch(url, {
+				headers: {
+					Authorization: `token ${token}`,
+					Accept: "application/vnd.github+json",
+				},
+			});
+		}
+		if (isRetryable(response)) {
+			consola.error(
+				`GitHub ${response.status} for ${url}; exhausted ${MAX_FETCH_ATTEMPTS} attempts — results may be incomplete.`,
+			);
 		}
 		return response;
 	});

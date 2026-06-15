@@ -1,4 +1,5 @@
-import { describe, expect, it, mock } from "bun:test";
+import { describe, expect, it, mock, spyOn } from "bun:test";
+import { consola } from "consola";
 import type { IdentityMap } from "../../../src/models/person.js";
 import { createIdentityResolver } from "../../../src/services/identity-resolver.service.js";
 import { collectPersonMetrics } from "../../../src/services/person-metrics-collector.js";
@@ -239,5 +240,48 @@ describe("collectPersonMetrics", () => {
 		// No logins to search; LoC enrichment only runs for resolved commits.
 		expect(issuesAndPullRequests).not.toHaveBeenCalled();
 		expect(getCommit).not.toHaveBeenCalled();
+	});
+
+	it("logs a failed PR search instead of silently undercounting", async () => {
+		const warn = spyOn(consola, "warn").mockImplementation(() => {});
+		try {
+			// login-x's search throws (a rate limit that survived Octokit's retries);
+			// login-x2's succeeds. The Person must still get login-x2's PR, and the
+			// failure must be logged so the undercount isn't invisible.
+			const issuesAndPullRequests = mock(async ({ q }: { q: string }) => {
+				if (/author:login-x\b/.test(q)) {
+					throw new Error("Secondary rate limit exceeded");
+				}
+				return { data: { items: [searchItem(4, true)] } };
+			});
+			const listCommits = mock(async () => ({ data: [] }));
+			const getCommit = mock(async () => ({ data: {} }));
+			const octokit = {
+				rest: {
+					search: { issuesAndPullRequests },
+					repos: { listCommits, getCommit },
+				},
+			};
+
+			const result = await collectPersonMetrics(
+				octokit as never,
+				createIdentityResolver(map),
+				{
+					org: "the-org",
+					repositories: [{ name: "the-org/r1" }],
+					since: "2026-01-01T00:00:00.000Z",
+					until: "2026-02-01T00:00:00.000Z",
+				},
+			);
+
+			// The surviving login's merged PR is still counted (partial > nothing).
+			expect(result.persons[0].prsMerged).toBe(1);
+			// The failure is surfaced, naming the throttled login.
+			expect(warn).toHaveBeenCalledTimes(1);
+			expect(String(warn.mock.calls[0]?.[0])).toContain("login-x");
+			expect(String(warn.mock.calls[0]?.[0])).toMatch(/undercount/i);
+		} finally {
+			warn.mockRestore();
+		}
 	});
 });

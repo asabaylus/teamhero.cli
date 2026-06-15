@@ -186,6 +186,36 @@ describe("writeWeeklyMetrics", () => {
 		expect(after.getRow(3).getCell(35 + 25).value).toBe(9); // personA's Jan count
 	});
 
+	it("writes a person's full multi-PR count into the right week column (the 1-vs-7 case)", async () => {
+		const path = freshCopy();
+		// Antonio-shaped: 7 PRs in one week (5 merged + 1 closed + 1 open). The
+		// reconciled count must land verbatim in that week's column — the bug this
+		// guards against was a throttled search silently writing 1 instead of 7.
+		const antonio = person("login-1", {
+			prsMerged: 5,
+			prsClosedUnmerged: 1,
+			prsOpen: 1,
+			codeLoc: 4200,
+			commitsTotal: 7,
+			commitsByMonth: { "2026-05": 7 },
+		});
+
+		// weekIndex 2 → column S (the "May 15–22" block in the T9-Box sheet).
+		await writeWeeklyMetrics(path, [antonio], {
+			weekIndex: 2,
+			monthKey: "2026-05",
+		});
+
+		const ws = await load(path);
+		expect(ws.getCell("S3").value).toBe(7);
+		// Total PR (AE) reflects the new week without dropping the fixture's others.
+		const prSum = ["M", "P", "S", "V", "Y", "AB"].reduce((s, c) => {
+			const v = ws.getCell(`${c}3`).value;
+			return s + (typeof v === "number" ? v : 0);
+		}, 0);
+		expect(ws.getCell("AE3").value).toBe(prSum);
+	});
+
 	afterAll(() => {
 		for (const p of tmpPaths) {
 			try {

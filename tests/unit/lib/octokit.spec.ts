@@ -129,22 +129,24 @@ describe("createOctokitClient", () => {
 		);
 	});
 
-	it("onSecondaryRateLimit returns false to skip rather than wait", async () => {
+	it("onSecondaryRateLimit retries while bounded, then gives up", async () => {
 		await createOctokitClient({ authToken: "ghp_test" });
 
 		const calls = (Octokit as any).mock.calls;
 		const config = calls[calls.length - 1][0];
 		const { onSecondaryRateLimit } = config.throttle;
 
-		// Per repo policy retries are disabled (request.retries === 0); a secondary
-		// rate limit skips the item — the caller catches and moves on — rather than
-		// blocking on a long wait, so the handler never asks for a retry regardless
-		// of retryCount.
+		// A secondary rate limit (the search API's 30 req/min) used to skip on the
+		// first hit, silently under-counting a Person's PRs. Now it retries up to
+		// MAX_RATE_LIMIT_RETRIES with the server's backoff, then gives up loudly.
 		expect(
-			onSecondaryRateLimit(60, { method: "GET", url: "/repos" }, {}, 0),
-		).toBe(false);
+			onSecondaryRateLimit(60, { method: "GET", url: "/search" }, {}, 0),
+		).toBe(true);
 		expect(
-			onSecondaryRateLimit(60, { method: "GET", url: "/repos" }, {}, 1),
+			onSecondaryRateLimit(60, { method: "GET", url: "/search" }, {}, 2),
+		).toBe(true);
+		expect(
+			onSecondaryRateLimit(60, { method: "GET", url: "/search" }, {}, 3),
 		).toBe(false);
 	});
 });

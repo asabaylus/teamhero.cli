@@ -1,3 +1,4 @@
+import { consola } from "consola";
 import type { IdentityResolver } from "../core/types.js";
 import { isMergeCommit, type RawCommit } from "../lib/commit-attribution.js";
 import { resolveEndISO, resolveStartISO } from "../lib/date-utils.js";
@@ -27,6 +28,10 @@ export interface CollectPersonMetricsOptions {
 	until: string;
 	/** Safety cap on search pages per login (default 10 × 100 = 1000 PRs). */
 	maxSearchPages?: number;
+}
+
+function errMessage(err: unknown): string {
+	return err instanceof Error ? err.message : String(err);
 }
 
 function splitRepo(fullName: string, org: string): [string, string] {
@@ -79,9 +84,13 @@ export async function collectPersonMetrics(
 				for (const item of pageItems) items.push(toPrSearchItem(item));
 				if (pageItems.length < 100) break;
 			}
-		} catch {
-			// Skip a login whose search failed (rate limit / transient) — partial
-			// counts beat failing the whole reconciliation.
+		} catch (err) {
+			// A search that fails after Octokit's bounded rate-limit retries leaves
+			// this login's PRs partially counted. Don't fail the whole run, but log
+			// it loudly — a silent skip is exactly how a real 7-PR week reads as 1.
+			consola.warn(
+				`PR search failed for ${login} (org ${options.org}); its PR count may be undercounted: ${errMessage(err)}`,
+			);
 		}
 		prSearchItemsByLogin[login] = items;
 	}
@@ -109,8 +118,11 @@ export async function collectPersonMetrics(
 				}
 				if (list.length < 100) break;
 			}
-		} catch {
-			// Skip an empty or inaccessible repo.
+		} catch (err) {
+			// Empty/inaccessible repos (e.g. 409 "Git Repository is empty") are
+			// expected and skipped — but log so a wrongly-private or renamed repo,
+			// which silently drops every commit, doesn't pass unnoticed.
+			consola.warn(`Skipped commits for ${owner}/${repo}: ${errMessage(err)}`);
 		}
 	}
 
@@ -137,8 +149,13 @@ export async function collectPersonMetrics(
 				detail.data as GitHubCommit,
 				commit.repo,
 			).files;
-		} catch {
-			// Leave this commit's LoC unfetched (best-effort).
+		} catch (err) {
+			// Best-effort: a throttled/failed file fetch lowers this commit's LoC but
+			// never its (already complete) monthly count. Log at debug so it's
+			// recoverable without drowning a large run in per-commit warnings.
+			consola.debug(
+				`LoC enrichment failed for ${commit.repo}@${commit.oid.slice(0, 7)}: ${errMessage(err)}`,
+			);
 		}
 	}
 
