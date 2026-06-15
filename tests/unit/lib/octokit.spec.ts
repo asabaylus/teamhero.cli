@@ -129,7 +129,7 @@ describe("createOctokitClient", () => {
 		);
 	});
 
-	it("onSecondaryRateLimit returns true for retryCount <= 1", async () => {
+	it("onSecondaryRateLimit always returns false (skip, don't retry)", async () => {
 		await createOctokitClient({ authToken: "ghp_test" });
 
 		const calls = (Octokit as any).mock.calls;
@@ -138,12 +138,9 @@ describe("createOctokitClient", () => {
 
 		expect(
 			onSecondaryRateLimit(60, { method: "GET", url: "/repos" }, {}, 0),
-		).toBe(true);
+		).toBe(false);
 		expect(
 			onSecondaryRateLimit(60, { method: "GET", url: "/repos" }, {}, 1),
-		).toBe(true);
-		expect(
-			onSecondaryRateLimit(60, { method: "GET", url: "/repos" }, {}, 2),
 		).toBe(false);
 	});
 });
