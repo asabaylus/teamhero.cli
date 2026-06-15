@@ -27,38 +27,51 @@ interface HistoryNode {
 	author: { user: { login: string | null } | null } | null;
 }
 
+interface RefWithHistory {
+	target: {
+		history: {
+			pageInfo: { hasNextPage: boolean; endCursor: string | null };
+			nodes: HistoryNode[];
+		};
+	} | null;
+}
+
 interface CommitHistoryResponse {
 	repository: {
-		ref: {
-			target: {
-				history: {
-					pageInfo: { hasNextPage: boolean; endCursor: string | null };
-					nodes: HistoryNode[];
-				};
-			} | null;
-		} | null;
+		/** Present only when an explicit branch was supplied (`@include`). */
+		ref?: RefWithHistory | null;
+		/** Present only when no branch was supplied (`@skip`); the repo's real default. */
+		defaultBranchRef?: RefWithHistory | null;
 	} | null;
 }
 
 const PER_PAGE = 100;
 
+// When the caller supplies the branch (the discovery path always does), query it
+// directly. When it doesn't, resolve `defaultBranchRef` server-side rather than
+// guessing "main" — guessing silently drops every commit for master/develop/etc.
+// repos. The @include/@skip directives keep this to ONE history per query (the
+// whole point of GraphQL here), and the shared fragment avoids duplicating it.
 export const COMMIT_HISTORY_QUERY = `
-query CommitHistory($owner: String!, $name: String!, $branch: String!, $since: GitTimestamp!, $until: GitTimestamp!, $cursor: String) {
+query CommitHistory($owner: String!, $name: String!, $branch: String!, $useProvidedBranch: Boolean!, $since: GitTimestamp!, $until: GitTimestamp!, $cursor: String) {
   repository(owner: $owner, name: $name) {
-    ref(qualifiedName: $branch) {
-      target {
-        ... on Commit {
-          history(since: $since, until: $until, first: ${PER_PAGE}, after: $cursor) {
-            pageInfo { hasNextPage endCursor }
-            nodes {
-              oid
-              additions
-              deletions
-              author { user { login } }
-            }
-          }
-        }
-      }
+    ref(qualifiedName: $branch) @include(if: $useProvidedBranch) {
+      target { ...HistoryFields }
+    }
+    defaultBranchRef @skip(if: $useProvidedBranch) {
+      target { ...HistoryFields }
+    }
+  }
+}
+
+fragment HistoryFields on Commit {
+  history(since: $since, until: $until, first: ${PER_PAGE}, after: $cursor) {
+    pageInfo { hasNextPage endCursor }
+    nodes {
+      oid
+      additions
+      deletions
+      author { user { login } }
     }
   }
 }`;
@@ -85,8 +98,9 @@ function ensureContributor(
 /**
  * Collect commit-based LoC for one repo's default branch via GraphQL, bounded by
  * `[sinceIso, untilIso]`. All commits are classified "completed" (in-progress
- * lines come from open PRs elsewhere). An empty repo or missing default branch
- * resolves to `ref: null` and yields an empty map rather than throwing.
+ * lines come from open PRs elsewhere). When `defaultBranch` is omitted the repo's
+ * real `defaultBranchRef` is resolved server-side (never assumed to be "main").
+ * An empty repo or unresolvable branch yields an empty map rather than throwing.
  *
  * `maxPages` caps pages (each = {@link PER_PAGE} commits), mirroring the old
  * REST `maxCommitPages`. GraphQL errors (404/403/NOT_FOUND) propagate so the
@@ -102,18 +116,30 @@ export async function collectRepoCommitsGraphQL(
 	defaultBranch?: string,
 ): Promise<Map<string, ContributorLocMetrics>> {
 	const metrics = new Map<string, ContributorLocMetrics>();
-	const branch = `refs/heads/${defaultBranch ?? "main"}`;
+	const useProvidedBranch = Boolean(defaultBranch);
+	// Placeholder when no branch is supplied: the `ref` field is `@skip`-ed, so
+	// `qualifiedName` is never evaluated, but the `String!` variable must be set.
+	const branch = defaultBranch ? `refs/heads/${defaultBranch}` : "HEAD";
 	let cursor: string | null = null;
 	let pages = 0;
 
 	while (true) {
 		const data: CommitHistoryResponse = await client.graphql(
 			COMMIT_HISTORY_QUERY,
-			{ owner, name: repo, branch, since: sinceIso, until: untilIso, cursor },
+			{
+				owner,
+				name: repo,
+				branch,
+				useProvidedBranch,
+				since: sinceIso,
+				until: untilIso,
+				cursor,
+			},
 		);
 
-		const history = data.repository?.ref?.target?.history;
-		if (!history) break; // empty repo / no such default branch
+		const ref = data.repository?.ref ?? data.repository?.defaultBranchRef;
+		const history = ref?.target?.history;
+		if (!history) break; // empty repo / no resolvable default branch
 
 		for (const node of history.nodes) {
 			const login = node.author?.user?.login;

@@ -14,19 +14,37 @@ function node(login: string | null, additions: number, deletions: number) {
 	};
 }
 
-/** A `history` page wrapped in the repository → ref → target nesting. */
-function page(
+function history(
+	nodes: ReturnType<typeof node>[],
+	hasNextPage: boolean,
+	endCursor: string | null,
+) {
+	return {
+		target: { history: { pageInfo: { hasNextPage, endCursor }, nodes } },
+	};
+}
+
+/**
+ * A page returned when NO branch is supplied: the server resolves
+ * `defaultBranchRef` (and the `ref` field is skipped, so it's absent).
+ */
+function defaultBranchPage(
 	nodes: ReturnType<typeof node>[],
 	hasNextPage = false,
 	endCursor: string | null = null,
 ) {
 	return {
-		repository: {
-			ref: {
-				target: { history: { pageInfo: { hasNextPage, endCursor }, nodes } },
-			},
-		},
+		repository: { defaultBranchRef: history(nodes, hasNextPage, endCursor) },
 	};
+}
+
+/** A page returned when an explicit branch IS supplied (server returns `ref`). */
+function providedBranchPage(
+	nodes: ReturnType<typeof node>[],
+	hasNextPage = false,
+	endCursor: string | null = null,
+) {
+	return { repository: { ref: history(nodes, hasNextPage, endCursor) } };
 }
 
 /** A fake client returning the queued pages in order, recording the call args. */
@@ -39,18 +57,25 @@ function fakeClient(pages: unknown[]): {
 	return { client: { graphql } as unknown as GraphqlExecutor, graphql };
 }
 
+const SINCE = "2026-05-01T00:00:00.000Z";
+const UNTIL = "2026-05-08T00:00:00.000Z";
+
 describe("collectRepoCommitsGraphQL", () => {
 	it("aggregates additions/deletions per author login in a single query", async () => {
 		const { client, graphql } = fakeClient([
-			page([node("alice", 10, 2), node("bob", 5, 1), node("alice", 3, 0)]),
+			defaultBranchPage([
+				node("alice", 10, 2),
+				node("bob", 5, 1),
+				node("alice", 3, 0),
+			]),
 		]);
 
 		const result = await collectRepoCommitsGraphQL(
 			client,
 			"the-org",
 			"r1",
-			"2026-05-01T00:00:00.000Z",
-			"2026-05-08T00:00:00.000Z",
+			SINCE,
+			UNTIL,
 		);
 
 		const alice = result.get("alice");
@@ -74,18 +99,61 @@ describe("collectRepoCommitsGraphQL", () => {
 		expect(graphql).toHaveBeenCalledTimes(1);
 	});
 
-	it("paginates with the cursor until hasNextPage is false", async () => {
+	it("resolves the default branch server-side when none is supplied", async () => {
 		const { client, graphql } = fakeClient([
-			page([node("alice", 10, 0)], true, "CURSOR_1"),
-			page([node("alice", 5, 0)], false, null),
+			defaultBranchPage([node("alice", 7, 0)]),
 		]);
 
 		const result = await collectRepoCommitsGraphQL(
 			client,
 			"the-org",
 			"r1",
-			"2026-05-01T00:00:00.000Z",
-			"2026-05-08T00:00:00.000Z",
+			SINCE,
+			UNTIL,
+		);
+
+		// Counts come from defaultBranchRef, not a guessed "main" ref.
+		expect(result.get("alice")?.additions).toBe(7);
+		const vars = graphql.mock.calls[0]?.[1] as { useProvidedBranch?: boolean };
+		expect(vars.useProvidedBranch).toBe(false);
+	});
+
+	it("queries the supplied branch as a fully-qualified ref", async () => {
+		const { client, graphql } = fakeClient([
+			providedBranchPage([node("alice", 4, 0)]),
+		]);
+
+		const result = await collectRepoCommitsGraphQL(
+			client,
+			"the-org",
+			"r1",
+			SINCE,
+			UNTIL,
+			undefined,
+			"develop",
+		);
+
+		expect(result.get("alice")?.additions).toBe(4);
+		const vars = graphql.mock.calls[0]?.[1] as {
+			branch?: string;
+			useProvidedBranch?: boolean;
+		};
+		expect(vars.branch).toBe("refs/heads/develop");
+		expect(vars.useProvidedBranch).toBe(true);
+	});
+
+	it("paginates with the cursor until hasNextPage is false", async () => {
+		const { client, graphql } = fakeClient([
+			defaultBranchPage([node("alice", 10, 0)], true, "CURSOR_1"),
+			defaultBranchPage([node("alice", 5, 0)], false, null),
+		]);
+
+		const result = await collectRepoCommitsGraphQL(
+			client,
+			"the-org",
+			"r1",
+			SINCE,
+			UNTIL,
 		);
 
 		expect(result.get("alice")?.additions).toBe(15);
@@ -101,16 +169,16 @@ describe("collectRepoCommitsGraphQL", () => {
 
 	it("stops at maxPages even when more pages remain", async () => {
 		const { client, graphql } = fakeClient([
-			page([node("alice", 10, 0)], true, "CURSOR_1"),
-			page([node("alice", 5, 0)], true, "CURSOR_2"),
+			defaultBranchPage([node("alice", 10, 0)], true, "CURSOR_1"),
+			defaultBranchPage([node("alice", 5, 0)], true, "CURSOR_2"),
 		]);
 
 		const result = await collectRepoCommitsGraphQL(
 			client,
 			"the-org",
 			"r1",
-			"2026-05-01T00:00:00.000Z",
-			"2026-05-08T00:00:00.000Z",
+			SINCE,
+			UNTIL,
 			1, // maxPages
 		);
 
@@ -120,50 +188,35 @@ describe("collectRepoCommitsGraphQL", () => {
 
 	it("skips commits whose author has no linked GitHub login", async () => {
 		const { client } = fakeClient([
-			page([node(null, 999, 999), node("alice", 4, 1)]),
+			defaultBranchPage([node(null, 999, 999), node("alice", 4, 1)]),
 		]);
 
 		const result = await collectRepoCommitsGraphQL(
 			client,
 			"the-org",
 			"r1",
-			"2026-05-01T00:00:00.000Z",
-			"2026-05-08T00:00:00.000Z",
+			SINCE,
+			UNTIL,
 		);
 
 		expect(result.has("alice")).toBe(true);
 		expect(result.size).toBe(1); // the unlinked commit contributed nothing
 	});
 
-	it("returns an empty map for an empty repo (ref resolves to null)", async () => {
-		const { client, graphql } = fakeClient([{ repository: { ref: null } }]);
+	it("returns an empty map for an empty repo (no resolvable default branch)", async () => {
+		const { client, graphql } = fakeClient([
+			{ repository: { defaultBranchRef: null } },
+		]);
 
 		const result = await collectRepoCommitsGraphQL(
 			client,
 			"the-org",
 			"empty",
-			"2026-05-01T00:00:00.000Z",
-			"2026-05-08T00:00:00.000Z",
+			SINCE,
+			UNTIL,
 		);
 
 		expect(result.size).toBe(0);
 		expect(graphql).toHaveBeenCalledTimes(1);
-	});
-
-	it("queries the default branch as a fully-qualified ref", async () => {
-		const { client, graphql } = fakeClient([page([])]);
-
-		await collectRepoCommitsGraphQL(
-			client,
-			"the-org",
-			"r1",
-			"2026-05-01T00:00:00.000Z",
-			"2026-05-08T00:00:00.000Z",
-			undefined,
-			"develop",
-		);
-
-		const vars = graphql.mock.calls[0]?.[1] as { branch?: string };
-		expect(vars.branch).toBe("refs/heads/develop");
 	});
 });
