@@ -67,9 +67,12 @@ function globToRegex(glob: string): RegExp {
 /** True when `filePath` matches `glob` (basename for slashless globs, else full path). */
 export function matchesGlob(filePath: string, glob: string): boolean {
 	const normalized = filePath.replace(/^\.\//, "");
-	const target = glob.includes("/")
-		? normalized
-		: (normalized.split("/").pop() ?? normalized);
+	// A `**` glob spans directories, so it must match the full path even when it
+	// contains no literal slash (e.g. `**.json`) — mirror the module contract.
+	const target =
+		glob.includes("/") || glob.includes("**")
+			? normalized
+			: (normalized.split("/").pop() ?? normalized);
 	return globToRegex(glob).test(target);
 }
 

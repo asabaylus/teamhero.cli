@@ -47,6 +47,11 @@ export function classifyPr(item: {
 /**
  * Build a GitHub search query counting a login's PRs org-wide, all states,
  * created within the window. Dates are formatted as UTC `YYYY-MM-DD`.
+ *
+ * `startISO`/`endISO` are the user's **intended** window. GitHub search
+ * `created:START..END` is inclusive on both endpoints, so pass the real window
+ * boundaries here — never `resolveEndISO()`'s +2-day buffer (a Commits-API,
+ * author-date device), which would over-count PRs created after the window.
  */
 export function buildPrSearchQuery(opts: {
 	login: string;

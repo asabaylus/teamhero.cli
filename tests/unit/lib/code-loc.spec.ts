@@ -82,6 +82,12 @@ describe("matchesGlob", () => {
 		// '*' is non-slash, so a slashless json glob still matches on basename only
 		expect(matchesGlob("a.json.bak", "*.json")).toBe(false);
 	});
+	it("matches a slashless ** glob against the full path (per the contract)", () => {
+		// A `**` glob spans directories, so it anchors at the repo root, not the
+		// basename — a basename-only match would wrongly accept `app/vendor/x.ts`.
+		expect(matchesGlob("vendor/lib/x.ts", "vendor**")).toBe(true);
+		expect(matchesGlob("app/vendor/x.ts", "vendor**")).toBe(false);
+	});
 });
 
 describe("splitLoc", () => {

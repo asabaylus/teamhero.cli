@@ -210,16 +210,26 @@ export class MetricsService implements MetricsProvider {
 		let reconciliation: MetricsCollectionResult["reconciliation"];
 		try {
 			const resolver = await this.getResolver();
-			const personResult = await collectPersonMetrics(this.octokit, resolver, {
-				org: options.organization.login,
-				repositories: options.repositories,
-				since: options.since,
-				until: options.until,
-			});
-			persons = personResult.persons;
-			reconciliation = buildReconciliationReport(resolver, {
-				unmappedCommits: personResult.unmappedCommits,
-			});
+			// With no identity map there are no Persons to attribute to, so skip the
+			// (additive, best-effort) reconciliation rather than walking every commit
+			// on the legacy report path. The weekly CLI path calls collectPersonMetrics
+			// directly and DOES surface unmapped authors even with an empty map.
+			if (resolver.persons().length > 0) {
+				const personResult = await collectPersonMetrics(
+					this.octokit,
+					resolver,
+					{
+						org: options.organization.login,
+						repositories: options.repositories,
+						since: options.since,
+						until: options.until,
+					},
+				);
+				persons = personResult.persons;
+				reconciliation = buildReconciliationReport(resolver, {
+					unmappedCommits: personResult.unmappedCommits,
+				});
+			}
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			warnings.push(`Person reconciliation failed: ${message}`);

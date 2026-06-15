@@ -8,7 +8,7 @@ and ADR-0001 (`docs/adr/0001-person-identity-model.md`).
 > **Redaction:** this document uses placeholders only ("the org", "Vendor Pod",
 > Person A/B, `login-a`). Real identities live exclusively in gitignored local
 > data (`.teamhero/local/`).
-
+>
 > **Caveat — read this first.** These counts are a **coarse, gameable sanity
 > check, not a performance metric.** PRs, commits, and lines of code are easy to
 > inflate and say little about impact. Use them to spot data-quality problems and

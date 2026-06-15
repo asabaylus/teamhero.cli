@@ -147,6 +147,45 @@ describe("writeWeeklyMetrics", () => {
 		expect(ws.getCell("O3").value).toEqual(locBefore);
 	});
 
+	it("rejects a non-integer or NaN weekIndex before touching the workbook", async () => {
+		const path = freshCopy();
+		// 6 == PR_COLS.length — the first out-of-range index (valid range is 0–5).
+		for (const bad of [Number.NaN, 1.5, -1, 6]) {
+			await expect(
+				writeWeeklyMetrics(path, [personA], {
+					weekIndex: bad,
+					monthKey: "2026-01",
+				}),
+			).rejects.toThrow(/weekIndex/);
+		}
+	});
+
+	it("appends past the scan window instead of clobbering the first month column", async () => {
+		const path = freshCopy();
+		// Fill the entire monthly-column scan window (AI=35 .. 59) with distinct,
+		// non-matching headers so no empty slot remains for a new month.
+		const wb = new ExcelJS.Workbook();
+		await wb.xlsx.readFile(path);
+		const ws = wb.getWorksheet("Data") as ExcelJS.Worksheet;
+		const headerRow = ws.getRow(2);
+		for (let c = 35; c <= 35 + 24; c++) {
+			headerRow.getCell(c).value = `Commits 2020-${String(c).padStart(2, "0")}`;
+		}
+		await wb.xlsx.writeFile(path);
+		const firstHeaderBefore = (await load(path)).getRow(2).getCell(35).value;
+
+		// Writing a brand-new month must NOT reuse column 35 (would destroy data).
+		await writeWeeklyMetrics(path, [personA], {
+			weekIndex: 0,
+			monthKey: "2026-01",
+		});
+
+		const after = await load(path);
+		expect(after.getRow(2).getCell(35).value).toEqual(firstHeaderBefore);
+		expect(after.getRow(2).getCell(35 + 25).value).toBe("Commits 2026-01");
+		expect(after.getRow(3).getCell(35 + 25).value).toBe(9); // personA's Jan count
+	});
+
 	afterAll(() => {
 		for (const p of tmpPaths) {
 			try {

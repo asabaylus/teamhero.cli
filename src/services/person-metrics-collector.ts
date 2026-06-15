@@ -1,5 +1,6 @@
 import type { IdentityResolver } from "../core/types.js";
 import { isMergeCommit, type RawCommit } from "../lib/commit-attribution.js";
+import { resolveEndISO, resolveStartISO } from "../lib/date-utils.js";
 import {
 	type GitHubCommit,
 	type GitHubSearchItem,
@@ -39,13 +40,15 @@ export async function collectPersonMetrics(
 	resolver: IdentityResolver,
 	options: CollectPersonMetricsOptions,
 ): Promise<PersonMetricsResult> {
-	// With no identity map there are no Persons to attribute to, so skip all
-	// fetching — reconciliation is a no-op rather than an expensive walk that
-	// resolves nothing. (Also keeps reconciliation from adding GitHub calls in
-	// environments without the gitignored local map.)
-	if (resolver.persons().length === 0) {
-		return { persons: [], unmappedCommits: [] };
-	}
+	// Normalize the window once, here at the single collection seam, per the
+	// date-utils contract: `since`/`until` may arrive as bare YYYY-MM-DD (the CLI
+	// weekly path) or as already-resolved ISO (the report path). resolveStartISO/
+	// resolveEndISO are idempotent for resolved input, so this is safe either way.
+	// The commit bounds get resolveEndISO's +2-day buffer (the Commits API `until`
+	// is exclusive and filters by author date, which can fall on the next UTC day
+	// for negative-UTC timezones); PR search keeps the raw intended window below.
+	const commitSinceISO = resolveStartISO(options.since);
+	const commitUntilISO = resolveEndISO(options.until);
 
 	const logins = [
 		...new Set(resolver.persons().flatMap((person) => person.logins)),
@@ -55,6 +58,9 @@ export async function collectPersonMetrics(
 	const prSearchItemsByLogin: Record<string, PrSearchItem[]> = {};
 	const maxPages = options.maxSearchPages ?? 10;
 	for (const login of logins) {
+		// GitHub search `created:` is inclusive on BOTH endpoints, so the PR query
+		// must use the user's intended window — never the +2-day commit buffer,
+		// which would count PRs created up to two days past the window.
 		const q = buildPrSearchQuery({
 			login,
 			org: options.org,
@@ -92,8 +98,8 @@ export async function collectPersonMetrics(
 				const res = await octokit.rest.repos.listCommits({
 					owner,
 					repo,
-					since: options.since,
-					until: options.until,
+					since: commitSinceISO,
+					until: commitUntilISO,
 					per_page: 100,
 					page,
 				});

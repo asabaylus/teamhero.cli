@@ -69,7 +69,9 @@ function findOrCreateMonthlyColumn(
 		if (text === header) return c;
 		if (text === "" && firstEmpty === -1) firstEmpty = c;
 	}
-	const col = firstEmpty === -1 ? FIRST_MONTH_COL : firstEmpty;
+	// No header slot free within the scan window: append just past it rather than
+	// reusing FIRST_MONTH_COL, which would clobber an existing "Commits YYYY-MM".
+	const col = firstEmpty === -1 ? SCAN_END + 1 : firstEmpty;
 	headerRow.getCell(col).value = header;
 	ws.getRow(1).getCell(col).value = header;
 	return col;
@@ -80,7 +82,11 @@ export async function writeWeeklyMetrics(
 	persons: PersonMetrics[],
 	opts: WriteWeeklyOptions,
 ): Promise<void> {
-	if (opts.weekIndex < 0 || opts.weekIndex >= PR_COLS.length) {
+	if (
+		!Number.isInteger(opts.weekIndex) ||
+		opts.weekIndex < 0 ||
+		opts.weekIndex >= PR_COLS.length
+	) {
 		throw new Error(`weekIndex out of range: ${opts.weekIndex}`);
 	}
 

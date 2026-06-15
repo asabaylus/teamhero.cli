@@ -170,4 +170,74 @@ describe("collectPersonMetrics", () => {
 		// The empty repo is skipped; the good repo's commit still counts.
 		expect(result.persons[0].commitsTotal).toBe(1);
 	});
+
+	it("buffers commit bounds (Commits API) but keeps PR search on the raw inclusive window", async () => {
+		let prQuery = "";
+		const issuesAndPullRequests = mock(async ({ q }: { q: string }) => {
+			prQuery = q;
+			return { data: { items: [] } };
+		});
+		const listCommitsArgs: { since?: string; until?: string }[] = [];
+		const listCommits = mock(
+			async (args: { since?: string; until?: string; page: number }) => {
+				listCommitsArgs.push({ since: args.since, until: args.until });
+				return { data: [] };
+			},
+		);
+		const getCommit = mock(async () => ({ data: {} }));
+		const octokit = {
+			rest: {
+				search: { issuesAndPullRequests },
+				repos: { listCommits, getCommit },
+			},
+		};
+
+		await collectPersonMetrics(octokit as never, createIdentityResolver(map), {
+			org: "the-org",
+			repositories: [{ name: "the-org/r1" }],
+			since: "2026-01-01", // bare YYYY-MM-DD (the CLI weekly path)
+			until: "2026-01-31",
+		});
+
+		// Commits: resolveStartISO keeps the start day; resolveEndISO adds the
+		// +2-day exclusive buffer so the last calendar day isn't missed.
+		expect(listCommitsArgs[0]?.since).toBe("2026-01-01T00:00:00.000Z");
+		expect(listCommitsArgs[0]?.until).toBe("2026-02-02T00:00:00.000Z");
+		// PR search: inclusive on both ends → the literal window, no buffer.
+		expect(prQuery).toContain("created:2026-01-01..2026-01-31");
+	});
+
+	it("surfaces unmapped authors even with an empty identity map (no short-circuit)", async () => {
+		const issuesAndPullRequests = mock(async () => ({ data: { items: [] } }));
+		const listCommits = mock(async ({ page }: { page: number }) =>
+			page === 1 ? { data: [listS1] } : { data: [] },
+		);
+		const getCommit = mock(async () => ({ data: commitsBySha.s1 }));
+		const octokit = {
+			rest: {
+				search: { issuesAndPullRequests },
+				repos: { listCommits, getCommit },
+			},
+		};
+
+		const result = await collectPersonMetrics(
+			octokit as never,
+			createIdentityResolver([]), // no mapped Persons
+			{
+				org: "the-org",
+				repositories: [{ name: "the-org/r1" }],
+				since: "2026-01-01T00:00:00.000Z",
+				until: "2026-02-01T00:00:00.000Z",
+			},
+		);
+
+		// No Persons, but the author is queued for reconciliation rather than hidden.
+		expect(result.persons).toHaveLength(0);
+		expect(result.unmappedCommits).toEqual([
+			{ email: "x@example.com", name: "Person X", count: 1 },
+		]);
+		// No logins to search; LoC enrichment only runs for resolved commits.
+		expect(issuesAndPullRequests).not.toHaveBeenCalled();
+		expect(getCommit).not.toHaveBeenCalled();
+	});
 });
