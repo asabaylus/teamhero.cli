@@ -1,5 +1,7 @@
 import { URL } from "node:url";
 import { consola } from "consola";
+import { createOctokitClient, type OctokitClient } from "../lib/octokit.js";
+import { collectRepoCommitsGraphQL } from "./loc.graphql.js";
 
 export interface CollectLocInput {
 	org?: string;
@@ -43,25 +45,6 @@ interface GitHubRepoSummary {
 	default_branch?: string;
 }
 
-interface GitHubBranch {
-	name: string;
-	commit: { sha: string };
-}
-
-interface GitHubCommitStats {
-	additions: number;
-	deletions: number;
-}
-
-interface GitHubCommit {
-	sha: string;
-	stats?: GitHubCommitStats;
-	commit: {
-		author: { date: string };
-	};
-	author: { login: string | null } | null;
-}
-
 class FetchPool {
 	private active = 0;
 	private readonly queue: (() => void)[] = [];
@@ -89,30 +72,91 @@ class FetchPool {
 
 const API_ROOT = "https://api.github.com";
 const MAX_PER_PAGE = 100;
-const RETRYABLE_CODES = new Set([429]); // 403 (rate limit) is not retried — fail fast and let callers skip
+const MAX_FETCH_ATTEMPTS = 3;
+const BASE_BACKOFF_MS = 500;
+const MAX_BACKOFF_MS = 8000;
 export const REPO_CONCURRENCY = 3;
 
 const pool = new FetchPool(8);
+
+// One Octokit client per token, shared across repos so the throttling/retry
+// plugins track a single rate-limit budget. Commit collection goes through this
+// client's GraphQL endpoint; org discovery below still uses raw REST fetch.
+const clientByToken = new Map<string, Promise<OctokitClient>>();
+function octokitForToken(token: string): Promise<OctokitClient> {
+	let client = clientByToken.get(token);
+	if (!client) {
+		client = createOctokitClient({ authToken: token });
+		clientByToken.set(token, client);
+	}
+	return client;
+}
 
 async function delay(ms: number): Promise<void> {
 	await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function fetchWithRetry(
-	url: string,
-	token: string,
-	attempt = 1,
-): Promise<Response> {
+/**
+ * Whether a response should be retried. GitHub signals rate limits two ways: a
+ * 429, or a 403 with the quota exhausted (`x-ratelimit-remaining: 0`) or a
+ * `Retry-After` (the secondary-limit shape). A 403 WITHOUT those markers is a
+ * real auth/permission failure — fail fast, never retry. 5xx are transient.
+ */
+function isRetryable(response: Response): boolean {
+	if (response.status === 429 || response.status >= 500) return true;
+	if (response.status === 403) {
+		return (
+			response.headers.get("x-ratelimit-remaining") === "0" ||
+			response.headers.has("retry-after")
+		);
+	}
+	return false;
+}
+
+/** Wait before the next attempt: honor Retry-After / reset, else exponential backoff. */
+function backoffMs(response: Response, attempt: number): number {
+	const retryAfter = Number(response.headers.get("retry-after"));
+	if (Number.isFinite(retryAfter) && retryAfter > 0) {
+		return Math.min(retryAfter * 1000, MAX_BACKOFF_MS);
+	}
+	if (response.headers.get("x-ratelimit-remaining") === "0") {
+		const resetMs = Number(response.headers.get("x-ratelimit-reset")) * 1000;
+		const waitMs = resetMs - Date.now();
+		if (Number.isFinite(waitMs) && waitMs > 0) {
+			return Math.min(waitMs, MAX_BACKOFF_MS);
+		}
+	}
+	return Math.min(BASE_BACKOFF_MS * 2 ** (attempt - 1), MAX_BACKOFF_MS);
+}
+
+async function fetchWithRetry(url: string, token: string): Promise<Response> {
+	// One pool slot held for the whole retry sequence so a backoff never frees a
+	// slot for work that would just contend with the request it's backing off for.
 	return await pool.run(async () => {
-		const response = await fetch(url, {
+		let response = await fetch(url, {
 			headers: {
 				Authorization: `token ${token}`,
 				Accept: "application/vnd.github+json",
 			},
 		});
-		if (RETRYABLE_CODES.has(response.status) && attempt < 3) {
-			await delay(500 * attempt);
-			return await fetchWithRetry(url, token, attempt + 1);
+		for (let attempt = 1; attempt < MAX_FETCH_ATTEMPTS; attempt++) {
+			if (!isRetryable(response)) return response;
+			const wait = backoffMs(response, attempt);
+			consola.warn(
+				`GitHub ${response.status} for ${url}; retry ${attempt}/${MAX_FETCH_ATTEMPTS - 1} in ${wait}ms.`,
+			);
+			await delay(wait);
+			response = await fetch(url, {
+				headers: {
+					Authorization: `token ${token}`,
+					Accept: "application/vnd.github+json",
+				},
+			});
+		}
+		if (isRetryable(response)) {
+			consola.error(
+				`GitHub ${response.status} for ${url}; exhausted ${MAX_FETCH_ATTEMPTS} attempts — results may be incomplete.`,
+			);
 		}
 		return response;
 	});
@@ -131,38 +175,10 @@ async function fetchJson<T>(url: string, token: string): Promise<T> {
 	return (await response.json()) as T;
 }
 
-function ensureContributor(
-	map: Map<string, ContributorLocMetrics>,
-	login: string,
-): ContributorLocMetrics {
-	const existing = map.get(login);
-	if (existing) {
-		return existing;
-	}
-	const created: ContributorLocMetrics = {
-		login,
-		additions: 0,
-		deletions: 0,
-		net: 0,
-		commit_count: 0,
-		completed: { additions: 0, deletions: 0, commit_count: 0 },
-		inProgress: { additions: 0, deletions: 0, commit_count: 0 },
-	};
-	map.set(login, created);
-	return created;
-}
-
 function isRepoValid(repo: GitHubRepoSummary): boolean {
 	const archived = repo.archived ?? false;
 	const template = repo.template ?? repo.is_template ?? false;
 	return !archived && !template;
-}
-
-function buildPaginatedUrl(base: string, page: number): string {
-	const url = new URL(base, API_ROOT);
-	url.searchParams.set("per_page", String(MAX_PER_PAGE));
-	url.searchParams.set("page", String(page));
-	return url.toString();
 }
 
 export interface OrgRepoDiscovery {
@@ -222,27 +238,11 @@ export function parseRepoFullName(repo: string): {
 	return { owner, name };
 }
 
-async function ensureCommitStats(
-	owner: string,
-	repo: string,
-	commit: GitHubCommit,
-	token: string,
-): Promise<GitHubCommitStats> {
-	if (commit.stats) {
-		return commit.stats;
-	}
-	const detailUrl = `${API_ROOT}/repos/${owner}/${repo}/commits/${commit.sha}`;
-	const detail = await fetchJson<GitHubCommit>(detailUrl, token);
-	if (!detail.stats) {
-		return { additions: 0, deletions: 0 };
-	}
-	return detail.stats;
-}
-
 /**
- * Collect commit-based LOC metrics for a single repo from its default branch.
- * All commits on the default branch are classified as "completed".
- * In-progress lines are computed separately from open PRs in report.service.ts.
+ * Collect commit-based LoC for a single repo's default branch. All commits are
+ * classified "completed" (in-progress lines come from open PRs in
+ * report.service.ts). Delegates to the GraphQL collector — one query per 100
+ * commits with inline additions/deletions — sharing a per-token Octokit client.
  */
 export async function collectRepoCommits(
 	owner: string,
@@ -253,90 +253,16 @@ export async function collectRepoCommits(
 	maxPages?: number,
 	defaultBranch?: string,
 ): Promise<Map<string, ContributorLocMetrics>> {
-	const metrics = new Map<string, ContributorLocMetrics>();
-	const processedShas = new Set<string>();
-	const resolvedDefault = defaultBranch ?? "main";
-
-	// Fetch commits only from the default branch — all classified as completed
-	const branch: GitHubBranch = { name: resolvedDefault, commit: { sha: "" } };
-	await processBranchCommits(
+	const client = await octokitForToken(token);
+	return collectRepoCommitsGraphQL(
+		client,
 		owner,
 		repo,
-		token,
 		sinceIso,
 		untilIso,
-		branch,
 		maxPages,
-		processedShas,
-		metrics,
-		"completed",
+		defaultBranch,
 	);
-
-	return metrics;
-}
-
-async function processBranchCommits(
-	owner: string,
-	repo: string,
-	token: string,
-	sinceIso: string,
-	untilIso: string,
-	branch: GitHubBranch,
-	maxPages: number | undefined,
-	processedShas: Set<string>,
-	metrics: Map<string, ContributorLocMetrics>,
-	classification: "completed" | "inProgress",
-): Promise<void> {
-	let page = 1;
-	let pages = 0;
-	while (true) {
-		const listUrl = buildPaginatedUrl(
-			`/repos/${owner}/${repo}/commits?sha=${encodeURIComponent(branch.name)}&since=${encodeURIComponent(sinceIso)}&until=${encodeURIComponent(untilIso)}`,
-			page,
-		);
-		const commits = await fetchJson<GitHubCommit[]>(listUrl, token);
-		if (commits.length === 0) {
-			break;
-		}
-		pages += 1;
-
-		const statsPromises = commits
-			.filter((c) => !processedShas.has(c.sha) && c.author?.login)
-			.map(async (commit) => {
-				const stats = await ensureCommitStats(owner, repo, commit, token);
-				return { commit, stats };
-			});
-		const results = await Promise.all(statsPromises);
-
-		for (const { commit, stats } of results) {
-			if (processedShas.has(commit.sha)) {
-				continue;
-			}
-			processedShas.add(commit.sha);
-			const login = commit.author?.login;
-			if (!login) {
-				continue;
-			}
-			const contributor = ensureContributor(metrics, login);
-			contributor.additions += stats.additions;
-			contributor.deletions += stats.deletions;
-			contributor.net = contributor.additions - contributor.deletions;
-			contributor.commit_count += 1;
-
-			const breakdown = contributor[classification];
-			breakdown.additions += stats.additions;
-			breakdown.deletions += stats.deletions;
-			breakdown.commit_count += 1;
-		}
-
-		if (commits.length < MAX_PER_PAGE) {
-			break;
-		}
-		if (typeof maxPages === "number" && pages >= maxPages) {
-			break;
-		}
-		page += 1;
-	}
 }
 
 function mergeContributor(

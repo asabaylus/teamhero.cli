@@ -205,6 +205,89 @@ export function createCli(
 			await spawnTui(deps, argsToPass);
 		});
 
+	program
+		.command("weekly")
+		.description(
+			"Update the weekly tracking spreadsheet with reconciled per-Person metrics",
+		)
+		.requiredOption("--org <org>", "GitHub organization login")
+		.requiredOption("--since <date>", "window start (YYYY-MM-DD)")
+		.requiredOption("--until <date>", "window end (YYYY-MM-DD)")
+		.option("--workbook <path>", "tracking workbook (.xlsx) to update in place")
+		.option("--week-index <n>", "weekly block to write (0-5)", "0")
+		.option("--month <YYYY-MM>", "calendar month for the commit column")
+		.option("--dry-run", "compute but do not write the workbook", false)
+		.option("--reconcile-only", "only emit the reconciliation report", false)
+		.action(async (opts) => {
+			// Lazy-load the heavy modules so `createCli` stays cheap to construct.
+			const { loadOctokitFromEnv } = await import("../lib/octokit.js");
+			const { ScopeService } = await import("../services/scope.service.js");
+			const { loadIdentityMapFile } = await import("../lib/identity-map.js");
+			const { createIdentityResolver } = await import(
+				"../services/identity-resolver.service.js"
+			);
+			const { collectPersonMetrics } = await import(
+				"../services/person-metrics-collector.js"
+			);
+			const { buildReconciliationReport } = await import(
+				"../lib/reconciliation.js"
+			);
+			const { runWeeklyUpdate } = await import(
+				"../services/weekly-update.service.js"
+			);
+
+			const octokit = await loadOctokitFromEnv();
+			const scope = new ScopeService(octokit);
+			const resolver = createIdentityResolver(
+				await loadIdentityMapFile(".teamhero/local/identity-map.yaml"),
+			);
+			const monthKey = opts.month ?? String(opts.until ?? "").slice(0, 7);
+
+			// Collect Persons directly — no legacy per-login collection.
+			const collectPersons = async (input: {
+				org: string;
+				repositories: { name: string }[];
+				since: string;
+				until: string;
+			}) => {
+				const { persons, unmappedCommits } = await collectPersonMetrics(
+					octokit,
+					resolver,
+					input,
+				);
+				return {
+					persons,
+					reconciliation: buildReconciliationReport(resolver, {
+						unmappedCommits,
+					}),
+				};
+			};
+
+			const result = await runWeeklyUpdate(
+				{ scope, collectPersons },
+				{
+					org: opts.org,
+					since: opts.since,
+					until: opts.until,
+					workbook: opts.workbook,
+					weekIndex: Number(opts.weekIndex),
+					monthKey,
+					dryRun: Boolean(opts.dryRun),
+					reconcileOnly: Boolean(opts.reconcileOnly),
+				},
+			);
+
+			deps.logger.info(result.reconciliationText);
+			deps.logger.info(result.caveat);
+			if (result.workbookWritten) {
+				deps.logger.info(`Updated workbook: ${result.workbookWritten}`);
+			} else {
+				deps.logger.info(
+					`No workbook written; ${result.personCount} Person(s) reconciled.`,
+				);
+			}
+		});
+
 	return program;
 }
 
@@ -226,7 +309,9 @@ export async function createDefaultDependencies(): Promise<CliDependencies> {
 	} satisfies CliDependencies;
 }
 
-const KNOWN_SUBCOMMANDS = ["report", "doctor", "setup", "interview"];
+// Subcommands that delegate to the Go TUI binary (their --help is handled there).
+// Native TypeScript commands like `weekly` are NOT in this list.
+const TUI_SUBCOMMANDS = ["report", "doctor", "setup", "interview"];
 
 export async function run(
 	argv: string[] = process.argv,
@@ -234,6 +319,9 @@ export async function run(
 ): Promise<void> {
 	const resolvedDeps = deps ?? (await createDefaultDependencies());
 	const program = createCli(resolvedDeps);
+	// Accept any command registered on the program (TUI passthroughs + native
+	// commands like `weekly`); reject anything else.
+	const registered = new Set(program.commands.map((cmd) => cmd.name()));
 
 	const args = argv.slice(2);
 	const first = args[0];
@@ -245,7 +333,7 @@ export async function run(
 		typeof first === "string" &&
 		first.length > 0 &&
 		!first.startsWith("-") &&
-		!KNOWN_SUBCOMMANDS.includes(first)
+		!registered.has(first)
 	) {
 		resolvedDeps.logger.error(
 			`Unknown subcommand: ${first}. Run \`teamhero --help\` to see available commands.`,
@@ -253,11 +341,12 @@ export async function run(
 		process.exit(1);
 	}
 
-	// If a subcommand is followed by --help, pass through to the Go binary
-	// instead of letting Commander handle it (which prints the top-level help).
+	// If a TUI-backed subcommand is followed by --help, pass through to the Go
+	// binary instead of letting Commander handle it (native commands keep their
+	// own Commander help).
 	if (
 		args.length >= 1 &&
-		KNOWN_SUBCOMMANDS.includes(args[0]) &&
+		TUI_SUBCOMMANDS.includes(args[0]) &&
 		args.includes("--help")
 	) {
 		await spawnTui(resolvedDeps, args);

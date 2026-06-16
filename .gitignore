@@ -90,3 +90,8 @@ docs/maintenance_results.md
 # Local-only synthetic test data captured by scripts/capture-synthetic-runs.py.
 # Contains real cached runs and meeting transcripts; never commit.
 .local/
+
+# Real (un-redacted) identity data, golden fixtures, and redaction key.
+# Company-specific names/logins live here ONLY; committed files use placeholders.
+.teamhero/local/
+tests/fixtures/local/

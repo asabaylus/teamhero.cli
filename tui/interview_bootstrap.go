@@ -530,7 +530,19 @@ func printBootstrapSuccessLink(dir string, w io.Writer) {
 	}
 	display := abs
 	if cwd, err := os.Getwd(); err == nil {
-		if rel, err := filepath.Rel(cwd, abs); err == nil && !strings.HasPrefix(rel, "..") {
+		rel, err := filepath.Rel(cwd, abs)
+		if err != nil || strings.HasPrefix(rel, "..") {
+			// Retry with symlinks resolved on both sides. On macOS os.Getwd may
+			// report cwd as /private/var/... while the target is under /var/...
+			// (the same physical dir via a symlink), which otherwise yields a
+			// ".."-prefixed rel and forces the absolute label.
+			if rc, e1 := filepath.EvalSymlinks(cwd); e1 == nil {
+				if ra, e2 := filepath.EvalSymlinks(abs); e2 == nil {
+					rel, err = filepath.Rel(rc, ra)
+				}
+			}
+		}
+		if err == nil && rel != "" && !strings.HasPrefix(rel, "..") {
 			display = rel
 		}
 	}

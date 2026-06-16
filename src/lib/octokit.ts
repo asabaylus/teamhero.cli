@@ -8,6 +8,16 @@ const OctokitWithPlugins = Octokit.plugin(retry, throttling) as typeof Octokit;
 
 export type OctokitClient = InstanceType<typeof OctokitWithPlugins>;
 
+/**
+ * How many times the throttling plugin retries a rate-limited request before
+ * giving up. Primary and secondary limits share this cap. Retrying (rather than
+ * skipping on the first secondary-limit hit) is what keeps the search API's
+ * 30 req/min limit from silently under-counting a Person's PRs. It stays bounded
+ * — `retryAfter` is server-supplied, so the worst case is a small, finite wait
+ * and then a loud give-up, never an open-ended block.
+ */
+export const MAX_RATE_LIMIT_RETRIES = 3;
+
 export interface OctokitFactoryOptions {
 	authToken?: string;
 	userAgent?: string;
@@ -26,21 +36,37 @@ function createThrottleOptions() {
 			_octokit: OctokitClient,
 			retryCount: number,
 		) => {
-			consola.warn(
-				`Rate limit hit for ${options.method} ${options.url}. Retry ${retryCount} after ${retryAfter}s.`,
+			if (retryCount < MAX_RATE_LIMIT_RETRIES) {
+				consola.warn(
+					`Primary rate limit on ${options.method} ${options.url}; retry ${retryCount + 1}/${MAX_RATE_LIMIT_RETRIES} after ${retryAfter}s.`,
+				);
+				return true;
+			}
+			consola.error(
+				`Primary rate limit on ${options.method} ${options.url}; giving up after ${MAX_RATE_LIMIT_RETRIES} retries — results may be incomplete.`,
 			);
-			return retryCount <= 2;
+			return false;
 		},
 		onSecondaryRateLimit: (
-			_retryAfter: number,
+			retryAfter: number,
 			options: { method: string; url: string },
 			_octokit: OctokitClient,
-			_retryCount: number,
+			retryCount: number,
 		) => {
-			consola.warn(
-				`Secondary rate limit triggered for ${options.method} ${options.url}. Skipping to avoid long wait.`,
+			// Bounded retry rather than an immediate skip: the search API's secondary
+			// limit otherwise silently truncates a Person's PR count (the "1 vs 7"
+			// undercount). A few short waits recover the transient case; past that we
+			// give up loudly so the caller (and the operator) sees the gap.
+			if (retryCount < MAX_RATE_LIMIT_RETRIES) {
+				consola.warn(
+					`Secondary rate limit on ${options.method} ${options.url}; retry ${retryCount + 1}/${MAX_RATE_LIMIT_RETRIES} after ${retryAfter}s.`,
+				);
+				return true;
+			}
+			consola.error(
+				`Secondary rate limit on ${options.method} ${options.url}; giving up after ${MAX_RATE_LIMIT_RETRIES} retries — results may be incomplete.`,
 			);
-			return false; // Don't retry — caller catches and skips the item
+			return false;
 		},
 	};
 }
