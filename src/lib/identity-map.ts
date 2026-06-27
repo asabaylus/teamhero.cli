@@ -30,6 +30,7 @@ function coerceEntry(value: unknown): IdentityMapEntry | null {
 		emails: asStringArray(raw.emails),
 		names: asStringArray(raw.names),
 		jira: coerceJira(raw.jira),
+		asana: coerceAsana(raw.asana),
 		external: raw.external === true,
 	};
 }
@@ -49,6 +50,21 @@ function coerceJira(
 			? raw.email.trim()
 			: undefined;
 	return accountId || email ? { accountId, email } : undefined;
+}
+
+/** Coerce a raw `asana` block into an {@link AsanaAccount}, or undefined. */
+function coerceAsana(value: unknown): IdentityMapEntry["asana"] {
+	if (!value || typeof value !== "object") return undefined;
+	const raw = value as Record<string, unknown>;
+	const str = (v: unknown) =>
+		typeof v === "string" && v.trim() ? v.trim() : undefined;
+	const asana = {
+		email: str(raw.email),
+		name: str(raw.name),
+		userGid: str(raw.userGid),
+		workspaceGid: str(raw.workspaceGid),
+	};
+	return Object.values(asana).some(Boolean) ? asana : undefined;
 }
 
 /** Validate an already-parsed value into an {@link IdentityMap} (lenient: drops bad entries). */

@@ -1,6 +1,41 @@
 import type { Member } from "../models/member.js";
+import type { Person } from "../models/person.js";
 import type { UserIdentity, UserMap } from "../models/user-identity.js";
 import type { AsanaUserOverride } from "../services/asana.service.js";
+
+/**
+ * Adapt canonical {@link Person}s into the {@link UserMap} shape the report
+ * pipeline's existing (well-tested) consumers expect. This is the bridge that
+ * lets one identity source (identity-map.yaml) feed the report path — see the
+ * identity-unification epic.
+ */
+export function personsToUserMap(persons: Person[]): UserMap {
+	const map: UserMap = {};
+	for (const p of persons) {
+		map[p.id] = {
+			name: p.displayName,
+			email: p.emails[0],
+			github: p.logins[0] ? { login: p.logins[0] } : undefined,
+			asana: p.asana,
+			jira: p.jiraAccountIds?.[0]
+				? { accountId: p.jiraAccountIds[0] }
+				: undefined,
+		};
+	}
+	return map;
+}
+
+/**
+ * Merge two user maps. `canonical` wins on key conflict; entries that exist
+ * only in `supplemental` are preserved (back-compat for the USER_MAP env during
+ * the migration to identity-map.yaml as the single source).
+ */
+export function mergeUserMaps(
+	canonical: UserMap,
+	supplemental: UserMap,
+): UserMap {
+	return { ...supplemental, ...canonical };
+}
 
 /**
  * Parse the USER_MAP environment variable JSON into a UserMap.

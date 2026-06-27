@@ -13,14 +13,21 @@ import type {
 } from "../core/types.js";
 import { AIService } from "../services/ai.service.js";
 import { AsanaService } from "../services/asana.service.js";
+import { createIdentityResolver } from "../services/identity-resolver.service.js";
 import { MetricsService } from "../services/metrics.service.js";
 import { ReportService } from "../services/report.service.js";
 import { ScopeService } from "../services/scope.service.js";
 import { getEnv } from "./env.js";
+import { loadIdentityMapFile } from "./identity-map.js";
 import { loadJiraConfig } from "./jira-config-loader.js";
 import { loadOctokitFromEnv } from "./octokit.js";
 import { configDir } from "./paths.js";
-import { buildJiraLoginLookup, parseUserMap } from "./user-map.js";
+import {
+	buildJiraLoginLookup,
+	mergeUserMaps,
+	parseUserMap,
+	personsToUserMap,
+} from "./user-map.js";
 
 export interface ServiceFactoryOptions {
 	cacheOptions?: CacheOptions;
@@ -74,7 +81,16 @@ export async function createReportService(
 		);
 	}
 
-	const userMap = parseUserMap(getEnv("USER_MAP"));
+	// Unified identity: identity-map.yaml is the canonical source; the legacy
+	// USER_MAP env folds in as supplemental, back-compat entries (canonical wins).
+	const identityMap = await loadIdentityMapFile(
+		".teamhero/local/identity-map.yaml",
+	);
+	const persons = createIdentityResolver(identityMap).persons();
+	const userMap = mergeUserMaps(
+		personsToUserMap(persons),
+		parseUserMap(getEnv("USER_MAP")),
+	);
 
 	// Jira story points are optional — only wire when both auth env and a saved
 	// jira-config.json are present. Otherwise the report-time guard warns and skips.

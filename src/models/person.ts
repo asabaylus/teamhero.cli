@@ -10,6 +10,8 @@
  * (`.teamhero/local/identity-map.yaml`). A redacted, placeholder-only example is
  * committed at `.teamhero/identity-map.example.yaml`.
  */
+import type { AsanaAccount } from "./user-identity.js";
+
 export interface Person {
 	/** Stable identifier for this Person (the representative identity-map entry id). */
 	id: string;
@@ -23,6 +25,8 @@ export interface Person {
 	names: string[];
 	/** Every Jira accountId belonging to this Person (for story-point attribution). Optional during migration. */
 	jiraAccountIds?: string[];
+	/** Asana account (first non-empty across the unioned group). Optional. */
+	asana?: AsanaAccount;
 	/** True when this Person is an external collaborator (e.g. a Vendor Pod contractor). */
 	external: boolean;
 	/**
@@ -50,6 +54,8 @@ export interface IdentityMapEntry {
 	names?: string[];
 	/** Jira identity for story-point attribution. */
 	jira?: { accountId?: string; email?: string };
+	/** Asana account for this entry. */
+	asana?: AsanaAccount;
 	/** Marks an external collaborator (defaults to false). */
 	external?: boolean;
 }

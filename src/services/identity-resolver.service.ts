@@ -158,6 +158,7 @@ function buildPersons(map: IdentityMap): Person[] {
 		const emails: string[] = [];
 		const names: string[] = [];
 		const jiraAccountIds: string[] = [];
+		let asana: Person["asana"];
 		let external = false;
 		for (const entry of group) {
 			for (const login of entry.logins ?? [])
@@ -167,6 +168,7 @@ function buildPersons(map: IdentityMap): Person[] {
 			for (const name of entry.names ?? []) pushUnique(names, normName(name));
 			if (entry.jira?.accountId)
 				pushUnique(jiraAccountIds, entry.jira.accountId);
+			if (!asana && entry.asana) asana = entry.asana;
 			if (entry.external) external = true;
 		}
 		const representative = group[0];
@@ -181,6 +183,7 @@ function buildPersons(map: IdentityMap): Person[] {
 			emails,
 			names,
 			jiraAccountIds,
+			asana,
 			external,
 			hasMultipleLogins: logins.length > 1,
 		});
