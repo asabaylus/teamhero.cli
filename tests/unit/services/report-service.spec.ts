@@ -2590,3 +2590,87 @@ describe("ReportService.generateReport", () => {
 		);
 	});
 });
+
+// ===================================================================
+// Story points (Jira) — guard + attribution (#29, #19)
+// ===================================================================
+
+describe("ReportService.generateReport — story points", () => {
+	function jiraInput() {
+		return makeInput({
+			members: ["jdoe"],
+			sections: {
+				dataSources: { git: true, asana: false, jira: true },
+				reportSections: { visibleWins: false, individualContributions: true },
+			},
+		});
+	}
+
+	it("warns on the logger when jira is requested but unconfigured", async () => {
+		const logger = makeMockLogger();
+		const service = new ReportService({
+			scope: makeMockScope(),
+			metrics: makeMockMetrics(),
+			ai: makeMockAI(),
+			progressFactory: makeProgressFactory(makeProgress()),
+			logger,
+			outputDir: () => "/tmp/test",
+		});
+
+		await service.generateReport(jiraInput());
+
+		const warned = (logger.warn as ReturnType<typeof mock>).mock.calls.map(
+			(c) => String(c[0]),
+		);
+		expect(
+			warned.some((w) =>
+				w.includes("Story points requested but Jira is not configured"),
+			),
+		).toBe(true);
+	});
+
+	it("fetches and attributes story points when configured", async () => {
+		const fetchCompletedStoryPoints = mock().mockResolvedValue({
+			byPerson: new Map([
+				[
+					"jdoe",
+					{
+						status: "matched",
+						totalPoints: 7,
+						byProject: { PT: 7 },
+						issueCount: 1,
+					},
+				],
+			]),
+			unmatchedAssignees: ["Ghost"],
+		});
+		const logger = makeMockLogger();
+		const service = new ReportService({
+			scope: makeMockScope(),
+			metrics: makeMockMetrics(),
+			ai: makeMockAI(),
+			progressFactory: makeProgressFactory(makeProgress()),
+			logger,
+			outputDir: () => "/tmp/test",
+			storyPointProvider: { enabled: true, fetchCompletedStoryPoints },
+			storyPointOptions: {
+				projects: [
+					{
+						key: "PT",
+						fieldId: "customfield_10617",
+						jqlName: "Story point estimate",
+					},
+				],
+			},
+		});
+
+		await service.generateReport(jiraInput());
+
+		expect(fetchCompletedStoryPoints).toHaveBeenCalled();
+		// unmatched assignee surfaces on the stderr/log layer
+		const warned = (logger.warn as ReturnType<typeof mock>).mock.calls.map(
+			(c) => String(c[0]),
+		);
+		expect(warned.some((w) => w.includes("Ghost"))).toBe(true);
+	});
+});

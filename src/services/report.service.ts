@@ -274,6 +274,8 @@ export class ReportService {
 		let teamHighlight = "";
 		let progress: ProgressReporter = NOOP_PROGRESS;
 		let metricsResult: MetricsCollectionResult | null = null;
+		// Hoisted so the post-cleanup `finally` stderr layer can see them (§8).
+		const storyPointWarnings: string[] = [];
 
 		try {
 			const window = this.resolveWindow(input);
@@ -421,7 +423,6 @@ export class ReportService {
 				progress.start("Skipping source-control metric collection.").succeed();
 			}
 
-			const storyPointWarnings: string[] = [];
 			let memberMetrics = metricsResult
 				? await this.toReportMemberMetrics(metricsResult, window.humanReadable)
 				: await this.buildMemberSkeleton(members, window.humanReadable);
@@ -1806,6 +1807,10 @@ export class ReportService {
 				for (const error of metricsResult.errors ?? []) {
 					this.logger.error(error);
 				}
+			}
+			// Story-point warnings share the same post-cleanup stderr layer (§8).
+			for (const warning of storyPointWarnings) {
+				this.logger.warn(warning);
 			}
 		}
 	}
