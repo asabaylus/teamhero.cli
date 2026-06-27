@@ -473,7 +473,7 @@ func TestApplyFlagsTo_SequentialAndDiscrepancyThreshold(t *testing.T) {
 func TestApplyFlagsTo_Sources(t *testing.T) {
 	oldSources := *flagSources
 	defer func() { *flagSources = oldSources }()
-	*flagSources = "git,asana"
+	*flagSources = "git,asana,jira"
 
 	cfg := DefaultConfig()
 	wasSet := func(name string) bool { return name == "sources" }
@@ -484,6 +484,24 @@ func TestApplyFlagsTo_Sources(t *testing.T) {
 	}
 	if !cfg.Sections.DataSources.Asana {
 		t.Error("applyFlagsTo sources: cfg.Sections.DataSources.Asana should be true")
+	}
+	if !cfg.Sections.DataSources.Jira {
+		t.Error("applyFlagsTo sources: cfg.Sections.DataSources.Jira should be true")
+	}
+}
+
+func TestApplyFlagsTo_Sources_NoJiraByDefault(t *testing.T) {
+	oldSources := *flagSources
+	defer func() { *flagSources = oldSources }()
+	*flagSources = "git"
+
+	cfg := DefaultConfig()
+	cfg.Sections.DataSources.Jira = true
+	wasSet := func(name string) bool { return name == "sources" }
+	applyFlagsTo(&cfg, wasSet)
+
+	if cfg.Sections.DataSources.Jira {
+		t.Error("applyFlagsTo sources git-only: Jira should be false")
 	}
 }
 

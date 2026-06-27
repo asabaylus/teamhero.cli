@@ -49,7 +49,7 @@ Flags:
   --repos <list>          Comma-separated repository names (omit for all)
   --team <list>           Comma-separated contributor identifiers
   --members <list>        Comma-separated member logins
-  --sources <list>        Data sources to fetch: git,asana (omit for all)
+  --sources <list>        Data sources to fetch: git,asana,jira (omit for all)
   --sections <list>       Report sections to render: loc,individual,visible-wins,technical-wins,discrepancy-log (omit for all)
                           Note: "loc" (lines of code) is a section — GitHub is fetched automatically when included
   --since <date>          Start date, YYYY-MM-DD (default: 7 days ago)

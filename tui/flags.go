@@ -17,7 +17,7 @@ var (
 	flagTeam                 = flag.String("team", "", "Comma-separated contributor identifiers to filter by team")
 	flagMembers              = flag.String("members", "", "Comma-separated member logins")
 	flagRepos                = flag.String("repos", "", "Comma-separated repository names")
-	flagSources              = flag.String("sources", "", "Comma-separated data sources to fetch: git,asana (omit for all)")
+	flagSources              = flag.String("sources", "", "Comma-separated data sources to fetch: git,asana,jira (omit for all)")
 	flagSections             = flag.String("sections", "", "Comma-separated report sections to render: loc,individual,visible-wins,technical-wins,discrepancy-log (omit for all)")
 	flagSince                = flag.String("since", "", "Start date (YYYY-MM-DD)")
 	flagUntil                = flag.String("until", "", "End date (YYYY-MM-DD)")
@@ -129,6 +129,7 @@ func applyFlagsTo(cfg *ReportConfig, wasSet func(string) bool) {
 		sources := splitCSV(*flagSources)
 		cfg.Sections.DataSources.Git = containsIgnoreCase(sources, "git")
 		cfg.Sections.DataSources.Asana = containsIgnoreCase(sources, "asana")
+		cfg.Sections.DataSources.Jira = containsIgnoreCase(sources, "jira")
 	}
 
 	// Subtractive flag model: --sections narrows report sections
