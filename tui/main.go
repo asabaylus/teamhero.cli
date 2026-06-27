@@ -66,6 +66,7 @@ Flags:
   --advanced              Use full configuration wizard (skip express mode) (default: false)
   --sequential            Run API requests sequentially instead of in parallel (default: false)
   --discrepancy-threshold N  Discrepancy report threshold: only items with confidence >= N appear (default: 30)
+  --jira-projects <list>  Configure Jira story points headlessly: KEY[:team|company],...
   --flush-cache <spec>    Flush cached data before run: 'all' or comma-separated sources
   --foreground            Run subprocess with direct I/O, bypass event piping (default: false)
 

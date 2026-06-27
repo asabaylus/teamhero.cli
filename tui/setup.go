@@ -229,6 +229,9 @@ func runSetupHeadless() error {
 		{envKey: "GITHUB_PERSONAL_ACCESS_TOKEN", label: "GitHub (OAuth or token)", optional: false},
 		{envKey: "OPENAI_API_KEY", label: "OpenAI API Key", optional: false},
 		{envKey: "ASANA_API_TOKEN", label: "Asana API Token", optional: true},
+		{envKey: "JIRA_BASE_URL", label: "Jira Base URL (optional, for story points)", optional: true},
+		{envKey: "JIRA_EMAIL", label: "Jira Email (optional)", optional: true},
+		{envKey: "JIRA_API_TOKEN", label: "Jira API Token (optional)", optional: true},
 	}
 
 	// Read from existing file first, then overlay from env vars
@@ -290,15 +293,18 @@ func runSetupInteractive() error {
 	envPath := filepath.Join(configDir(), ".env")
 	existing := loadExistingCredentials(envPath)
 
-	passStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))  // green
-	failStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9"))   // red
-	warnStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("11"))  // yellow
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))  // dim
+	passStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10")) // green
+	failStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9"))  // red
+	warnStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("11")) // yellow
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241")) // dim
 
 	creds := []credential{
 		{envKey: "GITHUB_PERSONAL_ACCESS_TOKEN", label: "GitHub (OAuth or token)", optional: false},
 		{envKey: "OPENAI_API_KEY", label: "OpenAI API Key", optional: false},
 		{envKey: "ASANA_API_TOKEN", label: "Asana API Token", optional: true},
+		{envKey: "JIRA_BASE_URL", label: "Jira Base URL (optional, for story points)", optional: true},
+		{envKey: "JIRA_EMAIL", label: "Jira Email (optional)", optional: true},
+		{envKey: "JIRA_API_TOKEN", label: "Jira API Token (optional)", optional: true},
 	}
 
 	// Pre-fill from existing values (check alias names too)
@@ -425,7 +431,7 @@ func runSetupInteractive() error {
 		}
 		msg := c.label
 		if c.detail != "" {
-			msg += dimStyle.Render(": "+c.detail)
+			msg += dimStyle.Render(": " + c.detail)
 		}
 		fmt.Fprintf(os.Stderr, "  %s %s\n", icon, msg)
 	}
@@ -466,11 +472,11 @@ type settingDef struct {
 	envKey      string
 	label       string
 	description string
-	category    string // "Creds", "Asana", "AI", "Tuning"
-	sensitive   bool   // mask value in display
-	defaultVal  string // shown when env var is not set ("" = no default)
-	required    bool   // must be set for the tool to work
-	hidden      bool   // hide from settings viewer/picker when auto-configured
+	category    string    // "Creds", "Asana", "AI", "Tuning"
+	sensitive   bool      // mask value in display
+	defaultVal  string    // shown when env var is not set ("" = no default)
+	required    bool      // must be set for the tool to work
+	hidden      bool      // hide from settings viewer/picker when auto-configured
 	itype       inputType // how this setting is edited in the settings editor
 	options     []string  // valid options for inputSelect type
 }
@@ -511,6 +517,9 @@ var knownSettings = []settingDef{
 	{envKey: "GITHUB_AUTH_METHOD", label: "GitHub Auth Method", category: "Creds", hidden: true},
 	{envKey: "OPENAI_API_KEY", label: "OpenAI API Key", category: "Creds", sensitive: true, required: true},
 	{envKey: "ASANA_API_TOKEN", label: "Asana API Token", category: "Creds", sensitive: true},
+	{envKey: "JIRA_BASE_URL", label: "Jira Base URL", description: "e.g. https://your-org.atlassian.net (for story points)", category: "Creds"},
+	{envKey: "JIRA_EMAIL", label: "Jira Email", description: "Jira account email (basic auth)", category: "Creds"},
+	{envKey: "JIRA_API_TOKEN", label: "Jira API Token", category: "Creds", sensitive: true},
 	// Asana User Matching — how GitHub users are paired to Asana users
 	{envKey: "USER_MAP", label: "User Map", description: "JSON mapping of GitHub logins → Asana identities", category: "Asana", defaultVal: "{}", itype: inputJSON},
 	{envKey: "ASANA_WORKSPACE_GID", label: "Workspace GIDs", description: "Limit search to these workspaces (auto-discovered if empty)", category: "Asana", defaultVal: "auto-discover"},
@@ -715,7 +724,7 @@ func renderSettingsStatus(existing map[string]string, creds []credential, boards
 			}
 			msg := c.label
 			if c.detail != "" {
-				msg += dimStyle.Render(": "+c.detail)
+				msg += dimStyle.Render(": " + c.detail)
 			} else if c.value == "" && c.optional {
 				msg += dimStyle.Render(": not configured (optional)")
 			} else if c.value == "" {
@@ -1325,7 +1334,7 @@ func runGitHubAuthFromInlineEditor(creds []credential, envPath string) error {
 		c := creds[i]
 		msg := c.label
 		if c.detail != "" {
-			msg += dimStyle.Render(": "+c.detail)
+			msg += dimStyle.Render(": " + c.detail)
 		}
 		if c.status == "valid" {
 			fmt.Fprintf(os.Stderr, "  %s %s\n", passStyle.Render("✔"), msg)
@@ -1380,7 +1389,7 @@ func handleSettingUpdate(envKey string, creds []credential, envPath string, allE
 				c := creds[i]
 				msg := c.label
 				if c.detail != "" {
-					msg += dimStyle.Render(": "+c.detail)
+					msg += dimStyle.Render(": " + c.detail)
 				}
 				if c.status == "valid" {
 					fmt.Fprintf(os.Stderr, "  %s %s\n", passStyle.Render("✔"), msg)

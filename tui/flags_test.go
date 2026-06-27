@@ -598,3 +598,27 @@ func TestApplyFlags_NoOpWhenNoFlagsParsed(t *testing.T) {
 		t.Errorf("applyFlags no-op: Team changed")
 	}
 }
+
+func TestApplyFlagsTo_JiraProjects(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+
+	oldJira := *flagJiraProjects
+	defer func() { *flagJiraProjects = oldJira }()
+	*flagJiraProjects = "PT:team,SPVR"
+
+	cfg := DefaultConfig()
+	wasSet := func(name string) bool { return name == "jira-projects" }
+	applyFlagsTo(&cfg, wasSet)
+
+	if !cfg.Sections.DataSources.Jira {
+		t.Error("applyFlagsTo jira-projects: DataSources.Jira should be true")
+	}
+	loaded, err := LoadJiraConfig()
+	if err != nil || loaded == nil {
+		t.Fatalf("jira-config.json should have been written: cfg=%+v err=%v", loaded, err)
+	}
+	if len(loaded.Projects) != 2 || loaded.Projects[0].Key != "PT" {
+		t.Errorf("unexpected jira config: %+v", loaded)
+	}
+}

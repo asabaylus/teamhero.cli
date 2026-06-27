@@ -2,6 +2,8 @@ package main
 
 import (
 	"flag"
+	"fmt"
+	"os"
 	"strings"
 	"time"
 )
@@ -33,6 +35,7 @@ var (
 	flagFormat               = flag.String("format", "", "Output format: json (for doctor command)")
 	flagOutputFormat         = flag.String("output-format", "", "Report output format: markdown (default), json, both")
 	flagFlushCache           = flag.String("flush-cache", "", "Flush cached data: 'all', sources (metrics,loc,...), or with date 'all:since=2026-02-20'")
+	flagJiraProjects         = flag.String("jira-projects", "", "Configure Jira story points headlessly: KEY[:team|company],... (writes jira-config.json)")
 	flagForeground           = flag.Bool("foreground", false, "Run subprocess with direct I/O (bypass event piping)")
 	flagAdvanced             = flag.Bool("advanced", false, "Use full configuration wizard (skip express mode)")
 	flagSequential           = flag.Bool("sequential", false, "Run API requests sequentially instead of in parallel")
@@ -140,6 +143,19 @@ func applyFlagsTo(cfg *ReportConfig, wasSet func(string) bool) {
 		cfg.Sections.ReportSections.TechnicalFoundationalWins = containsIgnoreCase(sections, "technical-wins") || containsIgnoreCase(sections, "technicalWins")
 		cfg.Sections.ReportSections.DiscrepancyLog = containsIgnoreCase(sections, "discrepancy-log") || containsIgnoreCase(sections, "discrepancyLog") || containsIgnoreCase(sections, "discrepancy")
 		cfg.Sections.ReportSections.Loc = containsIgnoreCase(sections, "loc")
+	}
+
+	// --jira-projects writes jira-config.json and enables the Jira source.
+	if wasSet("jira-projects") {
+		specs := splitCSV(*flagJiraProjects)
+		jiraCfg, err := buildJiraConfigFromSpec(specs)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "jira-projects: %v\n", err)
+		} else if err := WriteJiraConfig(jiraCfg); err != nil {
+			fmt.Fprintf(os.Stderr, "jira-projects: failed to write jira-config.json: %v\n", err)
+		} else {
+			cfg.Sections.DataSources.Jira = true
+		}
 	}
 }
 

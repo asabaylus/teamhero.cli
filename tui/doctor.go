@@ -58,6 +58,7 @@ func runDoctor() int {
 
 	// --- Category: files ---
 	checks = append(checks, checkConfigFile())
+	checks = append(checks, checkJiraConfig())
 	checks = append(checks, checkEnvFile()...)
 	checks = append(checks, checkEnvPermissions())
 
@@ -111,10 +112,10 @@ func runDoctor() int {
 		enc.Encode(result)
 	} else {
 		// Styled human-readable checklist (matches TUI color scheme).
-		passStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))  // green
-		failStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9"))   // red
-		warnStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("11"))  // yellow
-		dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))  // dim
+		passStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10")) // green
+		failStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("9"))  // red
+		warnStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("11")) // yellow
+		dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241")) // dim
 
 		fmt.Println(renderShellHeader(termWidth()))
 		fmt.Println()
@@ -144,6 +145,38 @@ func runDoctor() int {
 		return 0
 	}
 	return 1
+}
+
+// checkJiraConfig validates jira-config.json when it exists. It is optional —
+// absent is a passing "not configured" state, not a failure.
+func checkJiraConfig() DoctorCheck {
+	cfg, err := LoadJiraConfig()
+	if err != nil {
+		return DoctorCheck{
+			Name:     "jira_config",
+			Category: "files",
+			Passed:   false,
+			Message:  "Jira config: invalid",
+			Detail:   strPtr(err.Error()),
+		}
+	}
+	if cfg == nil {
+		return DoctorCheck{
+			Name:     "jira_config",
+			Category: "files",
+			Passed:   true,
+			Warning:  true,
+			Message:  "Jira config: not configured (story points off)",
+			Detail:   strPtr("Run `teamhero setup` to select Jira projects and story-point fields"),
+		}
+	}
+	return DoctorCheck{
+		Name:     "jira_config",
+		Category: "files",
+		Passed:   true,
+		Message:  fmt.Sprintf("Jira config: %d project(s) configured", len(cfg.Projects)),
+		Detail:   nil,
+	}
 }
 
 func strPtr(s string) *string {
@@ -609,7 +642,6 @@ func checkOutputDirectory() DoctorCheck {
 		Detail:   nil,
 	}
 }
-
 
 // nopCloser wraps a strings.Reader to implement io.ReadCloser.
 type nopCloser struct {
