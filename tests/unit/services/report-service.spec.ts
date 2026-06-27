@@ -2667,10 +2667,12 @@ describe("ReportService.generateReport — story points", () => {
 		await service.generateReport(jiraInput());
 
 		expect(fetchCompletedStoryPoints).toHaveBeenCalled();
-		// unmatched assignee surfaces on the stderr/log layer
+		// unmatched assignee surfaces via the reconciliation report on the log layer
 		const warned = (logger.warn as ReturnType<typeof mock>).mock.calls.map(
 			(c) => String(c[0]),
 		);
-		expect(warned.some((w) => w.includes("Ghost"))).toBe(true);
+		expect(
+			warned.some((w) => w.includes("Ghost") && w.includes("Jira assignee")),
+		).toBe(true);
 	});
 });

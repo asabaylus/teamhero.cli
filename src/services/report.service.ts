@@ -7,6 +7,7 @@ import type { ReportCommandInput, ReportResult } from "../cli/index.js";
 import type {
 	CacheOptions,
 	DiscrepancyReport,
+	IdentityResolver,
 	LatestProjectStatus,
 	MemberTaskSummary,
 	MetricsCollectionResult,
@@ -36,6 +37,11 @@ import {
 import { getEnv } from "../lib/env.js";
 import { IndividualSummaryCache } from "../lib/individual-cache.js";
 import { cacheDir } from "../lib/paths.js";
+import {
+	buildReconciliationReport,
+	formatReconciliation,
+	isReconciliationClean,
+} from "../lib/reconciliation.js";
 import { createDefaultRegistry } from "../lib/renderer-registry.js";
 import type {
 	ReportMemberMetrics,
@@ -219,6 +225,8 @@ export interface ReportServiceDependencies {
 	roadmapTitle?: string;
 	/** User identity map for enriching display names from GitHub logins. */
 	userMap?: import("../models/user-identity.js").UserMap;
+	/** Canonical identity resolver, used to build the reconciliation report. */
+	identityResolver?: IdentityResolver;
 	/** Optional Jira story-point provider (gated by dataSources.jira). */
 	storyPointProvider?: StoryPointProvider;
 	/** Story-point fetch options (projects + fields), loaded from jira-config.json. */
@@ -501,9 +509,18 @@ export class ReportService {
 						});
 						memberMetrics = attached.members;
 						if (attached.unmatchedAssignees.length > 0) {
-							storyPointWarnings.push(
-								`Jira assignees with no identity-map match (story points dropped): ${attached.unmatchedAssignees.join(", ")}`,
-							);
+							// Surface unmatched Jira assignees through the reconciliation
+							// report (#34) — the same mechanism that flags unmapped git
+							// identities, rather than a bare warning string.
+							const resolver =
+								this.deps.identityResolver ??
+								({ persons: () => [] } as unknown as IdentityResolver);
+							const reconciliation = buildReconciliationReport(resolver, {
+								unmatchedJiraAssignees: attached.unmatchedAssignees,
+							});
+							if (!isReconciliationClean(reconciliation)) {
+								storyPointWarnings.push(formatReconciliation(reconciliation));
+							}
 						}
 						spStep.succeed("Story points collected");
 					} catch (error) {

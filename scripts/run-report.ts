@@ -204,7 +204,8 @@ async function main(): Promise<void> {
 		const identityMap = await loadIdentityMapFile(
 			".teamhero/local/identity-map.yaml",
 		);
-		const persons = createIdentityResolver(identityMap).persons();
+		const identityResolver = createIdentityResolver(identityMap);
+		const persons = identityResolver.persons();
 		const userMapEnv = getEnv("USER_MAP");
 		const deprecationNotice = userMapDeprecationNotice(userMapEnv);
 		if (deprecationNotice) logger.warn(deprecationNotice);
@@ -388,6 +389,7 @@ async function main(): Promise<void> {
 			asanaService: asana,
 			roadmapTitle: boardsResult?.roadmapTitle,
 			userMap,
+			identityResolver,
 			storyPointProvider,
 			storyPointOptions,
 		});

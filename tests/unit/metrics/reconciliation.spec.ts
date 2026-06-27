@@ -63,3 +63,33 @@ describe("isReconciliationClean / formatReconciliation", () => {
 		expect(text).toContain("person-d");
 	});
 });
+
+describe("buildReconciliationReport — unmatched Jira assignees (#34)", () => {
+	const resolver = createIdentityResolver([]);
+
+	it("includes unmatched Jira assignees from the inputs", () => {
+		const report = buildReconciliationReport(resolver, {
+			unmatchedJiraAssignees: ["Stranger Danger", "acct-xyz"],
+		});
+		expect(report.unmatchedJiraAssignees).toEqual([
+			"Stranger Danger",
+			"acct-xyz",
+		]);
+		expect(isReconciliationClean(report)).toBe(false);
+	});
+
+	it("renders them in the formatted summary", () => {
+		const report = buildReconciliationReport(resolver, {
+			unmatchedJiraAssignees: ["Stranger Danger"],
+		});
+		const text = formatReconciliation(report);
+		expect(text).toContain("Stranger Danger");
+		expect(text.toLowerCase()).toContain("jira");
+	});
+
+	it("stays clean when there are no unmatched assignees", () => {
+		const report = buildReconciliationReport(resolver, {});
+		expect(report.unmatchedJiraAssignees).toEqual([]);
+		expect(isReconciliationClean(report)).toBe(true);
+	});
+});

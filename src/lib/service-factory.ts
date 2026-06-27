@@ -87,7 +87,8 @@ export async function createReportService(
 	const identityMap = await loadIdentityMapFile(
 		".teamhero/local/identity-map.yaml",
 	);
-	const persons = createIdentityResolver(identityMap).persons();
+	const identityResolver = createIdentityResolver(identityMap);
+	const persons = identityResolver.persons();
 	const userMapEnv = getEnv("USER_MAP");
 	const deprecationNotice = userMapDeprecationNotice(userMapEnv);
 	if (deprecationNotice) logger.warn(deprecationNotice);
@@ -136,6 +137,7 @@ export async function createReportService(
 		progressFactory: options.progressFactory,
 		asanaService,
 		userMap,
+		identityResolver,
 		storyPointProvider,
 		storyPointOptions,
 	});

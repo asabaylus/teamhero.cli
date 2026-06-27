@@ -46,7 +46,7 @@ export function mergeUserMaps(
 export function userMapDeprecationNotice(
 	raw: string | undefined,
 ): string | undefined {
-	if (!raw || !raw.trim()) return undefined;
+	if (!raw?.trim()) return undefined;
 	return "USER_MAP env is deprecated; migrate its entries (github/asana/jira) to .teamhero/local/identity-map.yaml. It still works for now.";
 }
 
