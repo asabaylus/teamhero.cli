@@ -38,6 +38,19 @@ export function mergeUserMaps(
 }
 
 /**
+ * Deprecation notice for the legacy USER_MAP env. Returns the message when the
+ * env is set (so callers can log it once), or undefined. USER_MAP still works
+ * — entries fold in via {@link mergeUserMaps} — but identity-map.yaml is now the
+ * canonical source.
+ */
+export function userMapDeprecationNotice(
+	raw: string | undefined,
+): string | undefined {
+	if (!raw || !raw.trim()) return undefined;
+	return "USER_MAP env is deprecated; migrate its entries (github/asana/jira) to .teamhero/local/identity-map.yaml. It still works for now.";
+}
+
+/**
  * Parse the USER_MAP environment variable JSON into a UserMap.
  * Returns an empty map if the input is undefined or invalid.
  */

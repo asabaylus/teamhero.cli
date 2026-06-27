@@ -27,6 +27,7 @@ import {
 	mergeUserMaps,
 	parseUserMap,
 	personsToUserMap,
+	userMapDeprecationNotice,
 } from "./user-map.js";
 
 export interface ServiceFactoryOptions {
@@ -87,9 +88,12 @@ export async function createReportService(
 		".teamhero/local/identity-map.yaml",
 	);
 	const persons = createIdentityResolver(identityMap).persons();
+	const userMapEnv = getEnv("USER_MAP");
+	const deprecationNotice = userMapDeprecationNotice(userMapEnv);
+	if (deprecationNotice) logger.warn(deprecationNotice);
 	const userMap = mergeUserMaps(
 		personsToUserMap(persons),
-		parseUserMap(getEnv("USER_MAP")),
+		parseUserMap(userMapEnv),
 	);
 
 	// Jira story points are optional — only wire when both auth env and a saved

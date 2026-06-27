@@ -52,6 +52,7 @@ import {
 	mergeUserMaps,
 	parseUserMap,
 	personsToUserMap,
+	userMapDeprecationNotice,
 } from "../src/lib/user-map.js";
 import {
 	VISIBLE_WINS_ENV_KEYS,
@@ -204,9 +205,12 @@ async function main(): Promise<void> {
 			".teamhero/local/identity-map.yaml",
 		);
 		const persons = createIdentityResolver(identityMap).persons();
+		const userMapEnv = getEnv("USER_MAP");
+		const deprecationNotice = userMapDeprecationNotice(userMapEnv);
+		if (deprecationNotice) logger.warn(deprecationNotice);
 		const userMap = mergeUserMaps(
 			personsToUserMap(persons),
-			parseUserMap(getEnv("USER_MAP")),
+			parseUserMap(userMapEnv),
 		);
 		const asana = new AsanaService({
 			token: getEnv("ASANA_API_TOKEN"),

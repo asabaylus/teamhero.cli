@@ -55,3 +55,15 @@ describe("mergeUserMaps", () => {
 		expect(merged.extra.name).toBe("Env Only");
 	});
 });
+
+import { userMapDeprecationNotice } from "../../../src/lib/user-map.js";
+
+describe("userMapDeprecationNotice", () => {
+	it("returns a message when USER_MAP env is set", () => {
+		expect(userMapDeprecationNotice('{"a":{}}')).toContain("deprecated");
+	});
+	it("returns undefined when USER_MAP is unset/empty", () => {
+		expect(userMapDeprecationNotice(undefined)).toBeUndefined();
+		expect(userMapDeprecationNotice("  ")).toBeUndefined();
+	});
+});

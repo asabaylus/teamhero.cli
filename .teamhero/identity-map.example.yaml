@@ -25,6 +25,8 @@
   names: [Person A, persona-handle]
   # Jira accountId is the most reliable key for crediting story points.
   jira: { accountId: "557058:00000000-0000-0000-0000-000000000000", email: person-a@example.com }
+  # Asana account (replaces the legacy USER_MAP env, now deprecated).
+  asana: { userGid: "0000000000000000", email: person-a@example.com }
 
 - id: person-b
   name: Person B
