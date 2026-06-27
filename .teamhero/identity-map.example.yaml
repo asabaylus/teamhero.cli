@@ -1,0 +1,43 @@
+# Identity map — REDACTED EXAMPLE (placeholders only).
+#
+# This committed file documents the shape ONLY. The real, un-redacted map lives
+# at .teamhero/local/identity-map.yaml (gitignored) and must never contain
+# company-specific names or logins here. See docs/adr/0001-person-identity-model.md.
+#
+# One entry per Person. The resolver unions any entries that share a login,
+# email, or name, so a human split across entries (or owning a legacy second
+# account) still collapses into a single Person.
+#
+# Fields:
+#   id       (required) stable identifier for the entry
+#   name     (optional) preferred display name
+#   logins   (optional) GitHub logins — two here is the duplicate-account case
+#   emails   (optional) git author emails (matched case-insensitively)
+#   names    (optional) alternate git author names
+#   external (optional) true for an external collaborator (e.g. a vendor pod)
+
+- id: person-a
+  name: Person A
+  logins: [login-a]
+  emails: [person-a@example.com]
+  # A personal handle and the real name on the same email collapse to one Person.
+  names: [Person A, persona-handle]
+
+- id: person-b
+  name: Person B
+  # An active login plus a legacy account → one Person, flagged as a duplicate.
+  logins: [login-b, login-b-legacy]
+  emails: [person-b@example.com]
+
+- id: person-c
+  name: Person C
+  logins: [login-c]
+  # A second (vendor) email is unioned onto the same Person.
+  emails: [person-c@example.com, person-c@vendor.example]
+
+- id: person-d
+  name: Person D
+  logins: [login-d]
+  emails: [person-d@example.com]
+  # External collaborator: included in org-wide views, never silently dropped.
+  external: true

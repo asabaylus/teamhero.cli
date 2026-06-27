@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+	formatDateISO,
 	formatDateUTC,
 	resolveEndEpochMs,
 	resolveEndISO,
@@ -76,5 +77,20 @@ describe("formatDateUTC", () => {
 		const date = new Date("2026-02-28T00:00:00Z");
 		const formatted = formatDateUTC(date);
 		expect(formatted).toContain("28");
+	});
+});
+
+describe("formatDateISO", () => {
+	it("formats a UTC calendar date as YYYY-MM-DD", () => {
+		expect(formatDateISO(new Date("2026-01-01T00:00:00.000Z"))).toBe(
+			"2026-01-01",
+		);
+	});
+
+	it("uses UTC so a late-evening negative-offset instant keeps its UTC date", () => {
+		// 2026-01-31T23:30:00Z is still Jan 31 in UTC regardless of local zone.
+		expect(formatDateISO(new Date("2026-01-31T23:30:00.000Z"))).toBe(
+			"2026-01-31",
+		);
 	});
 });

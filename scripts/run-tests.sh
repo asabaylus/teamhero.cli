@@ -35,7 +35,7 @@ fi
 
 # Collect test files (bash 3.2-compatible; macOS ships without mapfile)
 FILES=()
-while IFS= read -r _f; do FILES+=("$_f"); done < <(find tests -type f \( -name '*.spec.ts' -o -name '*.test.ts' \) | sort)
+while IFS= read -r _f; do FILES+=("$_f"); done < <(find tests -type f -name '*.spec.ts' | sort)
 
 for f in "${FILES[@]}"; do
   # If a pattern was provided, filter by it

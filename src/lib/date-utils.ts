@@ -149,6 +149,15 @@ export function formatDateUTC(date: Date): string {
 }
 
 /**
+ * Format a Date as a UTC calendar date `YYYY-MM-DD`. Unlike {@link formatDateUTC}
+ * (human display), this is the machine form used in GitHub search queries
+ * (`created:START..END`). Always UTC to avoid local-timezone date shifts.
+ */
+export function formatDateISO(date: Date): string {
+	return date.toISOString().slice(0, 10);
+}
+
+/**
  * Validate that a date range is within allowed limits.
  * Throws DateValidationError if dates are invalid, since > until, or range exceeds MAX_REPORT_DAYS.
  */

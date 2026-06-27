@@ -35,6 +35,7 @@
 		"commander": "^14.0.3",
 		"consola": "^3.4.2",
 		"dotenv": "^17.4.0",
+		"exceljs": "^4.4.0",
 		"js-yaml": "^4.1.1",
 		"keytar": "^7.9.0",
 		"openai": "^6.33.0",

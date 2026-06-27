@@ -58,6 +58,18 @@ teamhero report --headless --foreground --flush-cache loc  # Force re-fetch LOC
 - Use `consola` for logging — never `console.log` (CLI layer has legacy violations)
 - `@inquirer/prompts` is being removed — do not use in new code
 
+## LoC Commit Collection (Easy to Get Wrong)
+
+- LoC line counts come from **GraphQL** (`src/metrics/loc.graphql.ts`), not REST. The
+  REST commits LIST never includes `stats`, so the old path made a per-commit detail
+  call (N+1) that exhausted the 5k/hr limit partway through a large org. GraphQL
+  returns `additions`/`deletions` inline — ~1 query per 100 commits.
+- `collectRepoCommits` in `loc.rest.ts` is now a thin wrapper that builds a per-token
+  Octokit client and delegates to `collectRepoCommitsGraphQL`. `loc.rest.ts` still owns
+  org discovery (REST) + orchestration/merge; don't reintroduce per-commit REST fetches.
+- `src/metrics/loc.stats.ts` (the `/stats/contributors` collector) is **dead code** with
+  stale types — not wired to anything. Don't build on it.
+
 ## TUI: Gum Is Legacy
 
 - The Go TUI in `tui/` is now primary; `src/adapters/ui/gum-ui.ts` is a deprecated fallback
