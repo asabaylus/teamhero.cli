@@ -15,7 +15,8 @@
 			"!**/.claude-plugin",
 			"!**/site",
 			"!**/.cache",
-			"!**/.local"
+			"!**/.local",
+			"!**/.teamhero"
 		]
 	},
 	"linter": {
