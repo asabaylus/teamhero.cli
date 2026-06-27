@@ -12,6 +12,7 @@ import type {
 const DEFAULT_ISSUE_TYPES = ["Story", "Task"];
 const MAX_RETRIES = 3;
 const PAGE_SIZE = 100;
+const SEARCH_TIMEOUT_MS = 30_000;
 
 export interface JiraStoryPointProviderConfig {
 	baseUrl?: string;
@@ -104,7 +105,11 @@ export class JiraStoryPointProvider implements StoryPointProvider {
 					this.creditIssue(issue, project, byPerson, unmatched, creditBy);
 				}
 			} catch (err) {
-				this.warnProjectFailure(project.key, err);
+				// Only genuine not-found / field-absent cases are downgraded to a
+				// warning; auth (401/403), rate-limit/transient (429/5xx), and
+				// network errors rethrow so they surface accurately (the report-time
+				// guard catches them and never aborts a git/Asana report).
+				if (!this.warnProjectFailure(project.key, err)) throw err;
 			}
 		}
 
@@ -126,11 +131,9 @@ export class JiraStoryPointProvider implements StoryPointProvider {
 			creditBy === "resolver"
 				? (resolveTransitionAuthor(issue) ?? issue.fields.assignee)
 				: issue.fields.assignee;
+		// Deterministic mapping: credit by Jira accountId only, no email fallback.
 		const accountId = creditee?.accountId;
-		const email = creditee?.emailAddress?.toLowerCase();
-		const canonicalId =
-			(accountId ? this.jiraLookup.get(accountId) : undefined) ??
-			(email ? this.jiraLookup.get(email) : undefined);
+		const canonicalId = accountId ? this.jiraLookup.get(accountId) : undefined;
 
 		if (!canonicalId) {
 			unmatched.add(
@@ -196,16 +199,32 @@ export class JiraStoryPointProvider implements StoryPointProvider {
 		);
 		let lastErr: unknown;
 		for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-			const res = await fetch(url, {
-				method: "POST",
-				headers: {
-					authorization: `Basic ${auth}`,
-					"content-type": "application/json",
-					accept: "application/json",
-					"user-agent": this.userAgent,
-				},
-				body: JSON.stringify(body),
-			});
+			const controller = new AbortController();
+			const timer = setTimeout(() => controller.abort(), SEARCH_TIMEOUT_MS);
+			let res: Response;
+			try {
+				res = await fetch(url, {
+					method: "POST",
+					headers: {
+						authorization: `Basic ${auth}`,
+						"content-type": "application/json",
+						accept: "application/json",
+						"user-agent": this.userAgent,
+					},
+					body: JSON.stringify(body),
+					signal: controller.signal,
+				});
+			} catch (err) {
+				// Timeout/network error: retry a few times, then surface.
+				lastErr = err;
+				if (attempt < MAX_RETRIES) {
+					await delay(2 ** attempt * 250);
+					continue;
+				}
+				throw err;
+			} finally {
+				clearTimeout(timer);
+			}
 			if (res.ok) {
 				return (await res.json()) as JiraSearchPage;
 			}
@@ -225,7 +244,12 @@ export class JiraStoryPointProvider implements StoryPointProvider {
 	private warnedProjectNotFound = new Set<string>();
 	private warnedFieldAbsent = new Set<string>();
 
-	private warnProjectFailure(key: string, err: unknown): void {
+	/**
+	 * Returns true when the error is a benign per-project case (field absent or
+	 * project not found) that should be warned-and-skipped; false for auth,
+	 * rate-limit, transient, or network errors that the caller must rethrow.
+	 */
+	private warnProjectFailure(key: string, err: unknown): boolean {
 		const status = (err as { status?: number }).status;
 		// 400 from a JQL search on this instance almost always means the
 		// story-point field name/id isn't on the project (estimation disabled).
@@ -236,15 +260,19 @@ export class JiraStoryPointProvider implements StoryPointProvider {
 					`[jira] story-point field not present on project ${key}; contributing 0. (${(err as Error).message})`,
 				);
 			}
-			return;
+			return true;
 		}
-		// 404 (and anything else) → project not matched / not found.
-		if (!this.warnedProjectNotFound.has(key)) {
-			this.warnedProjectNotFound.add(key);
-			this.logger.warn(
-				`[jira] project ${key} not found or unreadable; skipping. (${(err as Error).message})`,
-			);
+		if (status === 404) {
+			if (!this.warnedProjectNotFound.has(key)) {
+				this.warnedProjectNotFound.add(key);
+				this.logger.warn(
+					`[jira] project ${key} not found or unreadable; skipping. (${(err as Error).message})`,
+				);
+			}
+			return true;
 		}
+		// 401/403/429/5xx/network → not a per-project skip; let the caller rethrow.
+		return false;
 	}
 }
 
@@ -260,7 +288,7 @@ export function buildJql(
 	issueTypes: string[],
 	window: ReportingWindow,
 ): string {
-	const types = issueTypes.join(", ");
+	const types = issueTypes.map(quoteJql).join(", ");
 	const start = toJqlDate(window.startISO);
 	const end = toJqlDate(window.endISO);
 	return (
@@ -279,6 +307,11 @@ function resolveTransitionAuthor(issue: JiraIssue): JiraUser | undefined {
 		.filter((h) => (h.items ?? []).some((i) => i.field === "status"))
 		.sort((a, b) => (a.created ?? "").localeCompare(b.created ?? ""));
 	return histories[histories.length - 1]?.author;
+}
+
+/** Quote and escape a JQL string literal (backslashes and double quotes). */
+function quoteJql(value: string): string {
+	return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
 /** Jira JQL dates use "YYYY-MM-DD HH:mm" (no seconds, no TZ). */

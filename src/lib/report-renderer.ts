@@ -125,6 +125,8 @@ export interface ReportSections {
 	technicalFoundationalWins?: boolean;
 	individualContributions?: boolean;
 	discrepancyLog?: boolean;
+	/** Jira story-point source enabled — gates the Story Points column. */
+	storyPoints?: boolean;
 }
 
 function sortMemberMetrics(
@@ -203,11 +205,10 @@ export function renderReport(input: ReportRenderInput): string {
 				(m.linesAddedInProgress ?? 0) > 0 ||
 				(m.linesDeletedInProgress ?? 0) > 0,
 		);
-		// Story Points column appears only when the Jira source populated it, so
-		// reports with the source off stay byte-for-byte unchanged.
-		const hasStoryPoints = members.some(
-			(m) => m.storyPointsCompleted !== undefined,
-		);
+		// Story Points column is gated on the Jira source being enabled (not on
+		// member values), so reports with the source off stay byte-for-byte
+		// unchanged and an all-zero week still shows the column when Jira ran.
+		const hasStoryPoints = input.sections.storyPoints === true;
 		const spHeader = hasStoryPoints ? " Story Points |" : "";
 		const spAlign = hasStoryPoints ? "-------------:|" : "";
 		const spCell = (m: ReportMemberMetrics) =>

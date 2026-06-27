@@ -159,6 +159,16 @@ function buildPersons(map: IdentityMap): Person[] {
 		const names: string[] = [];
 		const jiraAccountIds: string[] = [];
 		let asana: Person["asana"];
+		const mergeAsana = (a: Person["asana"]) => {
+			if (!a) return;
+			// Field-by-field: fill any field not already supplied by an earlier entry.
+			asana = {
+				email: asana?.email ?? a.email,
+				name: asana?.name ?? a.name,
+				userGid: asana?.userGid ?? a.userGid,
+				workspaceGid: asana?.workspaceGid ?? a.workspaceGid,
+			};
+		};
 		let external = false;
 		for (const entry of group) {
 			for (const login of entry.logins ?? [])
@@ -168,7 +178,7 @@ function buildPersons(map: IdentityMap): Person[] {
 			for (const name of entry.names ?? []) pushUnique(names, normName(name));
 			if (entry.jira?.accountId)
 				pushUnique(jiraAccountIds, entry.jira.accountId);
-			if (!asana && entry.asana) asana = entry.asana;
+			mergeAsana(entry.asana);
 			if (entry.external) external = true;
 		}
 		const representative = group[0];

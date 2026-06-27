@@ -269,8 +269,9 @@ export interface StoryPointOptions {
 }
 
 /**
- * Story points completed in the window for one Person, keyed by canonical id
- * in the result map (mirrors {@link MemberTaskSummary} so it merges cleanly).
+ * Story points completed in the window for one developer. In the result map the
+ * key is the member login the report attributes by (mirrors {@link MemberTaskSummary}
+ * so it merges cleanly onto ReportMemberMetrics).
  */
 export interface StoryPointResult {
 	status: "matched" | "no-match" | "disabled";
@@ -285,8 +286,8 @@ export interface StoryPointResult {
 export interface StoryPointProvider {
 	readonly enabled: boolean;
 	/**
-	 * Returns story points completed in the window keyed by canonical Person id.
-	 * Jira assignees that match no Person are surfaced via {@link unmatchedAssignees}.
+	 * Returns story points completed in the window keyed by member login.
+	 * Jira assignees that match no member are surfaced via {@link unmatchedAssignees}.
 	 */
 	fetchCompletedStoryPoints(
 		members: TaskTrackerMemberInput[],
@@ -296,7 +297,7 @@ export interface StoryPointProvider {
 }
 
 export interface StoryPointFetchResult {
-	/** Keyed by canonical Person id. */
+	/** Keyed by member login (the key the report merges story points on). */
 	byPerson: Map<string, StoryPointResult>;
 	/** Jira assignee display names (or accountIds) that matched no Person. */
 	unmatchedAssignees: string[];

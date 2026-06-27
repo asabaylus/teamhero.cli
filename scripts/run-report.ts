@@ -49,6 +49,7 @@ import { RunHistoryStore } from "../src/lib/run-history.js";
 import { appendUnifiedLog } from "../src/lib/unified-log.js";
 import {
 	buildJiraLoginLookupFromPersons,
+	jiraIdentityCacheKey,
 	mergeUserMaps,
 	parseUserMap,
 	personsToUserMap,
@@ -353,24 +354,39 @@ async function main(): Promise<void> {
 		const jiraBaseUrl = getEnv("JIRA_BASE_URL");
 		const jiraEmail = getEnv("JIRA_EMAIL");
 		const jiraToken = getEnv("JIRA_API_TOKEN");
-		if (jiraBaseUrl && jiraEmail && jiraToken) {
-			const jiraConfig = await loadJiraConfig();
-			if (jiraConfig) {
-				storyPointProvider = new CachedStoryPointProvider(
-					new JiraStoryPointProvider({
-						baseUrl: jiraBaseUrl,
-						email: jiraEmail,
-						apiToken: jiraToken,
-						jiraLookup: buildJiraLoginLookupFromPersons(persons),
-						logger: logger.withTag("jira"),
-					}),
-					cacheOptions,
+		// Only touch optional Jira config when this report actually requests it, and
+		// never let a malformed config abort a non-Jira (or any) report.
+		if (
+			input.sections.dataSources.jira &&
+			jiraBaseUrl &&
+			jiraEmail &&
+			jiraToken
+		) {
+			try {
+				const jiraConfig = await loadJiraConfig();
+				if (jiraConfig) {
+					const jiraLookup = buildJiraLoginLookupFromPersons(persons);
+					storyPointProvider = new CachedStoryPointProvider(
+						new JiraStoryPointProvider({
+							baseUrl: jiraBaseUrl,
+							email: jiraEmail,
+							apiToken: jiraToken,
+							jiraLookup,
+							logger: logger.withTag("jira"),
+						}),
+						cacheOptions,
+						jiraIdentityCacheKey(jiraLookup),
+					);
+					storyPointOptions = {
+						projects: jiraConfig.projects,
+						issueTypes: jiraConfig.issueTypes,
+						creditBy: jiraConfig.creditBy,
+					};
+				}
+			} catch (err) {
+				logger.warn(
+					`[jira] ignoring invalid Jira config: ${(err as Error).message}`,
 				);
-				storyPointOptions = {
-					projects: jiraConfig.projects,
-					issueTypes: jiraConfig.issueTypes,
-					creditBy: jiraConfig.creditBy,
-				};
 			}
 		}
 

@@ -82,11 +82,18 @@ export async function loadJiraConfig(): Promise<JiraConfig | null> {
 	let raw: string;
 	try {
 		raw = await readFile(path, "utf8");
-	} catch {
-		consola.debug(
-			`[jira-config] No config at ${path}; Jira story points unconfigured`,
+	} catch (err) {
+		// Only a missing file means "unconfigured". A permission/IO error is a real
+		// problem and must not be silently swallowed as if no config existed.
+		if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+			consola.debug(
+				`[jira-config] No config at ${path}; Jira story points unconfigured`,
+			);
+			return null;
+		}
+		throw new Error(
+			`Failed to read Jira config at ${path}: ${(err as Error).message}`,
 		);
-		return null;
 	}
 
 	let parsed: { projects?: unknown; issueTypes?: unknown; creditBy?: unknown };
@@ -109,16 +116,28 @@ export async function loadJiraConfig(): Promise<JiraConfig | null> {
 
 	const projects = parsed.projects.map((p, i) => coerceProject(p, i, path));
 
-	const issueTypes =
-		Array.isArray(parsed.issueTypes) &&
-		parsed.issueTypes.every((t) => typeof t === "string")
-			? (parsed.issueTypes as string[])
-			: undefined;
+	let issueTypes: string[] | undefined;
+	if (parsed.issueTypes !== undefined) {
+		if (
+			!Array.isArray(parsed.issueTypes) ||
+			!parsed.issueTypes.every((t) => typeof t === "string" && t.trim())
+		) {
+			throw new Error(
+				`Invalid Jira config at ${path}: "issueTypes" must be an array of non-empty strings`,
+			);
+		}
+		issueTypes = parsed.issueTypes as string[];
+	}
 
 	const creditBy =
 		parsed.creditBy === "assignee" || parsed.creditBy === "resolver"
 			? parsed.creditBy
 			: undefined;
+	if (parsed.creditBy !== undefined && creditBy === undefined) {
+		throw new Error(
+			`Invalid Jira config at ${path}: "creditBy" must be "assignee" or "resolver"`,
+		);
+	}
 
 	return { projects, issueTypes, creditBy };
 }

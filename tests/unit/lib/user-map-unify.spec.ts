@@ -71,17 +71,17 @@ describe("userMapDeprecationNotice", () => {
 import { buildJiraLoginLookupFromPersons } from "../../../src/lib/user-map.js";
 
 describe("buildJiraLoginLookupFromPersons", () => {
-	it("maps every Jira accountId a Person owns to their login", () => {
+	it("maps the Jira accountId to the login (accountId only, no email fallback)", () => {
 		const lookup = buildJiraLoginLookupFromPersons([
 			person({
 				id: "asa",
 				logins: ["asabaylus"],
 				emails: ["asa@company.com"],
-				jiraAccountIds: ["acct-gogtp", "acct-stratus"],
+				jiraAccountIds: ["acct-asa"],
 			}),
 		]);
-		expect(lookup.get("acct-gogtp")).toBe("asabaylus");
-		expect(lookup.get("acct-stratus")).toBe("asabaylus");
-		expect(lookup.get("asa@company.com")).toBe("asabaylus");
+		expect(lookup.get("acct-asa")).toBe("asabaylus");
+		// no email fallback
+		expect(lookup.get("asa@company.com")).toBeUndefined();
 	});
 });

@@ -24,6 +24,7 @@ import { loadOctokitFromEnv } from "./octokit.js";
 import { configDir } from "./paths.js";
 import {
 	buildJiraLoginLookupFromPersons,
+	jiraIdentityCacheKey,
 	mergeUserMaps,
 	parseUserMap,
 	personsToUserMap,
@@ -105,24 +106,34 @@ export async function createReportService(
 	const jiraEmail = getEnv("JIRA_EMAIL");
 	const jiraToken = getEnv("JIRA_API_TOKEN");
 	if (jiraBaseUrl && jiraEmail && jiraToken) {
-		const jiraConfig = await loadJiraConfig();
-		if (jiraConfig) {
-			const jira = new JiraStoryPointProvider({
-				baseUrl: jiraBaseUrl,
-				email: jiraEmail,
-				apiToken: jiraToken,
-				jiraLookup: buildJiraLoginLookupFromPersons(persons),
-				logger: logger.withTag("jira"),
-			});
-			storyPointProvider = new CachedStoryPointProvider(
-				jira,
-				options.cacheOptions ?? {},
+		try {
+			const jiraConfig = await loadJiraConfig();
+			if (jiraConfig) {
+				const jiraLookup = buildJiraLoginLookupFromPersons(persons);
+				const jira = new JiraStoryPointProvider({
+					baseUrl: jiraBaseUrl,
+					email: jiraEmail,
+					apiToken: jiraToken,
+					jiraLookup,
+					logger: logger.withTag("jira"),
+				});
+				storyPointProvider = new CachedStoryPointProvider(
+					jira,
+					options.cacheOptions ?? {},
+					jiraIdentityCacheKey(jiraLookup),
+				);
+				storyPointOptions = {
+					projects: jiraConfig.projects,
+					issueTypes: jiraConfig.issueTypes,
+					creditBy: jiraConfig.creditBy,
+				};
+			}
+		} catch (err) {
+			// A malformed optional Jira config must not abort service creation;
+			// leave story points unconfigured so the report-time guard warns+skips.
+			logger.warn(
+				`[jira] ignoring invalid Jira config: ${(err as Error).message}`,
 			);
-			storyPointOptions = {
-				projects: jiraConfig.projects,
-				issueTypes: jiraConfig.issueTypes,
-				creditBy: jiraConfig.creditBy,
-			};
 		}
 	}
 

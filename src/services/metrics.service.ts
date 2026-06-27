@@ -8,6 +8,7 @@ import type {
 	RawPullRequestInfo,
 } from "../core/types.js";
 import { resolveEndEpochMs, resolveStartISO } from "../lib/date-utils.js";
+import { getEnv } from "../lib/env.js";
 import { loadIdentityMapFile } from "../lib/identity-map.js";
 import type { OctokitClient } from "../lib/octokit.js";
 import { buildReconciliationReport } from "../lib/reconciliation.js";
@@ -90,7 +91,10 @@ export class MetricsService implements MetricsProvider {
 	private getResolver(): Promise<IdentityResolver> {
 		if (this.resolver) return Promise.resolve(this.resolver);
 		if (!this.resolverPromise) {
-			this.resolverPromise = loadIdentityMapFile(IDENTITY_MAP_PATH)
+			// Path is overridable so tests (and alternate setups) don't depend on a
+			// real local identity map sitting in the working directory.
+			const path = getEnv("TEAMHERO_IDENTITY_MAP") ?? IDENTITY_MAP_PATH;
+			this.resolverPromise = loadIdentityMapFile(path)
 				.then((map) => createIdentityResolver(map))
 				.catch(() => createIdentityResolver([]));
 		}

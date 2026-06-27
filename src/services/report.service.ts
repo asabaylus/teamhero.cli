@@ -490,10 +490,11 @@ export class ReportService {
 			if (input.sections.dataSources.jira) {
 				const projects = this.deps.storyPointOptions?.projects ?? [];
 				if (!this.storyPointProvider?.enabled || projects.length === 0) {
-					const msg =
-						"Story points requested but Jira is not configured. Run `teamhero setup` to select Jira projects and story-point fields, or omit the jira source.";
-					storyPointWarnings.push(msg);
-					this.logger.warn(`[jira] ${msg}`);
+					// Pushed to storyPointWarnings, which the post-cleanup stderr layer
+					// logs once — don't also logger.warn here (avoids a duplicate line).
+					storyPointWarnings.push(
+						"Story points requested but Jira is not configured. Run `teamhero setup` to select Jira projects and story-point fields, or omit the jira source.",
+					);
 					progress
 						.start("Skipping story points (Jira unconfigured).")
 						.succeed();

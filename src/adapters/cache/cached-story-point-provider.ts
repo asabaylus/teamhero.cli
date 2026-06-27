@@ -33,6 +33,12 @@ export class CachedStoryPointProvider implements StoryPointProvider {
 	constructor(
 		private readonly inner: StoryPointProvider,
 		private readonly cacheOptions: CacheOptions = {},
+		/**
+		 * Stable version of the Jira identity mapping. Included in the cache key so
+		 * a change to the identity map / USER_MAP invalidates cached (possibly
+		 * misattributed) results instead of serving them from a permanent entry.
+		 */
+		private readonly identityCacheKey = "",
 	) {
 		this.cache = new FileSystemCacheStore({
 			namespace: NAMESPACE,
@@ -68,6 +74,7 @@ export class CachedStoryPointProvider implements StoryPointProvider {
 				.join(","),
 			issueTypes: (options.issueTypes ?? []).join(","),
 			creditBy: options.creditBy ?? "assignee",
+			identityCacheKey: this.identityCacheKey,
 		});
 
 		const sourceMatch =

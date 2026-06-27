@@ -60,8 +60,12 @@ export const executiveRenderer: ReportRenderer = {
 		const hasStoryPoints = input.memberMetrics.some(
 			(m) => m.storyPointsCompleted !== undefined,
 		);
+		const storyPointsTotal = input.memberMetrics.reduce(
+			(sum, m) => sum + (m.storyPointsCompleted ?? 0),
+			0,
+		);
 		const storyPointsSuffix = hasStoryPoints
-			? `, ${input.memberMetrics.reduce((sum, m) => sum + (m.storyPointsCompleted ?? 0), 0)} story points completed`
+			? `, ${storyPointsTotal} story point${storyPointsTotal === 1 ? "" : "s"} completed`
 			: "";
 		parts.push(
 			`**Key Metrics:** ${prsMerged} PRs merged across ${repoCount} repos by ${contributorCount} engineers${storyPointsSuffix}`,

@@ -123,10 +123,9 @@ function parseJiraAccount(value: unknown): UserIdentity["jira"] | undefined {
 }
 
 /**
- * Build a Jira accountId/email → GitHub login lookup from canonical Persons,
- * including EVERY jiraAccountId a Person owns (people commonly have two Jira
- * accounts, e.g. across email domains). Preferred over {@link buildJiraLoginLookup}
- * for the report path; the single-valued UserMap form is back-compat for USER_MAP.
+ * Build a Jira accountId → GitHub login lookup from the deterministic identity
+ * map (one Jira account + one GitHub login per person). Attribution is by
+ * `accountId` only — no email/name fallbacks.
  */
 export function buildJiraLoginLookupFromPersons(
 	persons: Person[],
@@ -137,10 +136,6 @@ export function buildJiraLoginLookupFromPersons(
 		if (!login) continue;
 		for (const accountId of p.jiraAccountIds ?? [])
 			lookup.set(accountId, login);
-		for (const email of p.emails) {
-			const key = email.toLowerCase();
-			if (!lookup.has(key)) lookup.set(key, login);
-		}
 	}
 	return lookup;
 }
@@ -162,6 +157,18 @@ export function buildJiraLoginLookup(userMap: UserMap): Map<string, string> {
 		}
 	}
 	return lookup;
+}
+
+/**
+ * Stable, order-independent fingerprint of a Jira accountId→login lookup, for
+ * use as a cache-key component so identity-map changes invalidate cached
+ * story-point results.
+ */
+export function jiraIdentityCacheKey(lookup: Map<string, string>): string {
+	return [...lookup.entries()]
+		.map(([k, v]) => `${k}:${v}`)
+		.sort()
+		.join(",");
 }
 
 /**

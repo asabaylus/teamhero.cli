@@ -70,7 +70,7 @@ describe("buildJql", () => {
 	it("filters by project, issue types, Done, and the resolution window", () => {
 		const jql = buildJql("PT", ["Story", "Task"], WINDOW);
 		expect(jql).toContain('project = "PT"');
-		expect(jql).toContain("issuetype in (Story, Task)");
+		expect(jql).toContain('issuetype in ("Story", "Task")');
 		expect(jql).toContain("statusCategory = Done");
 		expect(jql).toContain('resolutiondate >= "2026-06-01 00:00"');
 		// exclusive upper bound
@@ -180,6 +180,15 @@ describe("JiraStoryPointProvider — warnings (deduped, never fatal)", () => {
 		await p.fetchCompletedStoryPoints([], WINDOW, OPTIONS);
 
 		expect(warnings.filter((w) => w.includes("not found")).length).toBe(1);
+	});
+
+	it("rethrows auth/transient failures instead of masking them as not-found", async () => {
+		const p = provider();
+		const err = Object.assign(new Error("Unauthorized"), { status: 401 });
+		spyOn(p as never, "search").mockRejectedValue(err);
+		await expect(
+			p.fetchCompletedStoryPoints([], WINDOW, OPTIONS),
+		).rejects.toThrow(/Unauthorized/);
 	});
 });
 

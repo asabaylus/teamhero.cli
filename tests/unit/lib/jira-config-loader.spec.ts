@@ -8,6 +8,7 @@ import {
 } from "../../../src/lib/jira-config-loader.js";
 
 const tmpDirs: string[] = [];
+const ORIGINAL_JIRA_CONFIG_PATH = process.env.JIRA_CONFIG_PATH;
 
 function configFile(contents: string): string {
 	const dir = mkdtempSync(join(tmpdir(), "jira-config-"));
@@ -19,7 +20,11 @@ function configFile(contents: string): string {
 }
 
 afterEach(() => {
-	delete process.env.JIRA_CONFIG_PATH;
+	if (ORIGINAL_JIRA_CONFIG_PATH === undefined) {
+		delete process.env.JIRA_CONFIG_PATH;
+	} else {
+		process.env.JIRA_CONFIG_PATH = ORIGINAL_JIRA_CONFIG_PATH;
+	}
 	for (const d of tmpDirs.splice(0))
 		rmSync(d, { recursive: true, force: true });
 });
@@ -82,5 +87,25 @@ describe("loadJiraConfig", () => {
 	it("throws when a project entry is missing a required field", async () => {
 		configFile(JSON.stringify({ projects: [{ key: "PT", fieldId: "x" }] }));
 		await expect(loadJiraConfig()).rejects.toThrow(/missing "jqlName"/);
+	});
+
+	it("rejects a malformed creditBy instead of silently defaulting", async () => {
+		configFile(
+			JSON.stringify({
+				projects: [{ key: "PT", fieldId: "x", jqlName: "y" }],
+				creditBy: "whoever",
+			}),
+		);
+		await expect(loadJiraConfig()).rejects.toThrow(/creditBy/);
+	});
+
+	it("rejects malformed issueTypes", async () => {
+		configFile(
+			JSON.stringify({
+				projects: [{ key: "PT", fieldId: "x", jqlName: "y" }],
+				issueTypes: "Story",
+			}),
+		);
+		await expect(loadJiraConfig()).rejects.toThrow(/issueTypes/);
 	});
 });

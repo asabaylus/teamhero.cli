@@ -39,7 +39,10 @@ function makeMember(
 	};
 }
 
-function makeInput(members: ReportMemberMetrics[]): ReportRenderInput {
+function makeInput(
+	members: ReportMemberMetrics[],
+	storyPoints = true,
+): ReportRenderInput {
 	return {
 		schemaVersion: 1,
 		orgSlug: "acme",
@@ -60,14 +63,23 @@ function makeInput(members: ReportMemberMetrics[]): ReportRenderInput {
 		globalHighlights: [],
 		metricsDefinition: "x",
 		archivedNote: "No repos archived.",
-		sections: { git: true, taskTracker: true },
+		sections: { git: true, taskTracker: true, storyPoints },
 	} as ReportRenderInput;
 }
 
 describe("renderReport — Story Points column", () => {
-	it("omits the column entirely when no member has story points", () => {
-		const out = renderReport(makeInput([makeMember()]));
+	it("omits the column entirely when the Jira source is disabled", () => {
+		const out = renderReport(
+			makeInput([makeMember({ storyPointsCompleted: 5 })], false),
+		);
 		expect(out).not.toContain("Story Points");
+	});
+
+	it("shows the column (zeroed) when enabled even if a member has no value", () => {
+		const out = renderReport(makeInput([makeMember()], true));
+		expect(out).toContain("Story Points |");
+		const row = out.split("\n").find((l) => l.startsWith("| Dev One |"));
+		expect(row?.endsWith("0 |")).toBe(true);
 	});
 
 	it("renders the column in the simple (no in-progress) table variant", () => {
