@@ -23,16 +23,27 @@ export interface JiraStoryPointProviderConfig {
 	userAgent?: string;
 }
 
+interface JiraUser {
+	accountId?: string;
+	displayName?: string;
+	emailAddress?: string | null;
+}
+
+interface JiraChangelog {
+	histories?: Array<{
+		author?: JiraUser;
+		created?: string;
+		items?: Array<{ field?: string; to?: string; toString?: string }>;
+	}>;
+}
+
 interface JiraIssue {
 	key: string;
 	fields: {
-		assignee?: {
-			accountId?: string;
-			displayName?: string;
-			emailAddress?: string | null;
-		} | null;
+		assignee?: JiraUser | null;
 		[fieldId: string]: unknown;
 	};
+	changelog?: JiraChangelog;
 }
 
 interface JiraSearchPage {
@@ -79,12 +90,18 @@ export class JiraStoryPointProvider implements StoryPointProvider {
 		}
 
 		const issueTypes = options.issueTypes ?? DEFAULT_ISSUE_TYPES;
+		const creditBy = options.creditBy ?? "assignee";
 
 		for (const project of options.projects) {
 			try {
-				const issues = await this.searchProject(project, issueTypes, window);
+				const issues = await this.searchProject(
+					project,
+					issueTypes,
+					window,
+					creditBy,
+				);
 				for (const issue of issues) {
-					this.creditIssue(issue, project, byPerson, unmatched);
+					this.creditIssue(issue, project, byPerson, unmatched, creditBy);
 				}
 			} catch (err) {
 				this.warnProjectFailure(project.key, err);
@@ -100,20 +117,24 @@ export class JiraStoryPointProvider implements StoryPointProvider {
 		project: JiraProjectFieldConfig,
 		byPerson: Map<string, StoryPointResult>,
 		unmatched: Set<string>,
+		creditBy: "assignee" | "resolver",
 	): void {
 		const rawPoints = issue.fields[project.fieldId];
 		const points = typeof rawPoints === "number" ? rawPoints : 0;
 
-		const assignee = issue.fields.assignee;
-		const accountId = assignee?.accountId;
-		const email = assignee?.emailAddress?.toLowerCase();
+		const creditee =
+			creditBy === "resolver"
+				? (resolveTransitionAuthor(issue) ?? issue.fields.assignee)
+				: issue.fields.assignee;
+		const accountId = creditee?.accountId;
+		const email = creditee?.emailAddress?.toLowerCase();
 		const canonicalId =
 			(accountId ? this.jiraLookup.get(accountId) : undefined) ??
 			(email ? this.jiraLookup.get(email) : undefined);
 
 		if (!canonicalId) {
 			unmatched.add(
-				assignee?.displayName ?? accountId ?? `${issue.key} (unassigned)`,
+				creditee?.displayName ?? accountId ?? `${issue.key} (unassigned)`,
 			);
 			return;
 		}
@@ -138,13 +159,16 @@ export class JiraStoryPointProvider implements StoryPointProvider {
 		project: JiraProjectFieldConfig,
 		issueTypes: string[],
 		window: ReportingWindow,
+		creditBy: "assignee" | "resolver",
 	): Promise<JiraIssue[]> {
 		const jql = buildJql(project.key, issueTypes, window);
 		const fields = ["assignee", project.fieldId, "resolutiondate", "issuetype"];
+		// Resolver credit needs the status-transition history.
+		const expand = creditBy === "resolver" ? ["changelog"] : undefined;
 		const all: JiraIssue[] = [];
 		let pageToken: string | undefined;
 		do {
-			const page = await this.search(jql, fields, pageToken);
+			const page = await this.search(jql, fields, pageToken, expand);
 			all.push(...page.issues);
 			pageToken = page.isLast ? undefined : page.nextPageToken;
 		} while (pageToken);
@@ -156,6 +180,7 @@ export class JiraStoryPointProvider implements StoryPointProvider {
 		jql: string,
 		fields: string[],
 		pageToken?: string,
+		expand?: string[],
 	): Promise<JiraSearchPage> {
 		const url = new URL(`${this.baseUrl}/rest/api/3/search/jql`);
 		const body: Record<string, unknown> = {
@@ -163,6 +188,7 @@ export class JiraStoryPointProvider implements StoryPointProvider {
 			fields,
 			maxResults: PAGE_SIZE,
 		};
+		if (expand) body.expand = expand;
 		if (pageToken) body.nextPageToken = pageToken;
 
 		const auth = Buffer.from(`${this.email}:${this.apiToken}`).toString(
@@ -242,6 +268,17 @@ export function buildJql(
 		`AND statusCategory = Done ` +
 		`AND resolutiondate >= "${start}" AND resolutiondate < "${end}"`
 	);
+}
+
+/**
+ * Find who performed the most recent status transition (the person who moved
+ * the issue into its final/Done state). Used for `creditBy: "resolver"`.
+ */
+function resolveTransitionAuthor(issue: JiraIssue): JiraUser | undefined {
+	const histories = (issue.changelog?.histories ?? [])
+		.filter((h) => (h.items ?? []).some((i) => i.field === "status"))
+		.sort((a, b) => (a.created ?? "").localeCompare(b.created ?? ""));
+	return histories[histories.length - 1]?.author;
 }
 
 /** Jira JQL dates use "YYYY-MM-DD HH:mm" (no seconds, no TZ). */

@@ -182,3 +182,68 @@ describe("JiraStoryPointProvider — warnings (deduped, never fatal)", () => {
 		expect(warnings.filter((w) => w.includes("not found")).length).toBe(1);
 	});
 });
+
+describe("JiraStoryPointProvider — creditBy: resolver", () => {
+	it("credits the most recent status-transition author, not the assignee", async () => {
+		const p = provider({
+			jiraLookup: new Map([
+				["acct-jane", "jane-doe"],
+				["acct-rob", "rob-roe"],
+			]),
+		});
+		const issueWithChangelog = {
+			key: "PT-1",
+			fields: { assignee: { accountId: "acct-jane" }, [PT_FIELD]: 5 },
+			changelog: {
+				histories: [
+					{
+						author: { accountId: "acct-jane" },
+						created: "2026-06-02T10:00:00Z",
+						items: [{ field: "status" }],
+					},
+					{
+						author: { accountId: "acct-rob" },
+						created: "2026-06-05T10:00:00Z",
+						items: [{ field: "status" }],
+					},
+				],
+			},
+		};
+		spyOn(p as never, "search").mockResolvedValue({
+			issues: [issueWithChangelog],
+			isLast: true,
+		});
+
+		const result = await p.fetchCompletedStoryPoints([], WINDOW, {
+			...OPTIONS,
+			creditBy: "resolver",
+		});
+
+		expect(result.byPerson.get("rob-roe")?.totalPoints).toBe(5);
+		expect(result.byPerson.has("jane-doe")).toBe(false);
+		// expand: changelog requested
+		expect(
+			(p as never as { search: { mock: { calls: unknown[][] } } }).search.mock
+				.calls[0][3],
+		).toEqual(["changelog"]);
+	});
+
+	it("falls back to the assignee when no status transition exists", async () => {
+		const p = provider();
+		spyOn(p as never, "search").mockResolvedValue({
+			issues: [
+				{
+					key: "PT-2",
+					fields: { assignee: { accountId: "acct-jane" }, [PT_FIELD]: 3 },
+					changelog: { histories: [] },
+				},
+			],
+			isLast: true,
+		});
+		const result = await p.fetchCompletedStoryPoints([], WINDOW, {
+			...OPTIONS,
+			creditBy: "resolver",
+		});
+		expect(result.byPerson.get("jane-doe")?.totalPoints).toBe(3);
+	});
+});
