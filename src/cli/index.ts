@@ -13,7 +13,7 @@ import { resolveTuiBinary } from "../lib/tui-resolver.js";
 import { AuthService } from "../services/auth.service.js";
 
 export interface ReportSectionsSelection {
-	dataSources: { git: boolean; asana: boolean };
+	dataSources: { git: boolean; asana: boolean; jira?: boolean };
 	reportSections: {
 		visibleWins: boolean;
 		technicalFoundationalWins?: boolean;

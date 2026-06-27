@@ -92,6 +92,8 @@ type ReportSections struct {
 type DataSources struct {
 	Git   bool `json:"git"`
 	Asana bool `json:"asana"`
+	// Jira story points. Off unless the user configured Jira projects + fields.
+	Jira bool `json:"jira,omitempty"`
 }
 
 // ReportSectionsInner toggles for report output sections.

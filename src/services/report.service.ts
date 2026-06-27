@@ -21,6 +21,8 @@ import type {
 	ScopeOptions,
 	ScopeProvider,
 	SectionDiscrepancy,
+	StoryPointOptions,
+	StoryPointProvider,
 	TaskTrackerProvider,
 	TechnicalFoundationalWinsResult,
 	VisibleWinsProvider,
@@ -216,18 +218,24 @@ export interface ReportServiceDependencies {
 	roadmapTitle?: string;
 	/** User identity map for enriching display names from GitHub logins. */
 	userMap?: import("../models/user-identity.js").UserMap;
+	/** Optional Jira story-point provider (gated by dataSources.jira). */
+	storyPointProvider?: StoryPointProvider;
+	/** Story-point fetch options (projects + fields), loaded from jira-config.json. */
+	storyPointOptions?: StoryPointOptions;
 }
 
 export class ReportService {
 	private readonly outputDir: () => string;
 	private readonly logger: ConsolaInstance;
 	private readonly taskTracker?: TaskTrackerProvider;
+	private readonly storyPointProvider?: StoryPointProvider;
 	private readonly individualsCacheDir: string;
 
 	constructor(private readonly deps: ReportServiceDependencies) {
 		this.outputDir = deps.outputDir ?? (() => process.cwd());
 		this.logger = deps.logger ?? consola.withTag("teamhero:report");
 		this.taskTracker = deps.taskTracker;
+		this.storyPointProvider = deps.storyPointProvider;
 
 		const individualsDeps = deps.individuals ?? {};
 		this.individualsCacheDir =
@@ -413,6 +421,7 @@ export class ReportService {
 				progress.start("Skipping source-control metric collection.").succeed();
 			}
 
+			const storyPointWarnings: string[] = [];
 			let memberMetrics = metricsResult
 				? await this.toReportMemberMetrics(metricsResult, window.humanReadable)
 				: await this.buildMemberSkeleton(members, window.humanReadable);
@@ -463,6 +472,42 @@ export class ReportService {
 			} else {
 				memberMetrics = this.markTaskTrackerSkipped(memberMetrics);
 				progress.start("Skipping task tracker integration.").succeed();
+			}
+
+			// Story points (Jira) — gated by dataSources.jira. Never fatal: a
+			// missing/unconfigured Jira source warns and is skipped (the
+			// interactive run prompts to run setup; see docs §0.2).
+			if (input.sections.dataSources.jira) {
+				const projects = this.deps.storyPointOptions?.projects ?? [];
+				if (!this.storyPointProvider?.enabled || projects.length === 0) {
+					const msg =
+						"Story points requested but Jira is not configured. Run `teamhero setup` to select Jira projects and story-point fields, or omit the jira source.";
+					storyPointWarnings.push(msg);
+					this.logger.warn(`[jira] ${msg}`);
+					progress
+						.start("Skipping story points (Jira unconfigured).")
+						.succeed();
+				} else {
+					const spStep = progress.start("Collecting story points");
+					try {
+						const attached = await this.attachStoryPointData(memberMetrics, {
+							startISO: window.startISO,
+							endISO: window.endISO,
+						});
+						memberMetrics = attached.members;
+						if (attached.unmatchedAssignees.length > 0) {
+							storyPointWarnings.push(
+								`Jira assignees with no identity-map match (story points dropped): ${attached.unmatchedAssignees.join(", ")}`,
+							);
+						}
+						spStep.succeed("Story points collected");
+					} catch (error) {
+						spStep.fail("Failed to collect story points");
+						storyPointWarnings.push(
+							`Story-point collection failed: ${(error as Error).message}`,
+						);
+					}
+				}
 			}
 
 			// Collect LOC metrics if requested (report section — auto-enables git)
@@ -1424,7 +1469,7 @@ export class ReportService {
 						input.sections.reportSections.individualContributions,
 					discrepancyLog: input.sections.reportSections.discrepancyLog,
 				},
-				warnings: metricsResult?.warnings,
+				warnings: [...(metricsResult?.warnings ?? []), ...storyPointWarnings],
 				errors: [...(metricsResult?.errors ?? []), ...visibleWinsErrors],
 				visibleWins: visibleWinsAccomplishments,
 				technicalFoundationalWins,
@@ -1947,6 +1992,41 @@ export class ReportService {
 				taskTracker: summary,
 			} as ReportMemberMetrics;
 		});
+	}
+
+	/**
+	 * Fetch story points and merge them onto member metrics by login. The
+	 * provider returns points keyed by the same login the pipeline uses (the
+	 * accountId→login lookup is built in the service factory).
+	 */
+	private async attachStoryPointData(
+		members: ReportMemberMetrics[],
+		window: { startISO: string; endISO: string },
+	): Promise<{ members: ReportMemberMetrics[]; unmatchedAssignees: string[] }> {
+		const provider = this.storyPointProvider;
+		const options = this.deps.storyPointOptions;
+		if (!provider || !options) {
+			return { members, unmatchedAssignees: [] };
+		}
+		const inputs = members.map((m) => ({
+			login: m.login,
+			displayName: m.displayName,
+		}));
+		const result = await provider.fetchCompletedStoryPoints(
+			inputs,
+			window,
+			options,
+		);
+		const merged = members.map((member) => {
+			const points = result.byPerson.get(member.login);
+			if (!points) return member;
+			return {
+				...member,
+				storyPointsCompleted: points.totalPoints,
+				storyPointsByProject: points.byProject,
+			} satisfies ReportMemberMetrics;
+		});
+		return { members: merged, unmatchedAssignees: result.unmatchedAssignees };
 	}
 
 	private buildTaskTrackerPlaceholder(): MemberTaskSummary {

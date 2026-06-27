@@ -3,17 +3,24 @@ import { consola } from "consola";
 import { config as dotenvConfig } from "dotenv";
 import { CachedLocCollector } from "../adapters/cache/cached-loc-collector.js";
 import { CachedMetricsProvider } from "../adapters/cache/cached-metrics-provider.js";
+import { CachedStoryPointProvider } from "../adapters/cache/cached-story-point-provider.js";
 import { CachedTaskTrackerProvider } from "../adapters/cache/cached-task-tracker.js";
-import type { CacheOptions, ProgressReporterFactory } from "../core/types.js";
+import { JiraStoryPointProvider } from "../adapters/jira/jira-story-point-provider.js";
+import type {
+	CacheOptions,
+	ProgressReporterFactory,
+	StoryPointOptions,
+} from "../core/types.js";
 import { AIService } from "../services/ai.service.js";
 import { AsanaService } from "../services/asana.service.js";
 import { MetricsService } from "../services/metrics.service.js";
 import { ReportService } from "../services/report.service.js";
 import { ScopeService } from "../services/scope.service.js";
 import { getEnv } from "./env.js";
+import { loadJiraConfig } from "./jira-config-loader.js";
 import { loadOctokitFromEnv } from "./octokit.js";
 import { configDir } from "./paths.js";
-import { parseUserMap } from "./user-map.js";
+import { buildJiraLoginLookup, parseUserMap } from "./user-map.js";
 
 export interface ServiceFactoryOptions {
 	cacheOptions?: CacheOptions;
@@ -69,6 +76,35 @@ export async function createReportService(
 
 	const userMap = parseUserMap(getEnv("USER_MAP"));
 
+	// Jira story points are optional — only wire when both auth env and a saved
+	// jira-config.json are present. Otherwise the report-time guard warns and skips.
+	let storyPointProvider: CachedStoryPointProvider | undefined;
+	let storyPointOptions: StoryPointOptions | undefined;
+	const jiraBaseUrl = getEnv("JIRA_BASE_URL");
+	const jiraEmail = getEnv("JIRA_EMAIL");
+	const jiraToken = getEnv("JIRA_API_TOKEN");
+	if (jiraBaseUrl && jiraEmail && jiraToken) {
+		const jiraConfig = await loadJiraConfig();
+		if (jiraConfig) {
+			const jira = new JiraStoryPointProvider({
+				baseUrl: jiraBaseUrl,
+				email: jiraEmail,
+				apiToken: jiraToken,
+				jiraLookup: buildJiraLoginLookup(userMap),
+				logger: logger.withTag("jira"),
+			});
+			storyPointProvider = new CachedStoryPointProvider(
+				jira,
+				options.cacheOptions ?? {},
+			);
+			storyPointOptions = {
+				projects: jiraConfig.projects,
+				issueTypes: jiraConfig.issueTypes,
+				creditBy: jiraConfig.creditBy,
+			};
+		}
+	}
+
 	return new ReportService({
 		scope,
 		metrics: cachedMetrics,
@@ -80,5 +116,7 @@ export async function createReportService(
 		progressFactory: options.progressFactory,
 		asanaService,
 		userMap,
+		storyPointProvider,
+		storyPointOptions,
 	});
 }

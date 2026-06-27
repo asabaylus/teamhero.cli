@@ -26,6 +26,7 @@ export function parseUserMap(raw: string | undefined): UserMap {
 				email: typeof identity.email === "string" ? identity.email : undefined,
 				github: parseGitHubAccount(identity.github),
 				asana: parseAsanaAccount(identity.asana),
+				jira: parseJiraAccount(identity.jira),
 			};
 		}
 
@@ -60,6 +61,36 @@ function parseAsanaAccount(value: unknown): UserIdentity["asana"] | undefined {
 				? account.workspaceGid
 				: undefined,
 	};
+}
+
+function parseJiraAccount(value: unknown): UserIdentity["jira"] | undefined {
+	if (!value || typeof value !== "object") {
+		return undefined;
+	}
+	const account = value as Record<string, unknown>;
+	const accountId =
+		typeof account.accountId === "string" ? account.accountId : undefined;
+	const email = typeof account.email === "string" ? account.email : undefined;
+	return accountId || email ? { accountId, email } : undefined;
+}
+
+/**
+ * Build a reverse lookup from Jira accountId (and email fallback) to the
+ * GitHub login the report pipeline keys members by. Story points fetched from
+ * Jira can then be merged onto member metrics by login.
+ */
+export function buildJiraLoginLookup(userMap: UserMap): Map<string, string> {
+	const lookup = new Map<string, string>();
+	for (const identity of Object.values(userMap)) {
+		const login = identity.github?.login;
+		if (!login) continue;
+		if (identity.jira?.accountId) lookup.set(identity.jira.accountId, login);
+		const email = identity.jira?.email ?? identity.email;
+		if (email && !lookup.has(email.toLowerCase())) {
+			lookup.set(email.toLowerCase(), login);
+		}
+	}
+	return lookup;
 }
 
 /**
