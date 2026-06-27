@@ -73,7 +73,8 @@ describe("buildJql", () => {
 		expect(jql).toContain("issuetype in (Story, Task)");
 		expect(jql).toContain("statusCategory = Done");
 		expect(jql).toContain('resolutiondate >= "2026-06-01 00:00"');
-		expect(jql).toContain('resolutiondate <= "2026-06-30 23:59"');
+		// exclusive upper bound
+		expect(jql).toContain('resolutiondate < "2026-06-30 23:59"');
 	});
 });
 

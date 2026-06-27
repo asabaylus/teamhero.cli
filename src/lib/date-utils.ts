@@ -136,6 +136,22 @@ export function resolveEndEpochMs(until: string): number {
 }
 
 /**
+ * Exclusive end of the report window with NO buffer, for systems whose
+ * timestamps are server-authoritative (e.g. Jira `resolutiondate`), where the
+ * +2-day GitHub buffer would over-include. Returns the start of the day AFTER
+ * `until` (00:00:00Z), so a `resolutiondate < end` filter is exact at the
+ * day boundary. Non-date inputs pass through as an ISO instant.
+ */
+export function resolveExclusiveEndISO(until: string): string {
+	if (/^\d{4}-\d{2}-\d{2}$/.test(until)) {
+		const next = new Date(`${until}T00:00:00Z`);
+		next.setUTCDate(next.getUTCDate() + 1);
+		return next.toISOString();
+	}
+	return new Date(until).toISOString();
+}
+
+/**
  * Format a Date in UTC as a human-readable string ("Feb 22, 2026").
  * Always uses UTC to avoid local-timezone display shifts.
  */

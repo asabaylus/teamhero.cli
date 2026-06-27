@@ -222,7 +222,13 @@ export class JiraStoryPointProvider implements StoryPointProvider {
 	}
 }
 
-/** Pure JQL builder — exported for unit assertions. */
+/**
+ * Pure JQL builder — exported for unit assertions.
+ *
+ * `window.endISO` is treated as an EXCLUSIVE upper bound (start of the day after
+ * `until`, via `resolveExclusiveEndISO`) so `resolutiondate < end` is exact at
+ * the day boundary and free of the +2-day GitHub buffer.
+ */
 export function buildJql(
 	projectKey: string,
 	issueTypes: string[],
@@ -234,7 +240,7 @@ export function buildJql(
 	return (
 		`project = "${projectKey}" AND issuetype in (${types}) ` +
 		`AND statusCategory = Done ` +
-		`AND resolutiondate >= "${start}" AND resolutiondate <= "${end}"`
+		`AND resolutiondate >= "${start}" AND resolutiondate < "${end}"`
 	);
 }
 

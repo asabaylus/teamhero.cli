@@ -30,6 +30,7 @@ import type {
 import {
 	formatDateUTC,
 	resolveEndISO,
+	resolveExclusiveEndISO,
 	resolveStartISO,
 } from "../lib/date-utils.js";
 import { getEnv } from "../lib/env.js";
@@ -491,9 +492,12 @@ export class ReportService {
 				} else {
 					const spStep = progress.start("Collecting story points");
 					try {
+						// Exact, unbuffered window: Jira resolutiondate is server-
+						// authoritative, so the +2-day GitHub buffer in window.endISO
+						// would over-include. Use an exclusive end at the day after `until`.
 						const attached = await this.attachStoryPointData(memberMetrics, {
 							startISO: window.startISO,
-							endISO: window.endISO,
+							endISO: resolveExclusiveEndISO(window.endDate),
 						});
 						memberMetrics = attached.members;
 						if (attached.unmatchedAssignees.length > 0) {
