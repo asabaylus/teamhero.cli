@@ -35,7 +35,7 @@ async function readCacheFile(): Promise<RepoCacheFile> {
 	try {
 		const raw = await readFile(file, "utf8");
 		const parsed = JSON.parse(raw) as RepoCacheFile;
-		if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.entries)) {
+		if (parsed?.version !== 1 || !Array.isArray(parsed.entries)) {
 			return { version: 1, entries: [] } satisfies RepoCacheFile;
 		}
 		return parsed;

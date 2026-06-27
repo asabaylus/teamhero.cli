@@ -33,8 +33,9 @@ if [[ "$COVERAGE" == true ]]; then
   rm -f "$LCOV_MERGED" "$LCOV_TMP"
 fi
 
-# Collect test files
-mapfile -t FILES < <(find tests -type f \( -name '*.spec.ts' -o -name '*.test.ts' \) | sort)
+# Collect test files (bash 3.2-compatible; macOS ships without mapfile)
+FILES=()
+while IFS= read -r _f; do FILES+=("$_f"); done < <(find tests -type f -name '*.spec.ts' | sort)
 
 for f in "${FILES[@]}"; do
   # If a pattern was provided, filter by it
@@ -56,9 +57,9 @@ for f in "${FILES[@]}"; do
   # plus a summary). Take the LAST match to get the file's summary totals;
   # without `tail -1` the value is multi-line and bash arithmetic fails with
   # "syntax error in expression" downstream.
-  file_pass=$(echo "$output" | grep -oP '\d+(?= pass)' | tail -1)
-  file_fail=$(echo "$output" | grep -oP '\d+(?= fail)' | tail -1)
-  file_skip=$(echo "$output" | grep -oP '\d+(?= skip)' | tail -1)
+  file_pass=$(echo "$output" | grep -oE '[0-9]+ pass' | tail -1 | sed 's/ pass//')
+  file_fail=$(echo "$output" | grep -oE '[0-9]+ fail' | tail -1 | sed 's/ fail//')
+  file_skip=$(echo "$output" | grep -oE '[0-9]+ skip' | tail -1 | sed 's/ skip//')
 
   [[ -z "$file_pass" ]] && file_pass=0
   [[ -z "$file_fail" ]] && file_fail=0
