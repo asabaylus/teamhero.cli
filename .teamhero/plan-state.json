@@ -1,0 +1,73 @@
+{
+	"plan": "docs/plans/2026-06-13-identity-reconciliation.md",
+	"context": "CONTEXT.md",
+	"adr": "docs/adr/0001-person-identity-model.md",
+	"updated": "2026-06-20",
+	"status": "complete",
+	"shippedIn": "PR #16 (feat(identity): Person model + IdentityResolver), merged to main",
+	"note": "All objectives and tasks shipped in main. Code: src/models/person.ts, src/services/identity-resolver.service.ts, src/lib/pr-search.ts, src/services/person-metrics-collector.ts, src/lib/spreadsheet-writer.ts, src/services/weekly-update.service.ts, skills/teamhero-weekly/, docs/METRICS_METHODOLOGY.md. This file is the historical design record.",
+	"redaction": {
+		"rule": "Committed files contain NO company-specific names/logins/org names. Real values live only in gitignored local data.",
+		"localData": [".teamhero/local/", "tests/fixtures/local/"],
+		"key": ".teamhero/local/redaction-key.md (gitignored)"
+	},
+	"objectives": [
+		{
+			"id": 1,
+			"title": "Update & verify tracking-spreadsheet data",
+			"status": "done"
+		},
+		{ "id": 2, "title": "Weekly scheduled skill", "status": "done" },
+		{ "id": 3, "title": "Correct Team Hero CLI collection", "status": "done" }
+	],
+	"tasks": [
+		{
+			"id": "t1-identity-map",
+			"title": "Build identity map (roster + doc fragments + noreply parse) in gitignored local data",
+			"status": "done",
+			"blocks": ["t2-golden", "t3-engine"]
+		},
+		{
+			"id": "t2-golden",
+			"title": "Hand-verify golden fixture (search API + computer use) -> tests/fixtures/local/; commit redacted variant",
+			"status": "done",
+			"depends": ["t1-identity-map"]
+		},
+		{
+			"id": "t3-engine",
+			"title": "Person model; org-search PRs; per-repo email-matched commits; LoC glob filter; reconciliation report",
+			"status": "done",
+			"depends": ["t1-identity-map", "t2-golden"]
+		},
+		{
+			"id": "t4-sheet",
+			"title": "Write corrected PR/LoC + monthly commit columns to local xlsx; re-upload",
+			"status": "done",
+			"depends": ["t3-engine"]
+		},
+		{
+			"id": "t5-skill",
+			"title": "Package weekly skill (append week block, refresh month commits, idempotent)",
+			"status": "done",
+			"depends": ["t4-sheet"]
+		},
+		{
+			"id": "t6-methodology",
+			"title": "Write docs/METRICS_METHODOLOGY.md",
+			"status": "done",
+			"depends": ["t3-engine"]
+		}
+	],
+	"decisions": {
+		"trackedPr": "org-wide search API by author, all states, created-in-window",
+		"identityModel": "Person {logins[], emails[], names[]}, union-find, no back-compat",
+		"verification": "search API authoritative; computer use (Claude Code harness) as oracle for interactive/golden runs; Playwright optional cross-check for unattended runs",
+		"sheetWrite": "local xlsx edit + manual re-upload (Graph deferred)",
+		"commits": "per-repo enumeration all org repos, email/name local match, exclude merges, caps removed",
+		"commitsLayout": "new monthly columns appended to Data sheet",
+		"loc": "replace weekly LoC with filtered code-LoC",
+		"tickets": "out of scope",
+		"mapSeed": "Data sheet roster + spec-doc fragments + noreply parse (local only)",
+		"weeklyUpdate": "append new week block, refresh current-month commits, idempotent"
+	}
+}
