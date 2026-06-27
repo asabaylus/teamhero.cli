@@ -2043,8 +2043,16 @@ export class ReportService {
 			window,
 			options,
 		);
+		// byPerson is keyed by the canonical login from the identity source, which
+		// the resolver lowercases; member.login carries GitHub's original case.
+		// Match case-insensitively so mixed-case logins still attribute.
+		const byLoginLower = new Map(
+			[...result.byPerson].map(([k, v]) => [k.toLowerCase(), v]),
+		);
 		const merged = members.map((member) => {
-			const points = result.byPerson.get(member.login);
+			const points =
+				result.byPerson.get(member.login) ??
+				byLoginLower.get(member.login.toLowerCase());
 			if (!points) return member;
 			return {
 				...member,

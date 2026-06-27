@@ -23,7 +23,7 @@ import { loadJiraConfig } from "./jira-config-loader.js";
 import { loadOctokitFromEnv } from "./octokit.js";
 import { configDir } from "./paths.js";
 import {
-	buildJiraLoginLookup,
+	buildJiraLoginLookupFromPersons,
 	mergeUserMaps,
 	parseUserMap,
 	personsToUserMap,
@@ -111,7 +111,7 @@ export async function createReportService(
 				baseUrl: jiraBaseUrl,
 				email: jiraEmail,
 				apiToken: jiraToken,
-				jiraLookup: buildJiraLoginLookup(userMap),
+				jiraLookup: buildJiraLoginLookupFromPersons(persons),
 				logger: logger.withTag("jira"),
 			});
 			storyPointProvider = new CachedStoryPointProvider(

@@ -48,7 +48,7 @@ import { loadOctokitFromEnv } from "../src/lib/octokit.js";
 import { RunHistoryStore } from "../src/lib/run-history.js";
 import { appendUnifiedLog } from "../src/lib/unified-log.js";
 import {
-	buildJiraLoginLookup,
+	buildJiraLoginLookupFromPersons,
 	mergeUserMaps,
 	parseUserMap,
 	personsToUserMap,
@@ -361,7 +361,7 @@ async function main(): Promise<void> {
 						baseUrl: jiraBaseUrl,
 						email: jiraEmail,
 						apiToken: jiraToken,
-						jiraLookup: buildJiraLoginLookup(userMap),
+						jiraLookup: buildJiraLoginLookupFromPersons(persons),
 						logger: logger.withTag("jira"),
 					}),
 					cacheOptions,

@@ -67,3 +67,21 @@ describe("userMapDeprecationNotice", () => {
 		expect(userMapDeprecationNotice("  ")).toBeUndefined();
 	});
 });
+
+import { buildJiraLoginLookupFromPersons } from "../../../src/lib/user-map.js";
+
+describe("buildJiraLoginLookupFromPersons", () => {
+	it("maps every Jira accountId a Person owns to their login", () => {
+		const lookup = buildJiraLoginLookupFromPersons([
+			person({
+				id: "asa",
+				logins: ["asabaylus"],
+				emails: ["asa@company.com"],
+				jiraAccountIds: ["acct-gogtp", "acct-stratus"],
+			}),
+		]);
+		expect(lookup.get("acct-gogtp")).toBe("asabaylus");
+		expect(lookup.get("acct-stratus")).toBe("asabaylus");
+		expect(lookup.get("asa@company.com")).toBe("asabaylus");
+	});
+});

@@ -123,6 +123,29 @@ function parseJiraAccount(value: unknown): UserIdentity["jira"] | undefined {
 }
 
 /**
+ * Build a Jira accountId/email → GitHub login lookup from canonical Persons,
+ * including EVERY jiraAccountId a Person owns (people commonly have two Jira
+ * accounts, e.g. across email domains). Preferred over {@link buildJiraLoginLookup}
+ * for the report path; the single-valued UserMap form is back-compat for USER_MAP.
+ */
+export function buildJiraLoginLookupFromPersons(
+	persons: Person[],
+): Map<string, string> {
+	const lookup = new Map<string, string>();
+	for (const p of persons) {
+		const login = p.logins[0];
+		if (!login) continue;
+		for (const accountId of p.jiraAccountIds ?? [])
+			lookup.set(accountId, login);
+		for (const email of p.emails) {
+			const key = email.toLowerCase();
+			if (!lookup.has(key)) lookup.set(key, login);
+		}
+	}
+	return lookup;
+}
+
+/**
  * Build a reverse lookup from Jira accountId (and email fallback) to the
  * GitHub login the report pipeline keys members by. Story points fetched from
  * Jira can then be merged onto member metrics by login.

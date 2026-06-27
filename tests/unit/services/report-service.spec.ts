@@ -2629,6 +2629,50 @@ describe("ReportService.generateReport — story points", () => {
 		).toBe(true);
 	});
 
+	it("attributes story points case-insensitively across login casing", async () => {
+		const fetchCompletedStoryPoints = mock().mockResolvedValue({
+			byPerson: new Map([
+				[
+					"JDOE",
+					{
+						status: "matched",
+						totalPoints: 9,
+						byProject: { PT: 9 },
+						issueCount: 1,
+					},
+				],
+			]),
+			unmatchedAssignees: [],
+		});
+		let captured: any;
+		const ai = makeMockAI();
+		(ai as any).generateFinalReport = mock(async (ctx: any) => {
+			captured = ctx.report;
+			return "# r";
+		});
+		const service = new ReportService({
+			scope: makeMockScope(),
+			metrics: makeMockMetrics(),
+			ai,
+			progressFactory: makeProgressFactory(makeProgress()),
+			logger: makeMockLogger(),
+			outputDir: () => "/tmp/test",
+			storyPointProvider: { enabled: true, fetchCompletedStoryPoints },
+			storyPointOptions: {
+				projects: [
+					{
+						key: "PT",
+						fieldId: "customfield_10617",
+						jqlName: "Story point estimate",
+					},
+				],
+			},
+		});
+		await service.generateReport(jiraInput());
+		const jdoe = captured.memberMetrics.find((m: any) => m.login === "jdoe");
+		expect(jdoe.storyPointsCompleted).toBe(9);
+	});
+
 	it("fetches and attributes story points when configured", async () => {
 		const fetchCompletedStoryPoints = mock().mockResolvedValue({
 			byPerson: new Map([
