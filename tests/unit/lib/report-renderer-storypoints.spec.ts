@@ -97,3 +97,35 @@ describe("renderReport — Story Points column", () => {
 		expect(row?.endsWith("8 |")).toBe(true);
 	});
 });
+
+import { executiveRenderer } from "../../../src/lib/renderers/executive.js";
+import { individualRenderer } from "../../../src/lib/renderers/individual.js";
+
+describe("registry templates — Story Points", () => {
+	it("individual template shows a Story Points row only when present", () => {
+		const withSp = individualRenderer.render(
+			makeInput([makeMember({ storyPointsCompleted: 13 })]),
+		);
+		expect(withSp).toContain("| Story Points | 13 |");
+
+		const without = individualRenderer.render(makeInput([makeMember()]));
+		expect(without).not.toContain("Story Points");
+	});
+
+	it("executive template adds a team story-point total when present", () => {
+		const out = executiveRenderer.render(
+			makeInput([
+				makeMember({ storyPointsCompleted: 8 }),
+				makeMember({
+					login: "dev2",
+					displayName: "Dev Two",
+					storyPointsCompleted: 5,
+				}),
+			]),
+		);
+		expect(out).toContain("13 story points completed");
+
+		const off = executiveRenderer.render(makeInput([makeMember()]));
+		expect(off).not.toContain("story points completed");
+	});
+});
