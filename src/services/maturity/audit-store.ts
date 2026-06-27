@@ -39,6 +39,7 @@ export class FileSystemAuditStore implements AuditStore {
  *
  * @param text - Full contents of a CONFIG.md file
  * @returns An array of `InterviewAnswer` objects for recognized questions. Headings are matched case-insensitively to known interview questions; multi-line answers are preserved and trimmed; empty answers and unknown headings are ignored.
+ */
 export function parseConfigMd(text: string): InterviewAnswer[] {
 	const answers: InterviewAnswer[] = [];
 	const lines = text.split(/\r?\n/);
