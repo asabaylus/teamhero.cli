@@ -48,13 +48,13 @@ type DiscrepancyItem struct {
 
 // DiscrepancyEvent carries per-contributor discrepancy data from the service runner.
 type DiscrepancyEvent struct {
-	Type           string                        `json:"type"`
-	TotalCount     int                           `json:"totalCount"`
-	ByContributor  map[string][]DiscrepancyItem  `json:"byContributor"`
-	Unattributed   []DiscrepancyItem             `json:"unattributed"`
-	Items          []DiscrepancyItem             `json:"items"`
-	AllItems       []DiscrepancyItem             `json:"allItems,omitempty"`
-	DiscrepancyThreshold  int                           `json:"discrepancyThreshold,omitempty"`
+	Type                 string                       `json:"type"`
+	TotalCount           int                          `json:"totalCount"`
+	ByContributor        map[string][]DiscrepancyItem `json:"byContributor"`
+	Unattributed         []DiscrepancyItem            `json:"unattributed"`
+	Items                []DiscrepancyItem            `json:"items"`
+	AllItems             []DiscrepancyItem            `json:"allItems,omitempty"`
+	DiscrepancyThreshold int                          `json:"discrepancyThreshold,omitempty"`
 }
 
 // GenericEvent is used for initial JSON unmarshalling to determine event type.
@@ -73,10 +73,10 @@ type GenericEvent struct {
 	Data json.RawMessage `json:"data,omitempty"`
 
 	// Discrepancy event fields (type == "discrepancy")
-	TotalCount    int                           `json:"totalCount,omitempty"`
-	ByContributor map[string][]DiscrepancyItem  `json:"byContributor,omitempty"`
-	Unattributed  []DiscrepancyItem             `json:"unattributed,omitempty"`
-	Items         []DiscrepancyItem             `json:"items,omitempty"`
-	AllItems      []DiscrepancyItem             `json:"allItems,omitempty"`
-	DiscrepancyThreshold int                           `json:"discrepancyThreshold,omitempty"`
+	TotalCount           int                          `json:"totalCount,omitempty"`
+	ByContributor        map[string][]DiscrepancyItem `json:"byContributor,omitempty"`
+	Unattributed         []DiscrepancyItem            `json:"unattributed,omitempty"`
+	Items                []DiscrepancyItem            `json:"items,omitempty"`
+	AllItems             []DiscrepancyItem            `json:"allItems,omitempty"`
+	DiscrepancyThreshold int                          `json:"discrepancyThreshold,omitempty"`
 }

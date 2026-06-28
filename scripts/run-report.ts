@@ -41,7 +41,10 @@ import type {
 import { loadBoardsConfig } from "../src/lib/boards-config-loader.js";
 import { getEnv } from "../src/lib/env.js";
 import { isGoogleAuthorized } from "../src/lib/google-oauth.js";
-import { loadIdentityMapFile } from "../src/lib/identity-map.js";
+import {
+	loadIdentityMapFile,
+	resolveIdentityMapPath,
+} from "../src/lib/identity-map.js";
 import { loadJiraConfig } from "../src/lib/jira-config-loader.js";
 import { JsonLinesProgressDisplay } from "../src/lib/json-lines-progress.js";
 import { loadOctokitFromEnv } from "../src/lib/octokit.js";
@@ -202,9 +205,7 @@ async function main(): Promise<void> {
 			systemPrompts: input.systemPrompts,
 		});
 		// Unified identity: identity-map.yaml is canonical; USER_MAP env supplements.
-		const identityMap = await loadIdentityMapFile(
-			".teamhero/local/identity-map.yaml",
-		);
+		const identityMap = await loadIdentityMapFile(resolveIdentityMapPath());
 		const identityResolver = createIdentityResolver(identityMap);
 		const persons = identityResolver.persons();
 		const userMapEnv = getEnv("USER_MAP");

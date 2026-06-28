@@ -17,10 +17,41 @@ type JiraProjectField struct {
 }
 
 // JiraConfig is the on-disk shape of jira-config.json.
+//
+// IssueTypes is a pointer so we can tell three states apart on disk:
+//   - nil            => field omitted => the TS loader defaults to Story/Task
+//   - &[]string{}    => "issueTypes": [] => count EVERY issue type ("any")
+//   - &[]string{...} => count exactly those types
 type JiraConfig struct {
 	Projects   []JiraProjectField `json:"projects"`
-	IssueTypes []string           `json:"issueTypes,omitempty"`
+	IssueTypes *[]string          `json:"issueTypes,omitempty"`
 	CreditBy   string             `json:"creditBy,omitempty"`
+}
+
+// parseIssueTypesSpec turns the --jira-issue-types flag into an IssueTypes value:
+//   - ""                 => nil    (default: Story/Task)
+//   - "any"/"all"/"*"    => &[]{}  (count every type)
+//   - "Story,Bug"        => &[]{"Story","Bug"}
+func parseIssueTypesSpec(raw string) *[]string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	switch strings.ToLower(raw) {
+	case "any", "all", "*":
+		empty := []string{}
+		return &empty
+	}
+	types := make([]string, 0)
+	for _, t := range strings.Split(raw, ",") {
+		if t = strings.TrimSpace(t); t != "" {
+			types = append(types, t)
+		}
+	}
+	if len(types) == 0 {
+		return nil
+	}
+	return &types
 }
 
 // JiraProject is a project as discovered from the Jira API during setup.

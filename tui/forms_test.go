@@ -20,12 +20,12 @@ func TestValidateDate_Valid(t *testing.T) {
 
 func TestValidateDate_Invalid(t *testing.T) {
 	invalidDates := []string{
-		"01-01-2026",     // wrong format
-		"2026/01/01",     // wrong separator
-		"2026-13-01",     // invalid month
-		"2026-01-32",     // invalid day
-		"not-a-date",     // not a date at all
-		"2025-02-29",     // not a leap year
+		"01-01-2026", // wrong format
+		"2026/01/01", // wrong separator
+		"2026-13-01", // invalid month
+		"2026-01-32", // invalid day
+		"not-a-date", // not a date at all
+		"2025-02-29", // not a leap year
 	}
 	for _, d := range invalidDates {
 		if err := validateDate(d); err == nil {

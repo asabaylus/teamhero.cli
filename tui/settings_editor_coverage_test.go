@@ -338,8 +338,8 @@ func TestRenderHelpStyled_MixedListAndText(t *testing.T) {
 
 func TestRenderHelpContent_NarrowWidth(t *testing.T) {
 	m := &inlineSettingsEditor{
-		items: []editorItem{{key: "A", label: "Test", description: "Help text"}},
-		lines: []editorLine{{text: "item", itemIndex: 0}},
+		items:  []editorItem{{key: "A", label: "Test", description: "Help text"}},
+		lines:  []editorLine{{text: "item", itemIndex: 0}},
 		cursor: 0,
 	}
 	result := m.renderHelpContent(10)

@@ -8,8 +8,10 @@ import type {
 	RawPullRequestInfo,
 } from "../core/types.js";
 import { resolveEndEpochMs, resolveStartISO } from "../lib/date-utils.js";
-import { getEnv } from "../lib/env.js";
-import { loadIdentityMapFile } from "../lib/identity-map.js";
+import {
+	loadIdentityMapFile,
+	resolveIdentityMapPath,
+} from "../lib/identity-map.js";
 import type { OctokitClient } from "../lib/octokit.js";
 import { buildReconciliationReport } from "../lib/reconciliation.js";
 import type { Member } from "../models/member.js";
@@ -17,8 +19,6 @@ import type { ContributionMetricSet } from "../models/metrics.js";
 import type { Repository } from "../models/repository.js";
 import { createIdentityResolver } from "./identity-resolver.service.js";
 import { collectPersonMetrics } from "./person-metrics-collector.js";
-
-const IDENTITY_MAP_PATH = ".teamhero/local/identity-map.yaml";
 
 const DEFAULT_MAX_COMMIT_HISTORY_PAGES = Number(
 	process.env.TEAMHERO_MAX_COMMIT_PAGES ?? "5",
@@ -93,8 +93,7 @@ export class MetricsService implements MetricsProvider {
 		if (!this.resolverPromise) {
 			// Path is overridable so tests (and alternate setups) don't depend on a
 			// real local identity map sitting in the working directory.
-			const path = getEnv("TEAMHERO_IDENTITY_MAP") ?? IDENTITY_MAP_PATH;
-			this.resolverPromise = loadIdentityMapFile(path)
+			this.resolverPromise = loadIdentityMapFile(resolveIdentityMapPath())
 				.then((map) => createIdentityResolver(map))
 				.catch(() => createIdentityResolver([]));
 		}

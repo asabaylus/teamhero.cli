@@ -1,6 +1,20 @@
 import { readFile } from "node:fs/promises";
 import { load as loadYaml } from "js-yaml";
 import type { IdentityMap, IdentityMapEntry } from "../models/person.js";
+import { getEnv } from "./env.js";
+
+/** Default on-disk location of the local identity map. */
+export const DEFAULT_IDENTITY_MAP_PATH = ".teamhero/local/identity-map.yaml";
+
+/**
+ * Resolve the identity-map path for every consumer (metrics, service-factory,
+ * run-report). Honors the TEAMHERO_IDENTITY_MAP override so tests — and any
+ * non-default deployment — stay deterministic instead of depending on a
+ * developer-local file.
+ */
+export function resolveIdentityMapPath(): string {
+	return getEnv("TEAMHERO_IDENTITY_MAP") ?? DEFAULT_IDENTITY_MAP_PATH;
+}
 
 /**
  * Loading and validation for the human-maintained identity map.

@@ -746,6 +746,7 @@ export function buildVisibleWinsExtractionPrompt(
 }
 
 function serializeReportData(report: ReportRenderInput) {
+	const showStoryPoints = report.sections?.storyPoints === true;
 	return {
 		window: report.window,
 		showDetails: report.showDetails,
@@ -767,7 +768,11 @@ function serializeReportData(report: ReportRenderInput) {
 			changesRequested: member.changesRequested,
 			commented: member.commented,
 			reviewComments: member.reviewComments,
-			storyPointsCompleted: member.storyPointsCompleted ?? 0,
+			// Only emit story points when the source is enabled — keep the field
+			// out of non-Jira prompts entirely.
+			...(showStoryPoints
+				? { storyPointsCompleted: member.storyPointsCompleted ?? 0 }
+				: {}),
 			aiSummary: member.aiSummary,
 			prHighlights: member.prHighlights,
 			commitHighlights: member.commitHighlights,

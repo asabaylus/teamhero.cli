@@ -288,12 +288,16 @@ export function buildJql(
 	issueTypes: string[],
 	window: ReportingWindow,
 ): string {
-	const types = issueTypes.map(quoteJql).join(", ");
 	const start = toJqlDate(window.startISO);
 	const end = toJqlDate(window.endISO);
+	// Empty issueTypes => count every type (no issuetype filter).
+	const typeClause =
+		issueTypes.length > 0
+			? `issuetype in (${issueTypes.map(quoteJql).join(", ")}) AND `
+			: "";
 	return (
-		`project = "${projectKey}" AND issuetype in (${types}) ` +
-		`AND statusCategory = Done ` +
+		`project = "${projectKey}" AND ${typeClause}` +
+		`statusCategory = Done ` +
 		`AND resolutiondate >= "${start}" AND resolutiondate < "${end}"`
 	);
 }

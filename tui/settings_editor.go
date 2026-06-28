@@ -27,12 +27,12 @@ const (
 type inputType int
 
 const (
-	inputText    inputType = iota // free-form text (default)
-	inputBool                     // true/false toggle
-	inputYesNo                    // Yes/No toggle (for config.json fields)
-	inputNumber                   // numeric input with validation
-	inputSelect                   // select from predefined options
-	inputJSON                     // multi-line JSON editor
+	inputText   inputType = iota // free-form text (default)
+	inputBool                    // true/false toggle
+	inputYesNo                   // Yes/No toggle (for config.json fields)
+	inputNumber                  // numeric input with validation
+	inputSelect                  // select from predefined options
+	inputJSON                    // multi-line JSON editor
 )
 
 // editorItem represents one editable row in the settings editor.
@@ -62,8 +62,8 @@ type inlineSettingsEditor struct {
 	mode           editMode
 	editIdx        int // which item is being edited
 	textInput      textinput.Model
-	editForm       *huh.Form     // huh form used for typed editing (bool, select, etc.)
-	editVal        string        // bound value for the edit form
+	editForm       *huh.Form      // huh form used for typed editing (bool, select, etc.)
+	editVal        string         // bound value for the edit form
 	viewport       viewport.Model // left panel (settings list)
 	helpVP         viewport.Model // right panel (help/description)
 	lastHelpCursor int            // last cursor position for help panel scroll reset
@@ -318,10 +318,10 @@ func formatEditorLine(item editorItem) string {
 
 // renderStyledLine renders an editor line with proper color coding.
 func renderStyledLine(item editorItem) string {
-	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))  // white/bright
-	valueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10"))  // green for set values
-	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))   // dim gray
-	warnStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("11"))   // yellow
+	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15")) // white/bright
+	valueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("10")) // green for set values
+	dimStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))  // dim gray
+	warnStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("11"))  // yellow
 
 	displayVal := item.value
 	var styledVal string
@@ -511,7 +511,9 @@ func (m *inlineSettingsEditor) confirmEdit() (tea.Model, tea.Cmd) {
 			}
 			item.value = newVal
 			// Count boards for display
-			var parsed struct{ Boards []json.RawMessage `json:"boards"` }
+			var parsed struct {
+				Boards []json.RawMessage `json:"boards"`
+			}
 			if json.Unmarshal([]byte(newVal), &parsed) == nil {
 				item.defaultVal = fmt.Sprintf("%d configured", len(parsed.Boards))
 			}

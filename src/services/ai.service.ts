@@ -752,6 +752,22 @@ export class AIService {
 				...context,
 				members: [member],
 			}).length;
+			if (weight > MEMBER_HIGHLIGHTS_MAX_PROMPT_CHARS) {
+				// A single member can't be split further; it goes in its own batch
+				// but may still be rejected by the model. Surface it explicitly.
+				this.logger.warn(
+					`Member "${member.login}" alone exceeds the highlight prompt budget ` +
+						`(${weight} > ${MEMBER_HIGHLIGHTS_MAX_PROMPT_CHARS} chars); sending it in its own ` +
+						`batch — the AI call for this member may fail.`,
+				);
+				if (current.length > 0) {
+					batches.push(current);
+					current = [];
+					currentChars = 0;
+				}
+				batches.push([member]);
+				continue;
+			}
 			if (
 				current.length > 0 &&
 				currentChars + weight > MEMBER_HIGHLIGHTS_MAX_PROMPT_CHARS

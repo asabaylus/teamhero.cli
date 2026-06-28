@@ -14,7 +14,7 @@ import (
 var bannerWriter io.Writer = os.Stderr
 
 var (
-	purple = lipgloss.Color("212")
+	purple            = lipgloss.Color("212")
 	shellHeaderPrefix = "//// TEAM HERO "
 
 	bannerStyle = lipgloss.NewStyle().

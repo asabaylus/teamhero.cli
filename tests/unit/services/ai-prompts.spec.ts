@@ -508,9 +508,15 @@ describe("buildFinalReportPrompt", () => {
 		expect(result).toContain('"storyPointsCompleted":42');
 	});
 
-	it("omits the Story Points column when story points are disabled", () => {
-		const result = buildFinalReportPrompt(makeRenderInput());
+	it("omits the Story Points column and payload when story points are disabled", () => {
+		const result = buildFinalReportPrompt(
+			makeRenderInput({
+				memberMetrics: [makeMemberMetrics({ storyPointsCompleted: 42 })],
+			}),
+		);
 		expect(result).not.toContain("Story Points");
+		// The raw payload must not leak story-point fields into non-Jira prompts.
+		expect(result).not.toContain("storyPointsCompleted");
 	});
 
 	it("includes serialized report data as JSON", () => {

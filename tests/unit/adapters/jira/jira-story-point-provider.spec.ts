@@ -76,6 +76,14 @@ describe("buildJql", () => {
 		// exclusive upper bound
 		expect(jql).toContain('resolutiondate < "2026-06-30 23:59"');
 	});
+
+	it("omits the issuetype filter when issueTypes is empty (count all types)", () => {
+		const jql = buildJql("SPVR", [], WINDOW);
+		expect(jql).toContain('project = "SPVR"');
+		expect(jql).not.toContain("issuetype in");
+		expect(jql).toContain("statusCategory = Done");
+		expect(jql).toContain('resolutiondate >= "2026-06-01 00:00"');
+	});
 });
 
 describe("JiraStoryPointProvider — fetch & credit", () => {

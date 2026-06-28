@@ -174,9 +174,9 @@ func TestFmtReportSections_AllEnabled(t *testing.T) {
 		Sections: ReportSections{
 			ReportSections: ReportSectionsInner{
 				IndividualContributions: true,
-				VisibleWins:            true,
-				Loc:                    true,
-				DiscrepancyLog:         true,
+				VisibleWins:             true,
+				Loc:                     true,
+				DiscrepancyLog:          true,
 			},
 		},
 	}

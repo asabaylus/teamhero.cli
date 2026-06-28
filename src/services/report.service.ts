@@ -506,7 +506,10 @@ export class ReportService {
 						// would over-include. Use an exclusive end at the day after `until`.
 						const attached = await this.attachStoryPointData(memberMetrics, {
 							startISO: window.startISO,
-							endISO: resolveExclusiveEndISO(window.endDate),
+							// Prefer the original `until` so a timestamp boundary keeps its
+							// precision instead of being widened to the next midnight by the
+							// date-only window.endDate. Falls back to window.endDate for "now".
+							endISO: resolveExclusiveEndISO(input.until ?? window.endDate),
 						});
 						memberMetrics = attached.members;
 						if (attached.unmatchedAssignees.length > 0) {

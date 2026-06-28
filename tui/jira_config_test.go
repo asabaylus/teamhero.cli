@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -41,7 +42,7 @@ func TestWriteAndLoadJiraConfig(t *testing.T) {
 		Projects: []JiraProjectField{
 			{Key: "PT", FieldID: "customfield_10617", JqlName: "Story point estimate"},
 		},
-		IssueTypes: []string{"Story", "Task"},
+		IssueTypes: &[]string{"Story", "Task"},
 	}); err != nil {
 		t.Fatalf("WriteJiraConfig: %v", err)
 	}
@@ -128,5 +129,59 @@ func TestBuildJiraConfigFromSpec_Errors(t *testing.T) {
 	}
 	if _, err := buildJiraConfigFromSpec([]string{"", "  "}); err == nil {
 		t.Error("expected error when no valid projects")
+	}
+}
+
+func TestParseIssueTypesSpec(t *testing.T) {
+	if got := parseIssueTypesSpec(""); got != nil {
+		t.Errorf("empty => nil (default), got %v", got)
+	}
+	if got := parseIssueTypesSpec("   "); got != nil {
+		t.Errorf("whitespace => nil (default), got %v", got)
+	}
+	for _, any := range []string{"any", "ALL", "*"} {
+		got := parseIssueTypesSpec(any)
+		if got == nil || len(*got) != 0 {
+			t.Errorf("%q => &[]string{} (any), got %v", any, got)
+		}
+	}
+	got := parseIssueTypesSpec("Story, Bug ,Task")
+	if got == nil || len(*got) != 3 || (*got)[1] != "Bug" {
+		t.Errorf("comma list mis-parsed: %v", got)
+	}
+}
+
+func TestWriteJiraConfig_AnyTypeSerializesEmptyArray(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	cfg := JiraConfig{
+		Projects:   []JiraProjectField{{Key: "SPVR", FieldID: "f", JqlName: "n"}},
+		IssueTypes: parseIssueTypesSpec("any"),
+	}
+	if err := WriteJiraConfig(cfg); err != nil {
+		t.Fatalf("WriteJiraConfig: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(configDir(), "jira-config.json"))
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if !strings.Contains(string(data), `"issueTypes": []`) {
+		t.Errorf("any-type must serialize as \"issueTypes\": [], got:\n%s", data)
+	}
+}
+
+func TestWriteJiraConfig_DefaultOmitsIssueTypes(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	cfg := JiraConfig{
+		Projects:   []JiraProjectField{{Key: "SPVR", FieldID: "f", JqlName: "n"}},
+		IssueTypes: parseIssueTypesSpec(""),
+	}
+	if err := WriteJiraConfig(cfg); err != nil {
+		t.Fatalf("WriteJiraConfig: %v", err)
+	}
+	data, _ := os.ReadFile(filepath.Join(configDir(), "jira-config.json"))
+	if strings.Contains(string(data), "issueTypes") {
+		t.Errorf("default must omit issueTypes, got:\n%s", data)
 	}
 }

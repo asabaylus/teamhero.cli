@@ -41,14 +41,14 @@ type bootstrapRolePayload struct {
 }
 
 type bootstrapProjectPayload struct {
-	Mode             string                  `json:"mode"`
-	StackByCandidate bool                    `json:"stackByCandidate"`
-	OutputDir        string                  `json:"outputDir"`
-	TimeBoxMinutes   int                     `json:"timeBoxMinutes"`
-	Feature          string                  `json:"feature"`
-	AnalysisMode     string                  `json:"analysisMode"`
-	RubricMode       string                  `json:"rubricMode"`
-	JD               *bootstrapJDPayload     `json:"jd"`
+	Mode             string              `json:"mode"`
+	StackByCandidate bool                `json:"stackByCandidate"`
+	OutputDir        string              `json:"outputDir"`
+	TimeBoxMinutes   int                 `json:"timeBoxMinutes"`
+	Feature          string              `json:"feature"`
+	AnalysisMode     string              `json:"analysisMode"`
+	RubricMode       string              `json:"rubricMode"`
+	JD               *bootstrapJDPayload `json:"jd"`
 }
 
 type bootstrapJDPayload struct {

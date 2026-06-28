@@ -461,6 +461,9 @@ var apiCredentialKeys = map[string]bool{
 	"GITHUB_PERSONAL_ACCESS_TOKEN": true,
 	"OPENAI_API_KEY":               true,
 	"ASANA_API_TOKEN":              true,
+	"JIRA_BASE_URL":                true,
+	"JIRA_EMAIL":                   true,
+	"JIRA_API_TOKEN":               true,
 }
 
 // ---------------------------------------------------------------------------

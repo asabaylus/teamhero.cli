@@ -18,7 +18,7 @@ import { MetricsService } from "../services/metrics.service.js";
 import { ReportService } from "../services/report.service.js";
 import { ScopeService } from "../services/scope.service.js";
 import { getEnv } from "./env.js";
-import { loadIdentityMapFile } from "./identity-map.js";
+import { loadIdentityMapFile, resolveIdentityMapPath } from "./identity-map.js";
 import { loadJiraConfig } from "./jira-config-loader.js";
 import { loadOctokitFromEnv } from "./octokit.js";
 import { configDir } from "./paths.js";
@@ -85,9 +85,7 @@ export async function createReportService(
 
 	// Unified identity: identity-map.yaml is the canonical source; the legacy
 	// USER_MAP env folds in as supplemental, back-compat entries (canonical wins).
-	const identityMap = await loadIdentityMapFile(
-		".teamhero/local/identity-map.yaml",
-	);
+	const identityMap = await loadIdentityMapFile(resolveIdentityMapPath());
 	const identityResolver = createIdentityResolver(identityMap);
 	const persons = identityResolver.persons();
 	const userMapEnv = getEnv("USER_MAP");

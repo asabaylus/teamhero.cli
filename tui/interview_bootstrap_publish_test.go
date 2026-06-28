@@ -179,9 +179,9 @@ func TestGitHubClient_CreateRepo_ValidatesRepoName(t *testing.T) {
 // fakeGit records the commands that initAndPush issues so we can assert
 // the order without actually running git.
 type fakeGit struct {
-	calls   [][]string
-	failOn  string // substring match against args[0]; "" never fails
-	stderr  string
+	calls  [][]string
+	failOn string // substring match against args[0]; "" never fails
+	stderr string
 }
 
 func (g *fakeGit) Run(_ string, args ...string) (string, string, error) {

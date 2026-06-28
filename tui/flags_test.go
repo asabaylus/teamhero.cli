@@ -622,3 +622,24 @@ func TestApplyFlagsTo_JiraProjects(t *testing.T) {
 		t.Errorf("unexpected jira config: %+v", loaded)
 	}
 }
+
+func TestApplyFlagsTo_JiraProjectsFailFast(t *testing.T) {
+	oldExit := osExit
+	code := -1
+	osExit = func(c int) { code = c }
+	defer func() { osExit = oldExit }()
+
+	oldSpec := *flagJiraProjects
+	*flagJiraProjects = "PT:bogus" // invalid project type => parse error
+	defer func() { *flagJiraProjects = oldSpec }()
+
+	cfg := DefaultConfig()
+	applyFlagsTo(&cfg, func(name string) bool { return name == "jira-projects" })
+
+	if code != 1 {
+		t.Errorf("invalid --jira-projects should exit(1), got code %d", code)
+	}
+	if cfg.Sections.DataSources.Jira {
+		t.Error("Jira source must not be enabled when the spec fails to parse")
+	}
+}

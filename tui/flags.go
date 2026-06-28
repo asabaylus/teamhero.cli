@@ -36,6 +36,7 @@ var (
 	flagOutputFormat         = flag.String("output-format", "", "Report output format: markdown (default), json, both")
 	flagFlushCache           = flag.String("flush-cache", "", "Flush cached data: 'all', sources (metrics,loc,...), or with date 'all:since=2026-02-20'")
 	flagJiraProjects         = flag.String("jira-projects", "", "Configure Jira story points headlessly: KEY[:team|company],... (writes jira-config.json)")
+	flagJiraIssueTypes       = flag.String("jira-issue-types", "", "Which Jira issue types count for story points: comma list (e.g. Story,Task,Bug) or \"any\" for all types. Default: Story,Task")
 	flagForeground           = flag.Bool("foreground", false, "Run subprocess with direct I/O (bypass event piping)")
 	flagAdvanced             = flag.Bool("advanced", false, "Use full configuration wizard (skip express mode)")
 	flagSequential           = flag.Bool("sequential", false, "Run API requests sequentially instead of in parallel")
@@ -59,6 +60,9 @@ func flagWasSet(name string) bool {
 // applyFlags merges explicitly-set CLI flags into cfg.
 // Only flags the user actually provided on the command line are applied;
 // unset flags leave cfg untouched (preserving saved-config defaults).
+// osExit is overridable in tests so fail-fast paths can be exercised.
+var osExit = os.Exit
+
 func applyFlags(cfg *ReportConfig) {
 	applyFlagsTo(cfg, flagWasSet)
 }
@@ -149,13 +153,22 @@ func applyFlagsTo(cfg *ReportConfig, wasSet func(string) bool) {
 	if wasSet("jira-projects") {
 		specs := splitCSV(*flagJiraProjects)
 		jiraCfg, err := buildJiraConfigFromSpec(specs)
+		if err == nil && wasSet("jira-issue-types") {
+			jiraCfg.IssueTypes = parseIssueTypesSpec(*flagJiraIssueTypes)
+		}
+		// Jira was explicitly requested via the flag — a bad spec or failed write
+		// is a CLI input error, so abort instead of silently skipping the source.
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "jira-projects: %v\n", err)
-		} else if err := WriteJiraConfig(jiraCfg); err != nil {
-			fmt.Fprintf(os.Stderr, "jira-projects: failed to write jira-config.json: %v\n", err)
-		} else {
-			cfg.Sections.DataSources.Jira = true
+			osExit(1)
+			return
 		}
+		if err := WriteJiraConfig(jiraCfg); err != nil {
+			fmt.Fprintf(os.Stderr, "jira-projects: failed to write jira-config.json: %v\n", err)
+			osExit(1)
+			return
+		}
+		cfg.Sections.DataSources.Jira = true
 	}
 }
 
