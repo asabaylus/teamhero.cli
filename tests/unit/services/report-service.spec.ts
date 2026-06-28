@@ -2318,7 +2318,7 @@ describe("ReportService.generateReport", () => {
 	// Highlight failures throw
 	// -----------------------------------------------------------------------
 
-	it("throws when member highlights generation fails", async () => {
+	it("degrades gracefully when member highlights generation fails", async () => {
 		const ai = makeMockAI();
 		(ai.generateMemberHighlights as Mock).mockRejectedValue(
 			new Error("AI quota exceeded"),
@@ -2333,16 +2333,17 @@ describe("ReportService.generateReport", () => {
 			outputDir: () => "/tmp/test",
 		});
 
-		await expect(service.generateReport(makeInput())).rejects.toThrow(
-			"AI quota exceeded",
-		);
+		// AI is best-effort: a highlights failure must not throw away the
+		// collected git/Jira data — the report still generates.
+		const result = await service.generateReport(makeInput());
+		expect(result.outputPath).toBeDefined();
 	});
 
 	// -----------------------------------------------------------------------
-	// Team highlight failure throws
+	// Team highlight failure degrades gracefully
 	// -----------------------------------------------------------------------
 
-	it("throws when team highlight generation fails", async () => {
+	it("degrades gracefully when team highlight generation fails", async () => {
 		const ai = makeMockAI();
 		(ai.generateTeamHighlight as Mock).mockRejectedValue(
 			new Error("Team highlight failed"),
@@ -2357,9 +2358,8 @@ describe("ReportService.generateReport", () => {
 			outputDir: () => "/tmp/test",
 		});
 
-		await expect(service.generateReport(makeInput())).rejects.toThrow(
-			"Team highlight failed",
-		);
+		const result = await service.generateReport(makeInput());
+		expect(result.outputPath).toBeDefined();
 	});
 
 	// -----------------------------------------------------------------------

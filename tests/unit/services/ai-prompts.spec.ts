@@ -497,6 +497,22 @@ describe("buildFinalReportPrompt", () => {
 		expect(result).toContain("Next Steps");
 	});
 
+	it("includes a Story Points column + data when sections.storyPoints is enabled", () => {
+		const result = buildFinalReportPrompt(
+			makeRenderInput({
+				sections: { git: true, taskTracker: true, storyPoints: true },
+				memberMetrics: [makeMemberMetrics({ storyPointsCompleted: 42 })],
+			}),
+		);
+		expect(result).toContain("Story Points");
+		expect(result).toContain('"storyPointsCompleted":42');
+	});
+
+	it("omits the Story Points column when story points are disabled", () => {
+		const result = buildFinalReportPrompt(makeRenderInput());
+		expect(result).not.toContain("Story Points");
+	});
+
 	it("includes serialized report data as JSON", () => {
 		const result = buildFinalReportPrompt(makeRenderInput());
 		expect(result).toContain("Raw data:");
