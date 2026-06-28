@@ -1,6 +1,20 @@
 import { readFile } from "node:fs/promises";
 import { load as loadYaml } from "js-yaml";
 import type { IdentityMap, IdentityMapEntry } from "../models/person.js";
+import { getEnv } from "./env.js";
+
+/** Default on-disk location of the local identity map. */
+export const DEFAULT_IDENTITY_MAP_PATH = ".teamhero/local/identity-map.yaml";
+
+/**
+ * Resolve the identity-map path for every consumer (metrics, service-factory,
+ * run-report). Honors the TEAMHERO_IDENTITY_MAP override so tests — and any
+ * non-default deployment — stay deterministic instead of depending on a
+ * developer-local file.
+ */
+export function resolveIdentityMapPath(): string {
+	return getEnv("TEAMHERO_IDENTITY_MAP") ?? DEFAULT_IDENTITY_MAP_PATH;
+}
 
 /**
  * Loading and validation for the human-maintained identity map.
@@ -29,8 +43,42 @@ function coerceEntry(value: unknown): IdentityMapEntry | null {
 		logins: asStringArray(raw.logins),
 		emails: asStringArray(raw.emails),
 		names: asStringArray(raw.names),
+		jira: coerceJira(raw.jira),
+		asana: coerceAsana(raw.asana),
 		external: raw.external === true,
 	};
+}
+
+/** Coerce a raw `jira` block into `{ accountId?, email? }`, or undefined. */
+function coerceJira(
+	value: unknown,
+): { accountId?: string; email?: string } | undefined {
+	if (!value || typeof value !== "object") return undefined;
+	const raw = value as Record<string, unknown>;
+	const accountId =
+		typeof raw.accountId === "string" && raw.accountId.trim()
+			? raw.accountId.trim()
+			: undefined;
+	const email =
+		typeof raw.email === "string" && raw.email.trim()
+			? raw.email.trim()
+			: undefined;
+	return accountId || email ? { accountId, email } : undefined;
+}
+
+/** Coerce a raw `asana` block into an {@link AsanaAccount}, or undefined. */
+function coerceAsana(value: unknown): IdentityMapEntry["asana"] {
+	if (!value || typeof value !== "object") return undefined;
+	const raw = value as Record<string, unknown>;
+	const str = (v: unknown) =>
+		typeof v === "string" && v.trim() ? v.trim() : undefined;
+	const asana = {
+		email: str(raw.email),
+		name: str(raw.name),
+		userGid: str(raw.userGid),
+		workspaceGid: str(raw.workspaceGid),
+	};
+	return Object.values(asana).some(Boolean) ? asana : undefined;
 }
 
 /** Validate an already-parsed value into an {@link IdentityMap} (lenient: drops bad entries). */

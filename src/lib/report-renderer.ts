@@ -44,6 +44,10 @@ export interface ReportMemberMetrics {
 	changesRequested: number;
 	commented: number;
 	reviewComments: number;
+	/** Jira story points completed in the window. Optional; gated by the Jira source. */
+	storyPointsCompleted?: number;
+	/** Story points per Jira project key. */
+	storyPointsByProject?: Record<string, number>;
 	aiSummary: string;
 	highlights: string[];
 	prHighlights: string[];
@@ -121,6 +125,8 @@ export interface ReportSections {
 	technicalFoundationalWins?: boolean;
 	individualContributions?: boolean;
 	discrepancyLog?: boolean;
+	/** Jira story-point source enabled — gates the Story Points column. */
+	storyPoints?: boolean;
 }
 
 function sortMemberMetrics(
@@ -199,28 +205,36 @@ export function renderReport(input: ReportRenderInput): string {
 				(m.linesAddedInProgress ?? 0) > 0 ||
 				(m.linesDeletedInProgress ?? 0) > 0,
 		);
+		// Story Points column is gated on the Jira source being enabled (not on
+		// member values), so reports with the source off stay byte-for-byte
+		// unchanged and an all-zero week still shows the column when Jira ran.
+		const hasStoryPoints = input.sections.storyPoints === true;
+		const spHeader = hasStoryPoints ? " Story Points |" : "";
+		const spAlign = hasStoryPoints ? "-------------:|" : "";
+		const spCell = (m: ReportMemberMetrics) =>
+			hasStoryPoints ? ` ${m.storyPointsCompleted ?? 0} |` : "";
 		if (hasInProgress) {
 			parts.push(
-				"| Developer        | Commits | PRs Opened | PRs Closed | PRs Merged | Lines Added | Lines Deleted | In-Progress + | In-Progress - | Reviews |",
+				`| Developer        | Commits | PRs Opened | PRs Closed | PRs Merged | Lines Added | Lines Deleted | In-Progress + | In-Progress - | Reviews |${spHeader}`,
 			);
 			parts.push(
-				"|------------------|--------:|-----------:|-----------:|-----------:|------------:|--------------:|--------------:|--------------:|--------:|",
+				`|------------------|--------:|-----------:|-----------:|-----------:|------------:|--------------:|--------------:|--------------:|--------:|${spAlign}`,
 			);
 			for (const member of members) {
 				parts.push(
-					`| ${member.displayName} | ${member.commits} | ${member.prsOpened} | ${member.prsClosed} | ${member.prsMerged} | ${member.linesAdded} | ${member.linesDeleted} | ${member.linesAddedInProgress ?? 0} | ${member.linesDeletedInProgress ?? 0} | ${member.reviews} |`,
+					`| ${member.displayName} | ${member.commits} | ${member.prsOpened} | ${member.prsClosed} | ${member.prsMerged} | ${member.linesAdded} | ${member.linesDeleted} | ${member.linesAddedInProgress ?? 0} | ${member.linesDeletedInProgress ?? 0} | ${member.reviews} |${spCell(member)}`,
 				);
 			}
 		} else {
 			parts.push(
-				"| Developer        | Commits | PRs Opened | PRs Closed | PRs Merged | Lines Added | Lines Deleted | Reviews |",
+				`| Developer        | Commits | PRs Opened | PRs Closed | PRs Merged | Lines Added | Lines Deleted | Reviews |${spHeader}`,
 			);
 			parts.push(
-				"|------------------|--------:|-----------:|-----------:|-----------:|------------:|--------------:|--------:|",
+				`|------------------|--------:|-----------:|-----------:|-----------:|------------:|--------------:|--------:|${spAlign}`,
 			);
 			for (const member of members) {
 				parts.push(
-					`| ${member.displayName} | ${member.commits} | ${member.prsOpened} | ${member.prsClosed} | ${member.prsMerged} | ${member.linesAdded} | ${member.linesDeleted} | ${member.reviews} |`,
+					`| ${member.displayName} | ${member.commits} | ${member.prsOpened} | ${member.prsClosed} | ${member.prsMerged} | ${member.linesAdded} | ${member.linesDeleted} | ${member.reviews} |${spCell(member)}`,
 				);
 			}
 		}

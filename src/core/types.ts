@@ -246,6 +246,64 @@ export interface TaskTrackerProvider {
 }
 
 // ---------------------------------------------------------------------------
+// Story points (Jira) — see docs/teamhero-storypoints-plan.md
+// ---------------------------------------------------------------------------
+
+/** Per-project story-point field resolution, as persisted in jira-config.json. */
+export interface JiraProjectFieldConfig {
+	/** Jira project key, e.g. "PT" or "SPVR". */
+	key: string;
+	/** Story-point custom field id, e.g. "customfield_10617". */
+	fieldId: string;
+	/** JQL field name, e.g. "Story point estimate". */
+	jqlName: string;
+}
+
+export interface StoryPointOptions {
+	/** Per-project field config (from jira-config.json). Empty ⇒ nothing to fetch. */
+	projects: JiraProjectFieldConfig[];
+	/** Issue types that carry points. Default ["Story", "Task"]. */
+	issueTypes?: string[];
+	/** Whom to credit. Default "assignee". "resolver" is a later slice. */
+	creditBy?: "assignee" | "resolver";
+}
+
+/**
+ * Story points completed in the window for one developer. In the result map the
+ * key is the member login the report attributes by (mirrors {@link MemberTaskSummary}
+ * so it merges cleanly onto ReportMemberMetrics).
+ */
+export interface StoryPointResult {
+	status: "matched" | "no-match" | "disabled";
+	totalPoints: number;
+	/** Points per project key, for breakdowns. */
+	byProject: Record<string, number>;
+	issueCount: number;
+	message?: string;
+}
+
+/** Port for fetching completed story points per Person from a tracker (Jira). */
+export interface StoryPointProvider {
+	readonly enabled: boolean;
+	/**
+	 * Returns story points completed in the window keyed by member login.
+	 * Jira assignees that match no member are surfaced via {@link unmatchedAssignees}.
+	 */
+	fetchCompletedStoryPoints(
+		members: TaskTrackerMemberInput[],
+		window: ReportingWindow,
+		options: StoryPointOptions,
+	): Promise<StoryPointFetchResult>;
+}
+
+export interface StoryPointFetchResult {
+	/** Keyed by member login (the key the report merges story points on). */
+	byPerson: Map<string, StoryPointResult>;
+	/** Jira assignee display names (or accountIds) that matched no Person. */
+	unmatchedAssignees: string[];
+}
+
+// ---------------------------------------------------------------------------
 // Project board & meeting notes (Visible Wins)
 // ---------------------------------------------------------------------------
 
@@ -510,7 +568,8 @@ export type CacheSourceType =
 	| "team-highlight"
 	| "audit"
 	| "technical-wins"
-	| "project-statuses";
+	| "project-statuses"
+	| "storypoints";
 
 // ---------------------------------------------------------------------------
 // Technical / Foundational Wins section

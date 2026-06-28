@@ -29,6 +29,7 @@ const emptyReconciliation: ReconciliationReport = {
 	duplicateAccountPersons: [],
 	unverifiedExternalEmails: [],
 	cappedRepos: [],
+	unmatchedJiraAssignees: [],
 };
 
 function fakeScope() {

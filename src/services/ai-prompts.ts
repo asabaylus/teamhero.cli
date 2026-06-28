@@ -183,6 +183,21 @@ function truncateForPrompt(value: string, maxLength: number): string {
 }
 
 export function buildFinalReportPrompt(report: ReportRenderInput): string {
+	const showStoryPoints = report.sections?.storyPoints === true;
+	const atAGlanceHeader = showStoryPoints
+		? "| Developer        | Commits | PRs Opened | PRs Merged | Lines Added | Lines Deleted | Reviews | Story Points |"
+		: "| Developer        | Commits | PRs Opened | PRs Merged | Lines Added | Lines Deleted | Reviews |";
+	const atAGlanceSeparator = showStoryPoints
+		? "|------------------|--------:|-----------:|-----------:|------------:|--------------:|--------:|-------------:|"
+		: "|------------------|--------:|-----------:|-----------:|------------:|--------------:|--------:|";
+	const atAGlanceRow = showStoryPoints
+		? "| {{Developer Name}} | {{Commits}} | {{PRs Total}} | {{PRs Merged}} | {{Lines Added}} | {{Lines Deleted}} | {{Reviews}} | {{Story Points}} |"
+		: "| {{Developer Name}} | {{Commits}} | {{PRs Total}} | {{PRs Merged}} | {{Lines Added}} | {{Lines Deleted}} | {{Reviews}} |";
+	const storyPointsInstruction = showStoryPoints
+		? [
+				"2a. Include the Story Points column in the At-a-Glance Summary, using each contributor's storyPointsCompleted value (use 0 when absent). Do not omit this column.",
+			]
+		: [];
 	const detailGuidance = report.showDetails
 		? [
 				"11. Detailed listings are enabled. The system will automatically append detailed PR and commit listings after your narrative. Focus on writing the narrative summaries only.",
@@ -198,6 +213,7 @@ export function buildFinalReportPrompt(report: ReportRenderInput): string {
 		"Instructions:",
 		"1. Use a clear, professional, and objective tone suitable for a CTO. Do not include praise, speculation, or character judgments.",
 		'2. The At-a-Glance Summary must list every contributor individually — do not create aggregate rows such as "Others" or use value ranges.',
+		...storyPointsInstruction,
 		"3. Present Top Highlights as a single bullet list of the most important accomplishments or themes; do not create nested categories.",
 		"4. In Individual Updates, create a dedicated subsection for each contributor using the format `### {Display Name} (@{login})`.",
 		"5. Write one or two short paragraphs (default to one) for each contributor; the opening paragraph must narrate their completed Asana tasks in plain English and connect them to user or operational value. If no tasks were completed, state that explicitly in the first paragraph.",
@@ -217,9 +233,9 @@ export function buildFinalReportPrompt(report: ReportRenderInput): string {
 		"---",
 		"",
 		"## **At-a-Glance Summary**",
-		"| Developer        | Commits | PRs Opened | PRs Merged | Lines Added | Lines Deleted | Reviews |",
-		"|------------------|--------:|-----------:|-----------:|------------:|--------------:|--------:|",
-		"| {{Developer Name}} | {{Commits}} | {{PRs Total}} | {{PRs Merged}} | {{Lines Added}} | {{Lines Deleted}} | {{Reviews}} |",
+		atAGlanceHeader,
+		atAGlanceSeparator,
+		atAGlanceRow,
 		"",
 		"> *Note: This table provides a quick view of activity across the team. Reviews are counted as approved, changes requested, or commented.*",
 		"",
@@ -730,6 +746,7 @@ export function buildVisibleWinsExtractionPrompt(
 }
 
 function serializeReportData(report: ReportRenderInput) {
+	const showStoryPoints = report.sections?.storyPoints === true;
 	return {
 		window: report.window,
 		showDetails: report.showDetails,
@@ -751,6 +768,11 @@ function serializeReportData(report: ReportRenderInput) {
 			changesRequested: member.changesRequested,
 			commented: member.commented,
 			reviewComments: member.reviewComments,
+			// Only emit story points when the source is enabled — keep the field
+			// out of non-Jira prompts entirely.
+			...(showStoryPoints
+				? { storyPointsCompleted: member.storyPointsCompleted ?? 0 }
+				: {}),
 			aiSummary: member.aiSummary,
 			prHighlights: member.prHighlights,
 			commitHighlights: member.commitHighlights,

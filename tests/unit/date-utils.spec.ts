@@ -6,8 +6,22 @@ import {
 	isValidDateString,
 	MAX_REPORT_DAYS,
 	normalizeDate,
+	resolveExclusiveEndISO,
 	validateDateRange,
 } from "../../src/lib/date-utils.js";
+
+describe("resolveExclusiveEndISO", () => {
+	it("returns the start of the day after `until` (no +2 buffer)", () => {
+		expect(resolveExclusiveEndISO("2026-06-15")).toBe(
+			"2026-06-16T00:00:00.000Z",
+		);
+	});
+	it("passes non-date instants through", () => {
+		expect(resolveExclusiveEndISO("2026-06-15T12:30:00Z")).toBe(
+			"2026-06-15T12:30:00.000Z",
+		);
+	});
+});
 
 describe("date-utils", () => {
 	describe("MAX_REPORT_DAYS", () => {

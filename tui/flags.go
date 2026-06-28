@@ -2,6 +2,8 @@ package main
 
 import (
 	"flag"
+	"fmt"
+	"os"
 	"strings"
 	"time"
 )
@@ -17,7 +19,7 @@ var (
 	flagTeam                 = flag.String("team", "", "Comma-separated contributor identifiers to filter by team")
 	flagMembers              = flag.String("members", "", "Comma-separated member logins")
 	flagRepos                = flag.String("repos", "", "Comma-separated repository names")
-	flagSources              = flag.String("sources", "", "Comma-separated data sources to fetch: git,asana (omit for all)")
+	flagSources              = flag.String("sources", "", "Comma-separated data sources to fetch: git,asana,jira (omit for all)")
 	flagSections             = flag.String("sections", "", "Comma-separated report sections to render: loc,individual,visible-wins,technical-wins,discrepancy-log (omit for all)")
 	flagSince                = flag.String("since", "", "Start date (YYYY-MM-DD)")
 	flagUntil                = flag.String("until", "", "End date (YYYY-MM-DD)")
@@ -33,6 +35,8 @@ var (
 	flagFormat               = flag.String("format", "", "Output format: json (for doctor command)")
 	flagOutputFormat         = flag.String("output-format", "", "Report output format: markdown (default), json, both")
 	flagFlushCache           = flag.String("flush-cache", "", "Flush cached data: 'all', sources (metrics,loc,...), or with date 'all:since=2026-02-20'")
+	flagJiraProjects         = flag.String("jira-projects", "", "Configure Jira story points headlessly: KEY[:team|company],... (writes jira-config.json)")
+	flagJiraIssueTypes       = flag.String("jira-issue-types", "", "Which Jira issue types count for story points: comma list (e.g. Story,Task,Bug) or \"any\" for all types. Default: Story,Task")
 	flagForeground           = flag.Bool("foreground", false, "Run subprocess with direct I/O (bypass event piping)")
 	flagAdvanced             = flag.Bool("advanced", false, "Use full configuration wizard (skip express mode)")
 	flagSequential           = flag.Bool("sequential", false, "Run API requests sequentially instead of in parallel")
@@ -56,6 +60,9 @@ func flagWasSet(name string) bool {
 // applyFlags merges explicitly-set CLI flags into cfg.
 // Only flags the user actually provided on the command line are applied;
 // unset flags leave cfg untouched (preserving saved-config defaults).
+// osExit is overridable in tests so fail-fast paths can be exercised.
+var osExit = os.Exit
+
 func applyFlags(cfg *ReportConfig) {
 	applyFlagsTo(cfg, flagWasSet)
 }
@@ -129,6 +136,7 @@ func applyFlagsTo(cfg *ReportConfig, wasSet func(string) bool) {
 		sources := splitCSV(*flagSources)
 		cfg.Sections.DataSources.Git = containsIgnoreCase(sources, "git")
 		cfg.Sections.DataSources.Asana = containsIgnoreCase(sources, "asana")
+		cfg.Sections.DataSources.Jira = containsIgnoreCase(sources, "jira")
 	}
 
 	// Subtractive flag model: --sections narrows report sections
@@ -139,6 +147,28 @@ func applyFlagsTo(cfg *ReportConfig, wasSet func(string) bool) {
 		cfg.Sections.ReportSections.TechnicalFoundationalWins = containsIgnoreCase(sections, "technical-wins") || containsIgnoreCase(sections, "technicalWins")
 		cfg.Sections.ReportSections.DiscrepancyLog = containsIgnoreCase(sections, "discrepancy-log") || containsIgnoreCase(sections, "discrepancyLog") || containsIgnoreCase(sections, "discrepancy")
 		cfg.Sections.ReportSections.Loc = containsIgnoreCase(sections, "loc")
+	}
+
+	// --jira-projects writes jira-config.json and enables the Jira source.
+	if wasSet("jira-projects") {
+		specs := splitCSV(*flagJiraProjects)
+		jiraCfg, err := buildJiraConfigFromSpec(specs)
+		if err == nil && wasSet("jira-issue-types") {
+			jiraCfg.IssueTypes = parseIssueTypesSpec(*flagJiraIssueTypes)
+		}
+		// Jira was explicitly requested via the flag — a bad spec or failed write
+		// is a CLI input error, so abort instead of silently skipping the source.
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "jira-projects: %v\n", err)
+			osExit(1)
+			return
+		}
+		if err := WriteJiraConfig(jiraCfg); err != nil {
+			fmt.Fprintf(os.Stderr, "jira-projects: failed to write jira-config.json: %v\n", err)
+			osExit(1)
+			return
+		}
+		cfg.Sections.DataSources.Jira = true
 	}
 }
 

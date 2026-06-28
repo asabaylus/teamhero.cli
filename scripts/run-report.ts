@@ -22,8 +22,10 @@ import { consola, createConsola } from "consola";
 import { AsanaBoardAdapter } from "../src/adapters/asana/board-adapter.js";
 import { CachedLocCollector } from "../src/adapters/cache/cached-loc-collector.js";
 import { CachedMetricsProvider } from "../src/adapters/cache/cached-metrics-provider.js";
+import { CachedStoryPointProvider } from "../src/adapters/cache/cached-story-point-provider.js";
 import { CachedTaskTrackerProvider } from "../src/adapters/cache/cached-task-tracker.js";
 import { CachedVisibleWinsProvider } from "../src/adapters/cache/cached-visible-wins.js";
+import { JiraStoryPointProvider } from "../src/adapters/jira/jira-story-point-provider.js";
 import { CompositeMeetingNotesAdapter } from "../src/adapters/meeting-notes/composite-adapter.js";
 import { MeetingNotesFilesystemAdapter } from "../src/adapters/meeting-notes/filesystem-adapter.js";
 import { GoogleDriveMeetingNotesAdapter } from "../src/adapters/meeting-notes/google-drive-adapter.js";
@@ -39,11 +41,23 @@ import type {
 import { loadBoardsConfig } from "../src/lib/boards-config-loader.js";
 import { getEnv } from "../src/lib/env.js";
 import { isGoogleAuthorized } from "../src/lib/google-oauth.js";
+import {
+	loadIdentityMapFile,
+	resolveIdentityMapPath,
+} from "../src/lib/identity-map.js";
+import { loadJiraConfig } from "../src/lib/jira-config-loader.js";
 import { JsonLinesProgressDisplay } from "../src/lib/json-lines-progress.js";
 import { loadOctokitFromEnv } from "../src/lib/octokit.js";
 import { RunHistoryStore } from "../src/lib/run-history.js";
 import { appendUnifiedLog } from "../src/lib/unified-log.js";
-import { parseUserMap } from "../src/lib/user-map.js";
+import {
+	buildJiraLoginLookupFromPersons,
+	jiraIdentityCacheKey,
+	mergeUserMaps,
+	parseUserMap,
+	personsToUserMap,
+	userMapDeprecationNotice,
+} from "../src/lib/user-map.js";
 import {
 	VISIBLE_WINS_ENV_KEYS,
 	validateSharedConfig,
@@ -52,6 +66,7 @@ import {
 import type { ProjectTask } from "../src/models/visible-wins.js";
 import { AIService } from "../src/services/ai.service.js";
 import { AsanaService } from "../src/services/asana.service.js";
+import { createIdentityResolver } from "../src/services/identity-resolver.service.js";
 import { MetricsService } from "../src/services/metrics.service.js";
 import { ReportService } from "../src/services/report.service.js";
 import { ScopeService } from "../src/services/scope.service.js";
@@ -189,7 +204,17 @@ async function main(): Promise<void> {
 			logger: logger.withTag("ai"),
 			systemPrompts: input.systemPrompts,
 		});
-		const userMap = parseUserMap(getEnv("USER_MAP"));
+		// Unified identity: identity-map.yaml is canonical; USER_MAP env supplements.
+		const identityMap = await loadIdentityMapFile(resolveIdentityMapPath());
+		const identityResolver = createIdentityResolver(identityMap);
+		const persons = identityResolver.persons();
+		const userMapEnv = getEnv("USER_MAP");
+		const deprecationNotice = userMapDeprecationNotice(userMapEnv);
+		if (deprecationNotice) logger.warn(deprecationNotice);
+		const userMap = mergeUserMaps(
+			personsToUserMap(persons),
+			parseUserMap(userMapEnv),
+		);
 		const asana = new AsanaService({
 			token: getEnv("ASANA_API_TOKEN"),
 			baseUrl: getEnv("ASANA_API_BASE_URL"),
@@ -321,6 +346,51 @@ async function main(): Promise<void> {
 			: undefined;
 		const cachedLoc = new CachedLocCollector(cacheOptions);
 
+		// Story points (Jira) — only when auth env + a saved jira-config.json exist.
+		// The report-time guard handles the requested-but-unconfigured case.
+		let storyPointProvider: CachedStoryPointProvider | undefined;
+		let storyPointOptions:
+			| import("../src/core/types.js").StoryPointOptions
+			| undefined;
+		const jiraBaseUrl = getEnv("JIRA_BASE_URL");
+		const jiraEmail = getEnv("JIRA_EMAIL");
+		const jiraToken = getEnv("JIRA_API_TOKEN");
+		// Only touch optional Jira config when this report actually requests it, and
+		// never let a malformed config abort a non-Jira (or any) report.
+		if (
+			input.sections.dataSources.jira &&
+			jiraBaseUrl &&
+			jiraEmail &&
+			jiraToken
+		) {
+			try {
+				const jiraConfig = await loadJiraConfig();
+				if (jiraConfig) {
+					const jiraLookup = buildJiraLoginLookupFromPersons(persons);
+					storyPointProvider = new CachedStoryPointProvider(
+						new JiraStoryPointProvider({
+							baseUrl: jiraBaseUrl,
+							email: jiraEmail,
+							apiToken: jiraToken,
+							jiraLookup,
+							logger: logger.withTag("jira"),
+						}),
+						cacheOptions,
+						jiraIdentityCacheKey(jiraLookup),
+					);
+					storyPointOptions = {
+						projects: jiraConfig.projects,
+						issueTypes: jiraConfig.issueTypes,
+						creditBy: jiraConfig.creditBy,
+					};
+				}
+			} catch (err) {
+				logger.warn(
+					`[jira] ignoring invalid Jira config: ${(err as Error).message}`,
+				);
+			}
+		}
+
 		const reportService = new ReportService({
 			scope,
 			metrics: cachedMetrics,
@@ -336,6 +406,9 @@ async function main(): Promise<void> {
 			asanaService: asana,
 			roadmapTitle: boardsResult?.roadmapTitle,
 			userMap,
+			identityResolver,
+			storyPointProvider,
+			storyPointOptions,
 		});
 
 		const result = await reportService.generateReport(input);

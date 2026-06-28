@@ -25,6 +25,9 @@ function renderMemberSection(
 	parts.push(`| Lines Added | ${member.linesAdded} |`);
 	parts.push(`| Lines Deleted | ${member.linesDeleted} |`);
 	parts.push(`| Reviews | ${member.reviews} |`);
+	if (member.storyPointsCompleted !== undefined) {
+		parts.push(`| Story Points | ${member.storyPointsCompleted} |`);
+	}
 	parts.push("");
 
 	// AI Summary

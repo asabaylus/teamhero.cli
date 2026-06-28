@@ -21,6 +21,17 @@ export interface AsanaAccount {
 }
 
 /**
+ * Jira account information for a user. Used to attribute story points to the
+ * same Person the git/Asana metrics use.
+ */
+export interface JiraAccount {
+	/** Jira accountId — the most reliable identifier for matching. */
+	accountId?: string;
+	/** Jira email address (fallback match). */
+	email?: string;
+}
+
+/**
  * Canonical user identity that maps to accounts across different systems.
  * The key in UserMap is a human-readable identifier (not tied to any system).
  */
@@ -33,7 +44,8 @@ export interface UserIdentity {
 	github?: GitHubAccount;
 	/** Asana account information */
 	asana?: AsanaAccount;
-	// Future: jira?: JiraAccount;
+	/** Jira account information */
+	jira?: JiraAccount;
 	// Future: slack?: SlackAccount;
 }
 

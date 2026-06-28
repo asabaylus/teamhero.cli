@@ -15,11 +15,14 @@ export interface ReconciliationReport {
 	unverifiedExternalEmails: { personId: string; email: string }[];
 	/** Repos whose commit enumeration hit a fetch cap (counts may be partial). */
 	cappedRepos: string[];
+	/** Jira assignees (display name or accountId) that matched no Person. */
+	unmatchedJiraAssignees: string[];
 }
 
 export interface ReconciliationInputs {
 	unmappedCommits?: UnmappedAuthor[];
 	cappedRepos?: string[];
+	unmatchedJiraAssignees?: string[];
 }
 
 /** Assemble the reconciliation report from the resolver and collection leftovers. */
@@ -39,6 +42,7 @@ export function buildReconciliationReport(
 				person.emails.map((email) => ({ personId: person.id, email })),
 			),
 		cappedRepos: inputs.cappedRepos ?? [],
+		unmatchedJiraAssignees: inputs.unmatchedJiraAssignees ?? [],
 	};
 }
 
@@ -48,7 +52,8 @@ export function isReconciliationClean(report: ReconciliationReport): boolean {
 		report.unmappedCommitAuthors.length === 0 &&
 		report.duplicateAccountPersons.length === 0 &&
 		report.unverifiedExternalEmails.length === 0 &&
-		report.cappedRepos.length === 0
+		report.cappedRepos.length === 0 &&
+		report.unmatchedJiraAssignees.length === 0
 	);
 }
 
@@ -86,6 +91,14 @@ export function formatReconciliation(report: ReconciliationReport): string {
 		lines.push(
 			`- ${report.cappedRepos.length} repo(s) hit a fetch cap (counts may be partial): ${report.cappedRepos.join(", ")}`,
 		);
+	}
+	if (report.unmatchedJiraAssignees.length > 0) {
+		lines.push(
+			`- ${report.unmatchedJiraAssignees.length} unmatched Jira assignee(s) — add a jira accountId to the identity map (story points dropped):`,
+		);
+		for (const a of report.unmatchedJiraAssignees) {
+			lines.push(`    ${a}`);
+		}
 	}
 	return lines.join("\n");
 }

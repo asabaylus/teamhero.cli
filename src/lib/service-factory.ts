@@ -3,17 +3,33 @@ import { consola } from "consola";
 import { config as dotenvConfig } from "dotenv";
 import { CachedLocCollector } from "../adapters/cache/cached-loc-collector.js";
 import { CachedMetricsProvider } from "../adapters/cache/cached-metrics-provider.js";
+import { CachedStoryPointProvider } from "../adapters/cache/cached-story-point-provider.js";
 import { CachedTaskTrackerProvider } from "../adapters/cache/cached-task-tracker.js";
-import type { CacheOptions, ProgressReporterFactory } from "../core/types.js";
+import { JiraStoryPointProvider } from "../adapters/jira/jira-story-point-provider.js";
+import type {
+	CacheOptions,
+	ProgressReporterFactory,
+	StoryPointOptions,
+} from "../core/types.js";
 import { AIService } from "../services/ai.service.js";
 import { AsanaService } from "../services/asana.service.js";
+import { createIdentityResolver } from "../services/identity-resolver.service.js";
 import { MetricsService } from "../services/metrics.service.js";
 import { ReportService } from "../services/report.service.js";
 import { ScopeService } from "../services/scope.service.js";
 import { getEnv } from "./env.js";
+import { loadIdentityMapFile, resolveIdentityMapPath } from "./identity-map.js";
+import { loadJiraConfig } from "./jira-config-loader.js";
 import { loadOctokitFromEnv } from "./octokit.js";
 import { configDir } from "./paths.js";
-import { parseUserMap } from "./user-map.js";
+import {
+	buildJiraLoginLookupFromPersons,
+	jiraIdentityCacheKey,
+	mergeUserMaps,
+	parseUserMap,
+	personsToUserMap,
+	userMapDeprecationNotice,
+} from "./user-map.js";
 
 export interface ServiceFactoryOptions {
 	cacheOptions?: CacheOptions;
@@ -67,7 +83,57 @@ export async function createReportService(
 		);
 	}
 
-	const userMap = parseUserMap(getEnv("USER_MAP"));
+	// Unified identity: identity-map.yaml is the canonical source; the legacy
+	// USER_MAP env folds in as supplemental, back-compat entries (canonical wins).
+	const identityMap = await loadIdentityMapFile(resolveIdentityMapPath());
+	const identityResolver = createIdentityResolver(identityMap);
+	const persons = identityResolver.persons();
+	const userMapEnv = getEnv("USER_MAP");
+	const deprecationNotice = userMapDeprecationNotice(userMapEnv);
+	if (deprecationNotice) logger.warn(deprecationNotice);
+	const userMap = mergeUserMaps(
+		personsToUserMap(persons),
+		parseUserMap(userMapEnv),
+	);
+
+	// Jira story points are optional — only wire when both auth env and a saved
+	// jira-config.json are present. Otherwise the report-time guard warns and skips.
+	let storyPointProvider: CachedStoryPointProvider | undefined;
+	let storyPointOptions: StoryPointOptions | undefined;
+	const jiraBaseUrl = getEnv("JIRA_BASE_URL");
+	const jiraEmail = getEnv("JIRA_EMAIL");
+	const jiraToken = getEnv("JIRA_API_TOKEN");
+	if (jiraBaseUrl && jiraEmail && jiraToken) {
+		try {
+			const jiraConfig = await loadJiraConfig();
+			if (jiraConfig) {
+				const jiraLookup = buildJiraLoginLookupFromPersons(persons);
+				const jira = new JiraStoryPointProvider({
+					baseUrl: jiraBaseUrl,
+					email: jiraEmail,
+					apiToken: jiraToken,
+					jiraLookup,
+					logger: logger.withTag("jira"),
+				});
+				storyPointProvider = new CachedStoryPointProvider(
+					jira,
+					options.cacheOptions ?? {},
+					jiraIdentityCacheKey(jiraLookup),
+				);
+				storyPointOptions = {
+					projects: jiraConfig.projects,
+					issueTypes: jiraConfig.issueTypes,
+					creditBy: jiraConfig.creditBy,
+				};
+			}
+		} catch (err) {
+			// A malformed optional Jira config must not abort service creation;
+			// leave story points unconfigured so the report-time guard warns+skips.
+			logger.warn(
+				`[jira] ignoring invalid Jira config: ${(err as Error).message}`,
+			);
+		}
+	}
 
 	return new ReportService({
 		scope,
@@ -80,5 +146,8 @@ export async function createReportService(
 		progressFactory: options.progressFactory,
 		asanaService,
 		userMap,
+		identityResolver,
+		storyPointProvider,
+		storyPointOptions,
 	});
 }

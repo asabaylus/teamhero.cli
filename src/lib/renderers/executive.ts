@@ -57,8 +57,18 @@ export const executiveRenderer: ReportRenderer = {
 
 		// 3. Key Metrics
 		const { prsMerged, repoCount, contributorCount } = input.totals;
+		const hasStoryPoints = input.memberMetrics.some(
+			(m) => m.storyPointsCompleted !== undefined,
+		);
+		const storyPointsTotal = input.memberMetrics.reduce(
+			(sum, m) => sum + (m.storyPointsCompleted ?? 0),
+			0,
+		);
+		const storyPointsSuffix = hasStoryPoints
+			? `, ${storyPointsTotal} story point${storyPointsTotal === 1 ? "" : "s"} completed`
+			: "";
 		parts.push(
-			`**Key Metrics:** ${prsMerged} PRs merged across ${repoCount} repos by ${contributorCount} engineers`,
+			`**Key Metrics:** ${prsMerged} PRs merged across ${repoCount} repos by ${contributorCount} engineers${storyPointsSuffix}`,
 		);
 		parts.push("");
 

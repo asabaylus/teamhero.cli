@@ -7,6 +7,7 @@ import type { ReportCommandInput, ReportResult } from "../cli/index.js";
 import type {
 	CacheOptions,
 	DiscrepancyReport,
+	IdentityResolver,
 	LatestProjectStatus,
 	MemberTaskSummary,
 	MetricsCollectionResult,
@@ -21,6 +22,8 @@ import type {
 	ScopeOptions,
 	ScopeProvider,
 	SectionDiscrepancy,
+	StoryPointOptions,
+	StoryPointProvider,
 	TaskTrackerProvider,
 	TechnicalFoundationalWinsResult,
 	VisibleWinsProvider,
@@ -28,11 +31,17 @@ import type {
 import {
 	formatDateUTC,
 	resolveEndISO,
+	resolveExclusiveEndISO,
 	resolveStartISO,
 } from "../lib/date-utils.js";
 import { getEnv } from "../lib/env.js";
 import { IndividualSummaryCache } from "../lib/individual-cache.js";
 import { cacheDir } from "../lib/paths.js";
+import {
+	buildReconciliationReport,
+	formatReconciliation,
+	isReconciliationClean,
+} from "../lib/reconciliation.js";
 import { createDefaultRegistry } from "../lib/renderer-registry.js";
 import type {
 	ReportMemberMetrics,
@@ -216,18 +225,26 @@ export interface ReportServiceDependencies {
 	roadmapTitle?: string;
 	/** User identity map for enriching display names from GitHub logins. */
 	userMap?: import("../models/user-identity.js").UserMap;
+	/** Canonical identity resolver, used to build the reconciliation report. */
+	identityResolver?: IdentityResolver;
+	/** Optional Jira story-point provider (gated by dataSources.jira). */
+	storyPointProvider?: StoryPointProvider;
+	/** Story-point fetch options (projects + fields), loaded from jira-config.json. */
+	storyPointOptions?: StoryPointOptions;
 }
 
 export class ReportService {
 	private readonly outputDir: () => string;
 	private readonly logger: ConsolaInstance;
 	private readonly taskTracker?: TaskTrackerProvider;
+	private readonly storyPointProvider?: StoryPointProvider;
 	private readonly individualsCacheDir: string;
 
 	constructor(private readonly deps: ReportServiceDependencies) {
 		this.outputDir = deps.outputDir ?? (() => process.cwd());
 		this.logger = deps.logger ?? consola.withTag("teamhero:report");
 		this.taskTracker = deps.taskTracker;
+		this.storyPointProvider = deps.storyPointProvider;
 
 		const individualsDeps = deps.individuals ?? {};
 		this.individualsCacheDir =
@@ -266,6 +283,8 @@ export class ReportService {
 		let teamHighlight = "";
 		let progress: ProgressReporter = NOOP_PROGRESS;
 		let metricsResult: MetricsCollectionResult | null = null;
+		// Hoisted so the post-cleanup `finally` stderr layer can see them (§8).
+		const storyPointWarnings: string[] = [];
 
 		try {
 			const window = this.resolveWindow(input);
@@ -463,6 +482,58 @@ export class ReportService {
 			} else {
 				memberMetrics = this.markTaskTrackerSkipped(memberMetrics);
 				progress.start("Skipping task tracker integration.").succeed();
+			}
+
+			// Story points (Jira) — gated by dataSources.jira. Never fatal: a
+			// missing/unconfigured Jira source warns and is skipped (the
+			// interactive run prompts to run setup; see docs §0.2).
+			if (input.sections.dataSources.jira) {
+				const projects = this.deps.storyPointOptions?.projects ?? [];
+				if (!this.storyPointProvider?.enabled || projects.length === 0) {
+					// Pushed to storyPointWarnings, which the post-cleanup stderr layer
+					// logs once — don't also logger.warn here (avoids a duplicate line).
+					storyPointWarnings.push(
+						"Story points requested but Jira is not configured. Run `teamhero setup` to select Jira projects and story-point fields, or omit the jira source.",
+					);
+					progress
+						.start("Skipping story points (Jira unconfigured).")
+						.succeed();
+				} else {
+					const spStep = progress.start("Collecting story points");
+					try {
+						// Exact, unbuffered window: Jira resolutiondate is server-
+						// authoritative, so the +2-day GitHub buffer in window.endISO
+						// would over-include. Use an exclusive end at the day after `until`.
+						const attached = await this.attachStoryPointData(memberMetrics, {
+							startISO: window.startISO,
+							// Prefer the original `until` so a timestamp boundary keeps its
+							// precision instead of being widened to the next midnight by the
+							// date-only window.endDate. Falls back to window.endDate for "now".
+							endISO: resolveExclusiveEndISO(input.until ?? window.endDate),
+						});
+						memberMetrics = attached.members;
+						if (attached.unmatchedAssignees.length > 0) {
+							// Surface unmatched Jira assignees through the reconciliation
+							// report (#34) — the same mechanism that flags unmapped git
+							// identities, rather than a bare warning string.
+							const resolver =
+								this.deps.identityResolver ??
+								({ persons: () => [] } as unknown as IdentityResolver);
+							const reconciliation = buildReconciliationReport(resolver, {
+								unmatchedJiraAssignees: attached.unmatchedAssignees,
+							});
+							if (!isReconciliationClean(reconciliation)) {
+								storyPointWarnings.push(formatReconciliation(reconciliation));
+							}
+						}
+						spStep.succeed("Story points collected");
+					} catch (error) {
+						spStep.fail("Failed to collect story points");
+						storyPointWarnings.push(
+							`Story-point collection failed: ${(error as Error).message}`,
+						);
+					}
+				}
 			}
 
 			// Collect LOC metrics if requested (report section — auto-enables git)
@@ -792,6 +863,9 @@ export class ReportService {
 					);
 				} catch (error) {
 					highlightsStep.fail("Failed to summarize individual contributions");
+					this.logger.error(
+						`Member highlights generation failed: ${(error as Error).message}`,
+					);
 					throw error;
 				}
 			})();
@@ -1165,6 +1239,9 @@ export class ReportService {
 					teamStep.succeed("Team highlight ready");
 				} catch (error) {
 					teamStep.fail("Failed to generate team highlight");
+					this.logger.error(
+						`Team highlight generation failed: ${(error as Error).message}`,
+					);
 					throw error;
 				}
 			}
@@ -1423,8 +1500,9 @@ export class ReportService {
 					individualContributions:
 						input.sections.reportSections.individualContributions,
 					discrepancyLog: input.sections.reportSections.discrepancyLog,
+					storyPoints: input.sections.dataSources.jira === true,
 				},
-				warnings: metricsResult?.warnings,
+				warnings: [...(metricsResult?.warnings ?? []), ...storyPointWarnings],
 				errors: [...(metricsResult?.errors ?? []), ...visibleWinsErrors],
 				visibleWins: visibleWinsAccomplishments,
 				technicalFoundationalWins,
@@ -1639,10 +1717,18 @@ export class ReportService {
 				let markdown: string;
 				if (templateName === "detailed") {
 					// Use the AI service path for the detailed renderer (includes contributor presence check)
-					markdown = await this.deps.ai.generateFinalReport({
-						report: reportData,
-						onStatus: (message) => finalStep.update(message),
-					});
+					try {
+						markdown = await this.deps.ai.generateFinalReport({
+							report: reportData,
+							onStatus: (message) => finalStep.update(message),
+						});
+					} catch (error) {
+						finalStep.fail("Failed to generate final report");
+						this.logger.error(
+							`Final report generation failed: ${(error as Error).message}`,
+						);
+						throw error;
+					}
 				} else {
 					// Non-default renderers bypass AI post-processing
 					const renderer = registry.getOrThrow(templateName);
@@ -1761,6 +1847,10 @@ export class ReportService {
 				for (const error of metricsResult.errors ?? []) {
 					this.logger.error(error);
 				}
+			}
+			// Story-point warnings share the same post-cleanup stderr layer (§8).
+			for (const warning of storyPointWarnings) {
+				this.logger.warn(warning);
 			}
 		}
 	}
@@ -1947,6 +2037,49 @@ export class ReportService {
 				taskTracker: summary,
 			} as ReportMemberMetrics;
 		});
+	}
+
+	/**
+	 * Fetch story points and merge them onto member metrics by login. The
+	 * provider returns points keyed by the same login the pipeline uses (the
+	 * accountId→login lookup is built in the service factory).
+	 */
+	private async attachStoryPointData(
+		members: ReportMemberMetrics[],
+		window: { startISO: string; endISO: string },
+	): Promise<{ members: ReportMemberMetrics[]; unmatchedAssignees: string[] }> {
+		const provider = this.storyPointProvider;
+		const options = this.deps.storyPointOptions;
+		if (!provider || !options) {
+			return { members, unmatchedAssignees: [] };
+		}
+		const inputs = members.map((m) => ({
+			login: m.login,
+			displayName: m.displayName,
+		}));
+		const result = await provider.fetchCompletedStoryPoints(
+			inputs,
+			window,
+			options,
+		);
+		// byPerson is keyed by the canonical login from the identity source, which
+		// the resolver lowercases; member.login carries GitHub's original case.
+		// Match case-insensitively so mixed-case logins still attribute.
+		const byLoginLower = new Map(
+			[...result.byPerson].map(([k, v]) => [k.toLowerCase(), v]),
+		);
+		const merged = members.map((member) => {
+			const points =
+				result.byPerson.get(member.login) ??
+				byLoginLower.get(member.login.toLowerCase());
+			if (!points) return member;
+			return {
+				...member,
+				storyPointsCompleted: points.totalPoints,
+				storyPointsByProject: points.byProject,
+			} satisfies ReportMemberMetrics;
+		});
+		return { members: merged, unmatchedAssignees: result.unmatchedAssignees };
 	}
 
 	private buildTaskTrackerPlaceholder(): MemberTaskSummary {

@@ -473,7 +473,7 @@ func TestApplyFlagsTo_SequentialAndDiscrepancyThreshold(t *testing.T) {
 func TestApplyFlagsTo_Sources(t *testing.T) {
 	oldSources := *flagSources
 	defer func() { *flagSources = oldSources }()
-	*flagSources = "git,asana"
+	*flagSources = "git,asana,jira"
 
 	cfg := DefaultConfig()
 	wasSet := func(name string) bool { return name == "sources" }
@@ -484,6 +484,24 @@ func TestApplyFlagsTo_Sources(t *testing.T) {
 	}
 	if !cfg.Sections.DataSources.Asana {
 		t.Error("applyFlagsTo sources: cfg.Sections.DataSources.Asana should be true")
+	}
+	if !cfg.Sections.DataSources.Jira {
+		t.Error("applyFlagsTo sources: cfg.Sections.DataSources.Jira should be true")
+	}
+}
+
+func TestApplyFlagsTo_Sources_NoJiraByDefault(t *testing.T) {
+	oldSources := *flagSources
+	defer func() { *flagSources = oldSources }()
+	*flagSources = "git"
+
+	cfg := DefaultConfig()
+	cfg.Sections.DataSources.Jira = true
+	wasSet := func(name string) bool { return name == "sources" }
+	applyFlagsTo(&cfg, wasSet)
+
+	if cfg.Sections.DataSources.Jira {
+		t.Error("applyFlagsTo sources git-only: Jira should be false")
 	}
 }
 
@@ -578,5 +596,50 @@ func TestApplyFlags_NoOpWhenNoFlagsParsed(t *testing.T) {
 	}
 	if cfg.Team != original.Team {
 		t.Errorf("applyFlags no-op: Team changed")
+	}
+}
+
+func TestApplyFlagsTo_JiraProjects(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+
+	oldJira := *flagJiraProjects
+	defer func() { *flagJiraProjects = oldJira }()
+	*flagJiraProjects = "PT:team,SPVR"
+
+	cfg := DefaultConfig()
+	wasSet := func(name string) bool { return name == "jira-projects" }
+	applyFlagsTo(&cfg, wasSet)
+
+	if !cfg.Sections.DataSources.Jira {
+		t.Error("applyFlagsTo jira-projects: DataSources.Jira should be true")
+	}
+	loaded, err := LoadJiraConfig()
+	if err != nil || loaded == nil {
+		t.Fatalf("jira-config.json should have been written: cfg=%+v err=%v", loaded, err)
+	}
+	if len(loaded.Projects) != 2 || loaded.Projects[0].Key != "PT" {
+		t.Errorf("unexpected jira config: %+v", loaded)
+	}
+}
+
+func TestApplyFlagsTo_JiraProjectsFailFast(t *testing.T) {
+	oldExit := osExit
+	code := -1
+	osExit = func(c int) { code = c }
+	defer func() { osExit = oldExit }()
+
+	oldSpec := *flagJiraProjects
+	*flagJiraProjects = "PT:bogus" // invalid project type => parse error
+	defer func() { *flagJiraProjects = oldSpec }()
+
+	cfg := DefaultConfig()
+	applyFlagsTo(&cfg, func(name string) bool { return name == "jira-projects" })
+
+	if code != 1 {
+		t.Errorf("invalid --jira-projects should exit(1), got code %d", code)
+	}
+	if cfg.Sections.DataSources.Jira {
+		t.Error("Jira source must not be enabled when the spec fails to parse")
 	}
 }

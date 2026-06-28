@@ -1,6 +1,54 @@
 import type { Member } from "../models/member.js";
+import type { Person } from "../models/person.js";
 import type { UserIdentity, UserMap } from "../models/user-identity.js";
 import type { AsanaUserOverride } from "../services/asana.service.js";
+
+/**
+ * Adapt canonical {@link Person}s into the {@link UserMap} shape the report
+ * pipeline's existing (well-tested) consumers expect. This is the bridge that
+ * lets one identity source (identity-map.yaml) feed the report path — see the
+ * identity-unification epic.
+ */
+export function personsToUserMap(persons: Person[]): UserMap {
+	const map: UserMap = {};
+	for (const p of persons) {
+		map[p.id] = {
+			name: p.displayName,
+			email: p.emails[0],
+			github: p.logins[0] ? { login: p.logins[0] } : undefined,
+			asana: p.asana,
+			jira: p.jiraAccountIds?.[0]
+				? { accountId: p.jiraAccountIds[0] }
+				: undefined,
+		};
+	}
+	return map;
+}
+
+/**
+ * Merge two user maps. `canonical` wins on key conflict; entries that exist
+ * only in `supplemental` are preserved (back-compat for the USER_MAP env during
+ * the migration to identity-map.yaml as the single source).
+ */
+export function mergeUserMaps(
+	canonical: UserMap,
+	supplemental: UserMap,
+): UserMap {
+	return { ...supplemental, ...canonical };
+}
+
+/**
+ * Deprecation notice for the legacy USER_MAP env. Returns the message when the
+ * env is set (so callers can log it once), or undefined. USER_MAP still works
+ * — entries fold in via {@link mergeUserMaps} — but identity-map.yaml is now the
+ * canonical source.
+ */
+export function userMapDeprecationNotice(
+	raw: string | undefined,
+): string | undefined {
+	if (!raw?.trim()) return undefined;
+	return "USER_MAP env is deprecated; migrate its entries (github/asana/jira) to .teamhero/local/identity-map.yaml. It still works for now.";
+}
 
 /**
  * Parse the USER_MAP environment variable JSON into a UserMap.
@@ -26,6 +74,7 @@ export function parseUserMap(raw: string | undefined): UserMap {
 				email: typeof identity.email === "string" ? identity.email : undefined,
 				github: parseGitHubAccount(identity.github),
 				asana: parseAsanaAccount(identity.asana),
+				jira: parseJiraAccount(identity.jira),
 			};
 		}
 
@@ -60,6 +109,66 @@ function parseAsanaAccount(value: unknown): UserIdentity["asana"] | undefined {
 				? account.workspaceGid
 				: undefined,
 	};
+}
+
+function parseJiraAccount(value: unknown): UserIdentity["jira"] | undefined {
+	if (!value || typeof value !== "object") {
+		return undefined;
+	}
+	const account = value as Record<string, unknown>;
+	const accountId =
+		typeof account.accountId === "string" ? account.accountId : undefined;
+	const email = typeof account.email === "string" ? account.email : undefined;
+	return accountId || email ? { accountId, email } : undefined;
+}
+
+/**
+ * Build a Jira accountId → GitHub login lookup from the deterministic identity
+ * map (one Jira account + one GitHub login per person). Attribution is by
+ * `accountId` only — no email/name fallbacks.
+ */
+export function buildJiraLoginLookupFromPersons(
+	persons: Person[],
+): Map<string, string> {
+	const lookup = new Map<string, string>();
+	for (const p of persons) {
+		const login = p.logins[0];
+		if (!login) continue;
+		for (const accountId of p.jiraAccountIds ?? [])
+			lookup.set(accountId, login);
+	}
+	return lookup;
+}
+
+/**
+ * Build a reverse lookup from Jira accountId (and email fallback) to the
+ * GitHub login the report pipeline keys members by. Story points fetched from
+ * Jira can then be merged onto member metrics by login.
+ */
+export function buildJiraLoginLookup(userMap: UserMap): Map<string, string> {
+	const lookup = new Map<string, string>();
+	for (const identity of Object.values(userMap)) {
+		const login = identity.github?.login;
+		if (!login) continue;
+		if (identity.jira?.accountId) lookup.set(identity.jira.accountId, login);
+		const email = identity.jira?.email ?? identity.email;
+		if (email && !lookup.has(email.toLowerCase())) {
+			lookup.set(email.toLowerCase(), login);
+		}
+	}
+	return lookup;
+}
+
+/**
+ * Stable, order-independent fingerprint of a Jira accountId→login lookup, for
+ * use as a cache-key component so identity-map changes invalidate cached
+ * story-point results.
+ */
+export function jiraIdentityCacheKey(lookup: Map<string, string>): string {
+	return [...lookup.entries()]
+		.map(([k, v]) => `${k}:${v}`)
+		.sort()
+		.join(",");
 }
 
 /**

@@ -86,6 +86,11 @@ export interface AIServiceConfig {
 	systemPrompts?: Record<string, string>;
 }
 
+// Cap how large a single member-highlights prompt can get. Sending every
+// member in one call (e.g. ~331K chars for a 29-person team) overruns the
+// model and fails the whole report; we chunk members under this budget instead.
+const MEMBER_HIGHLIGHTS_MAX_PROMPT_CHARS = 60_000;
+
 export class AIService {
 	private readonly model: string;
 	private readonly teamHighlightModel: string;
@@ -718,19 +723,84 @@ export class AIService {
 			return new Map();
 		}
 
+		// Never send every member in one giant prompt — chunk by a char budget so
+		// a large team can't blow past model limits in a single call.
+		const batches = this.chunkMembersByPromptBudget(context.members, context);
+		const merged = new Map<string, string>();
+		for (let i = 0; i < batches.length; i++) {
+			const part = await this.runMemberHighlightsBatch(
+				{ ...context, members: batches[i] },
+				i + 1,
+				batches.length,
+			);
+			for (const [login, sentence] of part) merged.set(login, sentence);
+		}
+		return merged;
+	}
+
+	private chunkMembersByPromptBudget(
+		members: ReportMemberMetrics[],
+		context: MemberHighlightsContext,
+	): ReportMemberMetrics[][] {
+		const batches: ReportMemberMetrics[][] = [];
+		let current: ReportMemberMetrics[] = [];
+		let currentChars = 0;
+		for (const member of members) {
+			// Weight = the member's own solo-prompt size (overcounts shared header,
+			// which only makes batches safely smaller).
+			const weight = buildMemberHighlightsPrompt({
+				...context,
+				members: [member],
+			}).length;
+			if (weight > MEMBER_HIGHLIGHTS_MAX_PROMPT_CHARS) {
+				// A single member can't be split further; it goes in its own batch
+				// but may still be rejected by the model. Surface it explicitly.
+				this.logger.warn(
+					`Member "${member.login}" alone exceeds the highlight prompt budget ` +
+						`(${weight} > ${MEMBER_HIGHLIGHTS_MAX_PROMPT_CHARS} chars); sending it in its own ` +
+						`batch — the AI call for this member may fail.`,
+				);
+				if (current.length > 0) {
+					batches.push(current);
+					current = [];
+					currentChars = 0;
+				}
+				batches.push([member]);
+				continue;
+			}
+			if (
+				current.length > 0 &&
+				currentChars + weight > MEMBER_HIGHLIGHTS_MAX_PROMPT_CHARS
+			) {
+				batches.push(current);
+				current = [];
+				currentChars = 0;
+			}
+			current.push(member);
+			currentChars += weight;
+		}
+		if (current.length > 0) batches.push(current);
+		return batches;
+	}
+
+	private async runMemberHighlightsBatch(
+		context: MemberHighlightsContext,
+		batchIndex: number,
+		batchTotal: number,
+	): Promise<Map<string, string>> {
 		try {
 			this.logEnabledNotice();
 			const _client = this.createClient();
 			const model = this.memberHighlightsModel;
 			const prompt = buildMemberHighlightsPrompt(context);
 			const promptLength = prompt.length;
-			const sendMsg = `Sending member highlights request (count=${context.members.length}, promptLength=${promptLength})`;
+			const sendMsg = `Sending member highlights request (batch ${batchIndex}/${batchTotal}, count=${context.members.length}, promptLength=${promptLength})`;
 			if (this.emitDebugLogs && !context.onStatus) this.logger.debug(sendMsg);
 			context.onStatus?.(sendMsg);
 
 			// Log AI batch for member highlights
 			const batchHeader = [
-				`[${new Date().toISOString()}] member-highlights batch 1/1`,
+				`[${new Date().toISOString()}] member-highlights batch ${batchIndex}/${batchTotal}`,
 				`members=${context.members.map((member) => member.login).join(",")}`,
 				`count=${context.members.length}`,
 				`promptLength=${promptLength}`,

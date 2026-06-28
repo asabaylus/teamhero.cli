@@ -294,6 +294,34 @@ describe("AIService.generateMemberHighlights", () => {
 		expect(result.get("bob")).toBe("Bob reviewed 12 pull requests.");
 	});
 
+	it("chunks members into multiple batches when the prompt exceeds the char budget", async () => {
+		const responseJson = JSON.stringify({
+			alice: "Alice did work",
+			bob: "Bob did work",
+		});
+		const { createFn, mockReturnValue } = mockClient(responseJson);
+		const service = new AIService({ apiKey: "sk-test" });
+		spyOn(service as any, "createClient").mockReturnValue(mockReturnValue);
+
+		// Each member alone is ~40K chars, so two cannot share one prompt.
+		const big = "x".repeat(40_000);
+		const result = await service.generateMemberHighlights({
+			members: [
+				makeMemberMetrics({ prHighlights: [big] }),
+				makeMemberMetrics({
+					login: "bob",
+					displayName: "Bob",
+					prHighlights: [big],
+				}),
+			],
+			windowHuman: "Feb 1-8",
+		} as any);
+
+		expect(createFn.mock.calls.length).toBe(2);
+		expect(result.get("alice")).toBe("Alice did work.");
+		expect(result.get("bob")).toBe("Bob did work.");
+	});
+
 	it("handles markdown code block wrapping in response", async () => {
 		const json = JSON.stringify({ alice: "Great work on the API" });
 		const wrappedResponse = `\`\`\`json\n${json}\n\`\`\``;
