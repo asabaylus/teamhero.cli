@@ -203,6 +203,29 @@ describe("collectRepoCommitsGraphQL", () => {
 		expect(result.size).toBe(1); // the unlinked commit contributed nothing
 	});
 
+	it("retries a transient history-query failure instead of dropping the repo", async () => {
+		// First call throws (server-side timeout on a large-commit page), second
+		// succeeds. Without the retry the whole repo's LoC would be lost.
+		let calls = 0;
+		const graphql = mock(async () => {
+			calls += 1;
+			if (calls === 1) throw new Error("timeout executing query");
+			return defaultBranchPage([node("alice", 18165, 0)]);
+		});
+		const client = { graphql } as unknown as GraphqlExecutor;
+
+		const result = await collectRepoCommitsGraphQL(
+			client,
+			"the-org",
+			"stratus-cli",
+			SINCE,
+			UNTIL,
+		);
+
+		expect(calls).toBe(2);
+		expect(result.get("alice")?.additions).toBe(18165);
+	});
+
 	it("returns an empty map for an empty repo (no resolvable default branch)", async () => {
 		const { client, graphql } = fakeClient([
 			{ repository: { defaultBranchRef: null } },

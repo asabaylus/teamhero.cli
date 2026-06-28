@@ -47,6 +47,35 @@ interface CommitHistoryResponse {
 
 const PER_PAGE = 100;
 
+/** Per-call retry budget for the history query. GitHub's GraphQL endpoint can
+ * transiently fail the inline additions/deletions computation for a page that
+ * contains a very large commit (a server-side timeout surfaces as a thrown
+ * GraphqlResponseError). Without a retry the whole repo is dropped silently and
+ * its LoC vanishes from the report. Bounded exponential backoff turns those
+ * transient timeouts into a brief wait instead of lost data. */
+const HISTORY_QUERY_ATTEMPTS = 3;
+const HISTORY_BACKOFF_MS = 500;
+
+async function graphqlHistoryWithRetry<T>(
+	client: GraphqlExecutor,
+	variables: Record<string, unknown>,
+): Promise<T> {
+	let lastError: unknown;
+	for (let attempt = 1; attempt <= HISTORY_QUERY_ATTEMPTS; attempt++) {
+		try {
+			return await client.graphql<T>(COMMIT_HISTORY_QUERY, variables);
+		} catch (error) {
+			lastError = error;
+			if (attempt < HISTORY_QUERY_ATTEMPTS) {
+				await new Promise((resolve) =>
+					setTimeout(resolve, HISTORY_BACKOFF_MS * 2 ** (attempt - 1)),
+				);
+			}
+		}
+	}
+	throw lastError;
+}
+
 // When the caller supplies the branch (the discovery path always does), query it
 // directly. When it doesn't, resolve `defaultBranchRef` server-side rather than
 // guessing "main" — guessing silently drops every commit for master/develop/etc.
@@ -124,18 +153,15 @@ export async function collectRepoCommitsGraphQL(
 	let pages = 0;
 
 	while (true) {
-		const data: CommitHistoryResponse = await client.graphql(
-			COMMIT_HISTORY_QUERY,
-			{
-				owner,
-				name: repo,
-				branch,
-				useProvidedBranch,
-				since: sinceIso,
-				until: untilIso,
-				cursor,
-			},
-		);
+		const data = await graphqlHistoryWithRetry<CommitHistoryResponse>(client, {
+			owner,
+			name: repo,
+			branch,
+			useProvidedBranch,
+			since: sinceIso,
+			until: untilIso,
+			cursor,
+		});
 
 		const ref = data.repository?.ref ?? data.repository?.defaultBranchRef;
 		const history = ref?.target?.history;

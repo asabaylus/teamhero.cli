@@ -558,6 +558,8 @@ export class ReportService {
 						}
 					}
 
+					const skippedLocRepos: { repoFullName: string; reason: string }[] =
+						[];
 					const locCollectInput: CollectLocInput = {
 						org: input.org,
 						repos: repositories.map((r) => `${input.org}/${r.name}`),
@@ -573,6 +575,9 @@ export class ReportService {
 									: `LOC (${index}/${total}) — ${repoFullName}`,
 								index / total,
 							);
+						},
+						onRepoSkipped: (info) => {
+							skippedLocRepos.push(info);
 						},
 					};
 					const locMetrics = this.deps.locCollector
@@ -620,6 +625,28 @@ export class ReportService {
 								`LOC — ${member.displayName} — +${member.linesAdded} / -${member.linesDeleted} (in-progress: +${member.linesAddedInProgress} / -${member.linesDeletedInProgress})`,
 							);
 						}
+					}
+
+					// A skipped repo contributes 0 LoC — silently under-counting a
+					// contributor's lines (this is exactly how stratus-cli's ~20k lines
+					// went missing). Surface it loudly: unified log + a visible warning
+					// so the numbers are never silently authoritative.
+					if (skippedLocRepos.length > 0) {
+						for (const skip of skippedLocRepos) {
+							await appendUnifiedLog({
+								timestamp: new Date().toISOString(),
+								runId,
+								category: "run",
+								event: "loc-repo-skipped",
+								repo: skip.repoFullName,
+								reason: skip.reason,
+							});
+						}
+						this.logger.warn(
+							`LOC under-counted: ${skippedLocRepos.length} repo(s) failed and contributed 0 lines — ${skippedLocRepos
+								.map((s) => s.repoFullName)
+								.join(", ")}`,
+						);
 					}
 
 					locStep.succeed(

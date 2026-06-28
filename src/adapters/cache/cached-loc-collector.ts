@@ -140,6 +140,7 @@ export class CachedLocCollector {
 			} catch (err) {
 				const msg = err instanceof Error ? err.message : String(err);
 				consola.warn(`Skipped ${repo}: ${msg}`);
+				input.onRepoSkipped?.({ repoFullName: repo, reason: msg });
 				completed += 1;
 				input.onRepoProgress?.({
 					repoFullName: repo,

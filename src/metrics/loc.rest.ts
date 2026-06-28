@@ -17,6 +17,9 @@ export interface CollectLocInput {
 		total: number;
 		phase: "commits" | "done";
 	}) => void;
+	/** Fired when a repo's LoC fetch fails after retries and contributes 0.
+	 * Lets callers surface the gap instead of silently under-counting. */
+	onRepoSkipped?: (info: { repoFullName: string; reason: string }) => void;
 }
 
 export interface LocBreakdown {
@@ -333,6 +336,7 @@ export async function collectLocMetricsRest(
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
 			consola.warn(`Skipped ${repo}: ${msg}`);
+			input.onRepoSkipped?.({ repoFullName: repo, reason: msg });
 			completed += 1;
 			input.onRepoProgress?.({
 				repoFullName: repo,
