@@ -48,7 +48,6 @@ import type {
 	ReportRenderInput,
 	ReportTotals,
 } from "../lib/report-renderer.js";
-import { renderReport } from "../lib/report-renderer.js";
 import { serializeReportRenderInput } from "../lib/report-serializer.js";
 import {
 	applyRoadmapAiEntry,
@@ -860,14 +859,11 @@ export class ReportService {
 						`Individual contributions summarized for ${memberMetrics.length} members`,
 					);
 				} catch (error) {
-					// AI is best-effort: a highlights failure must not throw away the
-					// collected git/Jira data. Degrade to no AI summaries and continue.
-					highlightsStep.fail(
-						"Failed to summarize individual contributions (AI); continuing without summaries",
+					highlightsStep.fail("Failed to summarize individual contributions");
+					this.logger.error(
+						`Member highlights generation failed: ${(error as Error).message}`,
 					);
-					storyPointWarnings.push(
-						`AI summaries unavailable: ${(error as Error).message}`,
-					);
+					throw error;
 				}
 			})();
 
@@ -1239,11 +1235,11 @@ export class ReportService {
 					}
 					teamStep.succeed("Team highlight ready");
 				} catch (error) {
-					// AI is best-effort — degrade rather than abort the whole report.
-					teamStep.fail("Failed to generate team highlight (AI); continuing");
-					storyPointWarnings.push(
-						`AI team highlight unavailable: ${(error as Error).message}`,
+					teamStep.fail("Failed to generate team highlight");
+					this.logger.error(
+						`Team highlight generation failed: ${(error as Error).message}`,
 					);
+					throw error;
 				}
 			}
 
@@ -1724,12 +1720,11 @@ export class ReportService {
 							onStatus: (message) => finalStep.update(message),
 						});
 					} catch (error) {
-						// AI is best-effort: fall back to the deterministic renderer so a
-						// report (with the at-a-glance table + story points) is still produced.
-						storyPointWarnings.push(
-							`AI final report unavailable, used the plain renderer: ${(error as Error).message}`,
+						finalStep.fail("Failed to generate final report");
+						this.logger.error(
+							`Final report generation failed: ${(error as Error).message}`,
 						);
-						markdown = renderReport(reportData);
+						throw error;
 					}
 				} else {
 					// Non-default renderers bypass AI post-processing
