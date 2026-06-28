@@ -154,11 +154,11 @@ func TestNewInlineSettingsEditor_BoardsFound(t *testing.T) {
 func TestMoveCursor_SkipsHeaders(t *testing.T) {
 	m := inlineSettingsEditor{
 		lines: []editorLine{
-			{text: "  Header", itemIndex: -1},  // 0: header
-			{text: "    Item A", itemIndex: 0}, // 1: selectable
-			{text: "", itemIndex: -1},          // 2: blank
-			{text: "  Header2", itemIndex: -1}, // 3: header
-			{text: "    Item B", itemIndex: 1}, // 4: selectable
+			{text: "  Header", itemIndex: -1},   // 0: header
+			{text: "    Item A", itemIndex: 0},   // 1: selectable
+			{text: "", itemIndex: -1},            // 2: blank
+			{text: "  Header2", itemIndex: -1},   // 3: header
+			{text: "    Item B", itemIndex: 1},   // 4: selectable
 		},
 		items: []editorItem{
 			{key: "A", label: "Item A"},
@@ -197,8 +197,8 @@ func TestMoveCursor_StaysAtBoundsWhenNoMore(t *testing.T) {
 		t.Errorf("expected cursor to stay at 1, got %d", m.cursor)
 	}
 
-	m.cursor = 2    // last selectable
-	m.moveCursor(1) // try to move down past end
+	m.cursor = 2 // last selectable
+	m.moveCursor(1)  // try to move down past end
 	if m.cursor != 2 {
 		t.Errorf("expected cursor to stay at 2, got %d", m.cursor)
 	}

@@ -89,12 +89,12 @@ type BootstrapWizardDefaults struct {
 type bootstrapWizardModel struct {
 	state bootstrapWizardState
 
-	role      string
-	roleTitle string
-	stack     string
-	domain    string
-	feature   string
-	timeBox   string
+	role         string
+	roleTitle    string
+	stack        string
+	domain       string
+	feature      string
+	timeBox      string
 	// modeProject holds one of three wizard-level values:
 	//   "brownfield"       — generates a starter codebase (Mode A)
 	//   "greenfield-stack" — written brief; candidate uses the named stack (Mode B)
@@ -147,22 +147,22 @@ type bootstrapWizardModel struct {
 // Empty defaults fall back to hard-coded values so users can mash Enter.
 func newBootstrapWizardModel(d BootstrapWizardDefaults) bootstrapWizardModel {
 	m := bootstrapWizardModel{
-		state:     wsBootstrapRole,
-		role:      d.Role,
-		roleTitle: d.RoleTitle,
-		stack:     d.Stack,
-		domain:    d.Domain,
-		feature:   d.Feature,
-		timeBox:   firstNonEmptyStr(d.TimeBox, "60"),
+		state:        wsBootstrapRole,
+		role:         d.Role,
+		roleTitle:    d.RoleTitle,
+		stack:        d.Stack,
+		domain:       d.Domain,
+		feature:      d.Feature,
+		timeBox:      firstNonEmptyStr(d.TimeBox, "60"),
 		// modeProject default is "brownfield" — the most common interview
 		// shape (AI scaffolds a starter codebase the candidate extends).
 		// Legacy "A"/"B" values from BootstrapWizardDefaults are accepted
 		// and translated below so existing callers don't break.
-		modeProject: normalizeWizardProjectMode(firstNonEmptyStr(d.ModeProject, "brownfield")),
+		modeProject:  normalizeWizardProjectMode(firstNonEmptyStr(d.ModeProject, "brownfield")),
 		// Default to human-only: the interview is human-proctored, and AI
 		// observation is an explicit proctor opt-in, not the default.
-		modeAnalysis:        firstNonEmptyStr(d.ModeAnalysis, "human-only"),
-		modeRubric:          firstNonEmptyStr(d.ModeRubric, "default"),
+		modeAnalysis: firstNonEmptyStr(d.ModeAnalysis, "human-only"),
+		modeRubric:   firstNonEmptyStr(d.ModeRubric, "default"),
 		outputDir:           firstNonEmptyStr(d.OutputDir, "./interviews/role"),
 		featureSource:       "custom",
 		jdProvided:          "no",

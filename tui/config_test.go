@@ -641,22 +641,22 @@ func TestSaveConfig_RoundtripPreservesFields(t *testing.T) {
 	maxCommit := 10
 	maxPr := 5
 	cfg := ReportConfig{
-		Org:                  "test-org",
-		Team:                 "engineering",
-		Members:              []string{"alice", "bob"},
-		Repos:                []string{"api", "web"},
-		UseAllRepos:          false,
-		Since:                "2026-01-01",
-		Until:                "2026-01-07",
-		IncludeBots:          true,
-		ExcludePrivate:       true,
-		IncludeArchived:      true,
-		Detailed:             true,
-		MaxCommitPages:       &maxCommit,
-		MaxPrPages:           &maxPr,
-		Sequential:           true,
-		ConfirmBeforeRun:     false,
-		DiscrepancyThreshold: 50,
+		Org:              "test-org",
+		Team:             "engineering",
+		Members:          []string{"alice", "bob"},
+		Repos:            []string{"api", "web"},
+		UseAllRepos:      false,
+		Since:            "2026-01-01",
+		Until:            "2026-01-07",
+		IncludeBots:      true,
+		ExcludePrivate:   true,
+		IncludeArchived:  true,
+		Detailed:         true,
+		MaxCommitPages:   &maxCommit,
+		MaxPrPages:       &maxPr,
+		Sequential:       true,
+		ConfirmBeforeRun: false,
+		DiscrepancyThreshold:    50,
 		Sections: ReportSections{
 			DataSources:    DataSources{Git: true, Asana: true},
 			ReportSections: ReportSectionsInner{IndividualContributions: true, VisibleWins: true, DiscrepancyLog: true, Loc: true},
@@ -1058,8 +1058,8 @@ func TestSystemPrompts_RoundTrip(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.Org = "acme"
 	cfg.SystemPrompts = map[string]string{
-		"default":       "Write concisely.",
-		"visibleWins":   "Focus on revenue impact.",
+		"default":      "Write concisely.",
+		"visibleWins":  "Focus on revenue impact.",
 		"teamHighlight": "Use a formal tone.",
 	}
 

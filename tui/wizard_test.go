@@ -612,10 +612,10 @@ func TestTruncateLabel_MaxWidthTwo(t *testing.T) {
 
 func TestNextState_FullMode_AllTransitions(t *testing.T) {
 	tests := []struct {
-		name     string
-		state    wizardState
-		setup    func(*wizardModel)
-		wantNext wizardState
+		name        string
+		state       wizardState
+		setup       func(*wizardModel)
+		wantNext    wizardState
 	}{
 		{
 			name:     "wsReuse with reuse=true goes to wsCacheFlush",
@@ -813,7 +813,7 @@ func TestNextStateExpress_AllTransitions(t *testing.T) {
 	}{
 		{wsOrg, wsConfirmRun},
 		{wsConfirmRun, wsDone},
-		{wsPrivate, wsDone}, // any other state returns wsDone
+		{wsPrivate, wsDone},   // any other state returns wsDone
 		{wsDates, wsDone},
 		{wsBots, wsDone},
 	}
@@ -834,8 +834,8 @@ func TestNextStateExpress_AllTransitions(t *testing.T) {
 
 func TestIsFetchState_AllStates(t *testing.T) {
 	tests := []struct {
-		state   wizardState
-		isFetch bool
+		state    wizardState
+		isFetch  bool
 	}{
 		{wsReuse, false},
 		{wsCacheFlush, false},

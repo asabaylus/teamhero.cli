@@ -104,13 +104,13 @@ Return JSON with an "ideas" array. Each entry has:
 func TestBuildIdeaPrompt_WithJD_EmitsCompanyDomainInstruction(t *testing.T) {
 	jdBody := "About Acme Robotics\nAcme builds factory-floor automation for tier-2 auto suppliers.\n\nResponsibilities\n- ship pipeline tooling"
 	p := IdeaProfile{
-		Role:           "senior-backend",
-		RoleTitle:      "Senior Backend Engineer",
-		Stack:          "Go",
-		Feature:        "Refund idempotency",
-		TimeBoxMinutes: 90,
-		ProjectMode:    "A",
-		JobDescription: jdBody,
+		Role:            "senior-backend",
+		RoleTitle:       "Senior Backend Engineer",
+		Stack:           "Go",
+		Feature:         "Refund idempotency",
+		TimeBoxMinutes:  90,
+		ProjectMode:     "A",
+		JobDescription:  jdBody,
 	}
 	prompt := buildIdeaPrompt(p)
 	for _, want := range []string{

@@ -16,7 +16,7 @@ import (
 // stepState tracks a single progress step.
 type stepState struct {
 	text       string
-	status     string // "start", "update", "done", "error"
+	status     string    // "start", "update", "done", "error"
 	message    string
 	progress   float64   // 0.0 – 1.0
 	startedAt  time.Time // set when step enters "start"
@@ -25,23 +25,23 @@ type stepState struct {
 
 // progressModel is the Bubble Tea model for the progress display.
 type progressModel struct {
-	steps              []stepState
-	spinner            spinner.Model
-	progressBar        progress.Model
-	shellViewport      viewport.Model
-	viewport           viewport.Model
-	cfg                *ReportConfig
-	title              string
-	result             string
-	errorMsg           string
-	done               bool
-	width              int
-	height             int
-	peakRatio          float64           // monotonically increasing — prevents backward jumps
-	expectedSteps      int               // fixed denominator for progress calculation
-	preflightStepCount int               // preconditions before real data processing starts
-	discrepancy        *DiscrepancyEvent // captured discrepancy data for preview tab
-	jsonData           string            // captured report-data JSON for preview tab
+	steps         []stepState
+	spinner       spinner.Model
+	progressBar   progress.Model
+	shellViewport viewport.Model
+	viewport      viewport.Model
+	cfg           *ReportConfig
+	title         string
+	result        string
+	errorMsg      string
+	done          bool
+	width         int
+	height        int
+	peakRatio     float64 // monotonically increasing — prevents backward jumps
+	expectedSteps int     // fixed denominator for progress calculation
+	preflightStepCount int // preconditions before real data processing starts
+	discrepancy   *DiscrepancyEvent // captured discrepancy data for preview tab
+	jsonData      string // captured report-data JSON for preview tab
 }
 
 // Messages sent from the event reader goroutine into the Bubble Tea program.
@@ -65,15 +65,15 @@ func newProgressModel(title string, expectedSteps int, cfg *ReportConfig) progre
 	shell := viewport.New(max(20, w), 24)
 
 	return progressModel{
-		spinner:            s,
-		progressBar:        p,
-		shellViewport:      shell,
-		viewport:           vp,
-		cfg:                cfg,
-		title:              title,
-		width:              w,
-		height:             24,
-		expectedSteps:      expectedSteps,
+		spinner:       s,
+		progressBar:   p,
+		shellViewport: shell,
+		viewport:      vp,
+		cfg:           cfg,
+		title:         title,
+		width:         w,
+		height:        24,
+		expectedSteps: expectedSteps,
 		preflightStepCount: 3,
 	}
 }
@@ -192,12 +192,12 @@ func (m progressModel) handleStep(evt GenericEvent) (tea.Model, tea.Cmd) {
 
 	case "discrepancy":
 		m.discrepancy = &DiscrepancyEvent{
-			Type:                 evt.Type,
-			TotalCount:           evt.TotalCount,
-			ByContributor:        evt.ByContributor,
-			Unattributed:         evt.Unattributed,
-			Items:                evt.Items,
-			AllItems:             evt.AllItems,
+			Type:          evt.Type,
+			TotalCount:    evt.TotalCount,
+			ByContributor: evt.ByContributor,
+			Unattributed:  evt.Unattributed,
+			Items:         evt.Items,
+			AllItems:      evt.AllItems,
 			DiscrepancyThreshold: evt.DiscrepancyThreshold,
 		}
 		return m, nil
