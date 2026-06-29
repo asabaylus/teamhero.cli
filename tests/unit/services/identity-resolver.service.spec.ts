@@ -1,6 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import type { IdentityMap } from "../../../src/models/person.js";
-import { createIdentityResolver } from "../../../src/services/identity-resolver.service.js";
+import {
+	createIdentityResolver,
+	displayNameForLogin,
+} from "../../../src/services/identity-resolver.service.js";
 
 /**
  * Slice 01 acceptance: the IdentityResolver resolves raw commit/PR identities to
@@ -157,6 +160,18 @@ describe("createIdentityResolver", () => {
 		const upperEmail = resolver.resolve({ email: "PERSON-A@EXAMPLE.COM" });
 		expect(upperLogin.type).toBe("resolved");
 		expect(upperEmail.type).toBe("resolved");
+	});
+
+	it("displayNameForLogin returns the Person name for a mapped login", () => {
+		expect(displayNameForLogin(resolver, "login-a", "login-a")).toBe(
+			"Person A",
+		);
+	});
+
+	it("displayNameForLogin falls back when the login is unmapped", () => {
+		expect(displayNameForLogin(resolver, "ghostlogin", "ghostlogin")).toBe(
+			"ghostlogin",
+		);
 	});
 
 	it("dedupes the union so each human is one Person", () => {

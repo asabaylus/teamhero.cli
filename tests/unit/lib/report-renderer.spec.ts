@@ -172,6 +172,71 @@ describe("renderReport — overview sentence", () => {
 });
 
 // ===================================================================
+// renderReport — At-a-Glance table gating (loc vs individualContributions)
+// ===================================================================
+
+describe("renderReport — At-a-Glance table gating", () => {
+	it("renders the At-a-Glance table when loc is enabled even if individualContributions is off", () => {
+		const output = renderReport(
+			makeInput({
+				sections: {
+					git: true,
+					taskTracker: false,
+					individualContributions: false,
+					loc: true,
+				},
+			}),
+		);
+		expect(output).toContain("## **At-a-Glance Summary**");
+		// Narrative section stays gated on individualContributions.
+		expect(output).not.toContain("## **Individual Updates**");
+	});
+
+	it("includes the Story Points column in the loc-only table when storyPoints is enabled", () => {
+		const output = renderReport(
+			makeInput({
+				sections: {
+					git: true,
+					taskTracker: false,
+					individualContributions: false,
+					loc: true,
+					storyPoints: true,
+				},
+			}),
+		);
+		expect(output).toContain("Story Points");
+	});
+
+	it("omits the At-a-Glance table when both loc and individualContributions are off", () => {
+		const output = renderReport(
+			makeInput({
+				sections: {
+					git: true,
+					taskTracker: false,
+					individualContributions: false,
+					loc: false,
+				},
+			}),
+		);
+		expect(output).not.toContain("## **At-a-Glance Summary**");
+	});
+
+	it("still renders both table and Individual Updates when individualContributions is on", () => {
+		const output = renderReport(
+			makeInput({
+				sections: {
+					git: true,
+					taskTracker: false,
+					individualContributions: true,
+				},
+			}),
+		);
+		expect(output).toContain("## **At-a-Glance Summary**");
+		expect(output).toContain("## **Individual Updates**");
+	});
+});
+
+// ===================================================================
 // renderReport — aggregated member filtering
 // ===================================================================
 

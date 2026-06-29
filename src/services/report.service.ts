@@ -87,6 +87,7 @@ import {
 import { buildDeltaReport } from "./delta-report.service.js";
 import { logDiscrepancies } from "./discrepancy-reviewer.js";
 import { validateFactualClaims } from "./factual-validator.js";
+import { displayNameForLogin } from "./identity-resolver.service.js";
 import { IndividualActivityService } from "./individual-activity.service.js";
 import { IndividualSummarizerService } from "./individual-summarizer.service.js";
 import {
@@ -1519,7 +1520,9 @@ export class ReportService {
 				metricsDefinition: METRICS_DEFINITION,
 				archivedNote,
 				sections: {
-					git: input.sections.dataSources.git,
+					// Effective git state: LOC forces git collection on, so report
+					// contents are git-backed even when the CLI input had it off.
+					git: includeGit,
 					taskTracker: input.sections.dataSources.asana,
 					visibleWins: input.sections.reportSections.visibleWins,
 					technicalFoundationalWins:
@@ -1527,6 +1530,7 @@ export class ReportService {
 					individualContributions:
 						input.sections.reportSections.individualContributions,
 					discrepancyLog: input.sections.reportSections.discrepancyLog,
+					loc: input.sections.reportSections.loc === true,
 					storyPoints: input.sections.dataSources.jira === true,
 				},
 				warnings: [...(metricsResult?.warnings ?? []), ...storyPointWarnings],
@@ -1938,7 +1942,10 @@ export class ReportService {
 		for (const member of metricsResult.members) {
 			const memberMetrics: ReportMemberMetrics = {
 				login: member.metrics.memberLogin,
-				displayName: member.displayName,
+				displayName: this.resolveDisplayName(
+					member.metrics.memberLogin,
+					member.displayName,
+				),
 				commits: member.metrics.commitsCount,
 				prsOpened: member.metrics.prsOpenedCount,
 				prsClosed: member.metrics.prsClosedCount,
@@ -1983,6 +1990,16 @@ export class ReportService {
 		return entries;
 	}
 
+	/**
+	 * Resolve a contributor's canonical display name via the identity map,
+	 * falling back to the GitHub-reported name (or login) when unmapped. Shared
+	 * by the metrics and skeleton paths so both render real names consistently.
+	 */
+	private resolveDisplayName(login: string, fallback: string): string {
+		const resolver = this.deps.identityResolver;
+		return resolver ? displayNameForLogin(resolver, login, fallback) : fallback;
+	}
+
 	private async buildMemberSkeleton(
 		members: Member[],
 		_windowHuman: string,
@@ -1991,7 +2008,7 @@ export class ReportService {
 		for (const member of members) {
 			const skeleton: ReportMemberMetrics = {
 				login: member.login,
-				displayName: member.displayName,
+				displayName: this.resolveDisplayName(member.login, member.displayName),
 				commits: 0,
 				prsOpened: 0,
 				prsClosed: 0,
