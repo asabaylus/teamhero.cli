@@ -80,6 +80,18 @@ The exclusion set (centralized so it can evolve): `*.csv`, `*.json`, `*.lock`,
 binary model artifacts (`*.pt`, `*.safetensors`, `*.h5`, `*.gguf`, `*.pb`,
 `*.tflite`), vendored OpenAPI/Swagger specs, and `**/migrations/*.Designer.cs`.
 
+### Branch evaluated
+
+Commits, lines of code, and PR targets are all computed from **each repository's
+default branch** — the merge target releases ship from. The default branch is
+**auto-detected per repo** from GitHub (`default_branch`), so a repo on `master`,
+`develop`, `trunk`, or anything else is honoured as-is; it is never assumed to be
+`main`. The literal `"main"` is used only as a last-resort fallback when GitHub
+reports no default branch at all (effectively an empty repo). There is no
+per-repo branch override — if releases ship from a branch that isn't the GitHub
+default, set that branch as the repository's default in GitHub settings so it is
+picked up.
+
 ## Included vs excluded
 
 **Included:** all org repositories; all of a Person's logins, emails, and names;
