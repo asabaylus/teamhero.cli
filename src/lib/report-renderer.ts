@@ -125,6 +125,8 @@ export interface ReportSections {
 	technicalFoundationalWins?: boolean;
 	individualContributions?: boolean;
 	discrepancyLog?: boolean;
+	/** LOC section enabled — gates the At-a-Glance metrics table independently of narratives. */
+	loc?: boolean;
 	/** Jira story-point source enabled — gates the Story Points column. */
 	storyPoints?: boolean;
 }
@@ -196,7 +198,13 @@ export function renderReport(input: ReportRenderInput): string {
 		parts.push("");
 	}
 
-	if (input.sections.individualContributions !== false) {
+	// The At-a-Glance metrics table renders whenever LOC is collected, even if
+	// the AI "Individual Updates" narrative is disabled (metrics-only reports).
+	const showTable =
+		input.sections.loc === true ||
+		input.sections.individualContributions !== false;
+
+	if (showTable) {
 		parts.push("---");
 		parts.push("");
 		parts.push("## **At-a-Glance Summary**");
@@ -243,6 +251,9 @@ export function renderReport(input: ReportRenderInput): string {
 			"> *Note: This table provides a quick view of activity across the team. Reviews are counted as approved, changes requested, or commented.*",
 		);
 		parts.push("");
+	}
+
+	if (input.sections.individualContributions !== false) {
 		parts.push("---");
 		parts.push("");
 		parts.push("## **Individual Updates**");

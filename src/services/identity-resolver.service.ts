@@ -98,6 +98,21 @@ export function createIdentityResolver(map: IdentityMap): IdentityResolver {
 	};
 }
 
+/**
+ * Resolve a GitHub login to its canonical Person display name, falling back to
+ * `fallback` (typically the GitHub-reported name or the login itself) when the
+ * login is unmapped. Centralises the name override so reports show real names
+ * instead of bare logins whenever the identity map covers the contributor.
+ */
+export function displayNameForLogin(
+	resolver: IdentityResolver,
+	login: string,
+	fallback: string,
+): string {
+	const res = resolver.resolve({ login });
+	return res.type === "resolved" ? res.person.displayName : fallback;
+}
+
 /** Union entries that share any login/email/name, then fold each group into a Person. */
 function buildPersons(map: IdentityMap): Person[] {
 	const parent = map.map((_, i) => i);
