@@ -1,5 +1,6 @@
 import { URL } from "node:url";
 import { consola } from "consola";
+import { getEnv } from "../lib/env.js";
 import { createOctokitClient, type OctokitClient } from "../lib/octokit.js";
 import { collectRepoCommitsGraphQL } from "./loc.graphql.js";
 
@@ -78,7 +79,14 @@ const MAX_PER_PAGE = 100;
 const MAX_FETCH_ATTEMPTS = 3;
 const BASE_BACKOFF_MS = 500;
 const MAX_BACKOFF_MS = 8000;
-export const REPO_CONCURRENCY = 3;
+const DEFAULT_REPO_CONCURRENCY = 6;
+const parsedRepoConcurrency = Number(
+	getEnv("TEAMHERO_LOC_REPO_CONCURRENCY") ?? DEFAULT_REPO_CONCURRENCY,
+);
+export const REPO_CONCURRENCY =
+	Number.isFinite(parsedRepoConcurrency) && parsedRepoConcurrency > 0
+		? parsedRepoConcurrency
+		: DEFAULT_REPO_CONCURRENCY;
 
 const pool = new FetchPool(8);
 
