@@ -15,7 +15,9 @@ export async function mapWithConcurrency<T, R>(
 	limit: number,
 	fn: (item: T, index: number) => Promise<R>,
 ): Promise<R[]> {
-	const effectiveLimit = Math.max(1, Math.floor(limit));
+	const effectiveLimit = Number.isFinite(limit)
+		? Math.max(1, Math.floor(limit))
+		: 1;
 	const results: R[] = new Array(items.length);
 	let nextIndex = 0;
 

@@ -9,6 +9,7 @@ import type {
 } from "../core/types.js";
 import { mapWithConcurrency } from "../lib/concurrency.js";
 import { resolveEndEpochMs, resolveStartISO } from "../lib/date-utils.js";
+import { getEnv } from "../lib/env.js";
 import {
 	loadIdentityMapFile,
 	resolveIdentityMapPath,
@@ -36,9 +37,14 @@ const MAX_HIGHLIGHTS_PER_MEMBER = Number(
  * Bounds the prefetch that replaced the old serial per-PR N+1. Tunable via env;
  * kept modest to stay clear of GitHub's secondary rate limits on busy weeks.
  */
-const PR_DETAIL_CONCURRENCY = Number(
-	process.env.TEAMHERO_PR_DETAIL_CONCURRENCY ?? "8",
+const DEFAULT_PR_DETAIL_CONCURRENCY = 8;
+const parsedPrDetailConcurrency = Number(
+	getEnv("TEAMHERO_PR_DETAIL_CONCURRENCY") ?? DEFAULT_PR_DETAIL_CONCURRENCY,
 );
+const PR_DETAIL_CONCURRENCY =
+	Number.isFinite(parsedPrDetailConcurrency) && parsedPrDetailConcurrency > 0
+		? Math.floor(parsedPrDetailConcurrency)
+		: DEFAULT_PR_DETAIL_CONCURRENCY;
 
 /**
  * Minimal structural shape of a GitHub PR used by the per-PR detail prefetch
@@ -907,10 +913,17 @@ export class MetricsService implements MetricsProvider {
 							ReturnType<typeof this.octokit.rest.pulls.listCommits>
 						>["data"]
 					>();
-					await mapWithConcurrency(
+					const detailResults = await mapWithConcurrency(
 						prsForDetails,
 						PR_DETAIL_CONCURRENCY,
 						async (pr) => {
+							// Collect this PR's errors in a local array rather than
+							// pushing directly into the shared `errors` list — workers
+							// run concurrently, so pushing straight into a shared array
+							// would report failures in completion order instead of PR
+							// order. The local errors are appended to `errors` below,
+							// after `mapWithConcurrency` resolves, in original PR order.
+							const localErrors: string[] = [];
 							const { baseRef, headRef } = this.deriveCompareRefs(
 								pr,
 								ownerLogin,
@@ -924,9 +937,8 @@ export class MetricsService implements MetricsProvider {
 								pr.additions,
 								pr.deletions,
 								Boolean(onProgressUpdate),
-								errors,
+								localErrors,
 							);
-							lineStatsByPr.set(pr.number, stats);
 							try {
 								const commitsResponse =
 									await this.octokit.rest.pulls.listCommits({
@@ -936,7 +948,12 @@ export class MetricsService implements MetricsProvider {
 										per_page: 100,
 									});
 								if (Array.isArray(commitsResponse.data)) {
-									prCommitsByNumber.set(pr.number, commitsResponse.data);
+									return {
+										pr,
+										stats,
+										localErrors,
+										commits: commitsResponse.data,
+									};
 								}
 							} catch (_error) {
 								// Swallow commit detail errors and continue; failure policy is
@@ -947,8 +964,17 @@ export class MetricsService implements MetricsProvider {
 									);
 								}
 							}
+							return { pr, stats, localErrors, commits: undefined };
 						},
 					);
+
+					for (const result of detailResults) {
+						lineStatsByPr.set(result.pr.number, result.stats);
+						if (result.commits) {
+							prCommitsByNumber.set(result.pr.number, result.commits);
+						}
+						errors.push(...result.localErrors);
+					}
 
 					for (const pr of response.data) {
 						const updatedAtTime = pr.updated_at

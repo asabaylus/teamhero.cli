@@ -66,4 +66,19 @@ describe("mapWithConcurrency", () => {
 		});
 		expect(peak).toBe(1);
 	});
+
+	it("clamps a non-finite (NaN) limit to a single worker instead of silently returning undefined", async () => {
+		const items = [1, 2, 3];
+		let inFlight = 0;
+		let peak = 0;
+		const results = await mapWithConcurrency(items, Number.NaN, async (n) => {
+			inFlight += 1;
+			peak = Math.max(peak, inFlight);
+			await delay(1);
+			inFlight -= 1;
+			return n;
+		});
+		expect(results).toEqual(items);
+		expect(peak).toBe(1);
+	});
 });
