@@ -78,7 +78,9 @@ const MAX_PER_PAGE = 100;
 const MAX_FETCH_ATTEMPTS = 3;
 const BASE_BACKOFF_MS = 500;
 const MAX_BACKOFF_MS = 8000;
-export const REPO_CONCURRENCY = 3;
+export const REPO_CONCURRENCY = Number(
+	process.env.TEAMHERO_LOC_REPO_CONCURRENCY ?? "6",
+);
 
 const pool = new FetchPool(8);
 

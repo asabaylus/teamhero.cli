@@ -7,6 +7,7 @@ import type {
 	MetricsProvider,
 	RawPullRequestInfo,
 } from "../core/types.js";
+import { mapWithConcurrency } from "../lib/concurrency.js";
 import { resolveEndEpochMs, resolveStartISO } from "../lib/date-utils.js";
 import {
 	loadIdentityMapFile,
@@ -29,6 +30,39 @@ const DEFAULT_MAX_PULL_REQUEST_PAGES = Number(
 const MAX_HIGHLIGHTS_PER_MEMBER = Number(
 	process.env.TEAMHERO_MAX_HIGHLIGHTS_PER_MEMBER ?? "50",
 );
+
+/**
+ * Max in-flight per-PR detail fetches (line stats + commit list) per repo page.
+ * Bounds the prefetch that replaced the old serial per-PR N+1. Tunable via env;
+ * kept modest to stay clear of GitHub's secondary rate limits on busy weeks.
+ */
+const PR_DETAIL_CONCURRENCY = Number(
+	process.env.TEAMHERO_PR_DETAIL_CONCURRENCY ?? "8",
+);
+
+/**
+ * Minimal structural shape of a GitHub PR used by the per-PR detail prefetch
+ * helpers. The Octokit `pulls.list` element type satisfies it; declaring only
+ * the fields we read keeps the helpers decoupled from Octokit's sprawling type.
+ */
+interface PullRequestForDetails {
+	number: number;
+	user?: { login?: string | null } | null;
+	state?: string;
+	created_at?: string | null;
+	updated_at?: string | null;
+	merged_at?: string | null;
+	closed_at?: string | null;
+	/** Present only on the PR detail endpoint; the list endpoint omits them. */
+	additions?: number;
+	deletions?: number;
+	base?: { sha?: string | null; ref?: string | null } | null;
+	head?: {
+		sha?: string | null;
+		ref?: string | null;
+		repo?: { owner?: { login?: string | null } | null } | null;
+	} | null;
+}
 
 /** Backward-compatible re-exports — new code should import from core/types.ts. */
 export type CollectMetricsOptions = MetricsCollectionOptions;
@@ -353,6 +387,58 @@ export class MetricsService implements MetricsProvider {
 			rawPullRequests,
 			rawCommits,
 		};
+	}
+
+	/**
+	 * Whether a PR should have its per-PR detail (line stats + commits) fetched.
+	 * Mirrors the inline `includeForDetails` + login guard from the fold loop so
+	 * the bounded-concurrency prefetch covers exactly the same PRs that the
+	 * sequential version fetched — no more, no fewer.
+	 */
+	private prQualifiesForDetails(
+		pr: PullRequestForDetails,
+		sinceTime: number,
+		untilTime: number,
+	): boolean {
+		if (!pr.user?.login) {
+			return false;
+		}
+		const inRange = (value: string | null | undefined): boolean => {
+			if (!value) return false;
+			const t = new Date(value).getTime();
+			return !Number.isNaN(t) && t >= sinceTime && t <= untilTime;
+		};
+		const updatedInRange = inRange(pr.updated_at);
+		return (
+			inRange(pr.created_at) ||
+			inRange(pr.merged_at) ||
+			inRange(pr.closed_at) ||
+			(pr.state === "open" && updatedInRange)
+		);
+	}
+
+	/**
+	 * Derive the base/head refs used for line-stat comparison, preferring SHA
+	 * over ref name and dropping the head ref for cross-repo PRs (which
+	 * compareCommitsWithBasehead can't resolve). Extracted verbatim from the old
+	 * inline block so behavior is unchanged.
+	 */
+	private deriveCompareRefs(
+		pr: PullRequestForDetails,
+		ownerLogin: string,
+	): { baseRef: string | undefined; headRef: string | undefined } {
+		let baseRef: string | undefined;
+		let headRef: string | undefined;
+		if (pr.base) {
+			baseRef = pr.base.sha ?? pr.base.ref;
+		}
+		if (pr.head) {
+			headRef = pr.head.sha ?? pr.head.ref;
+			if (pr.head.repo?.owner && pr.head.repo.owner.login !== ownerLogin) {
+				headRef = undefined;
+			}
+		}
+		return { baseRef, headRef };
 	}
 
 	private async loadPullRequestLineStats(
@@ -802,6 +888,68 @@ export class MetricsService implements MetricsProvider {
 
 					let sawRecentUpdate = false;
 
+					// Prefetch the two per-PR network calls (line stats + commit list) with
+					// bounded concurrency. Previously these awaited sequentially per PR — an
+					// N+1 that dominated wall-clock on busy weeks (hundreds of PRs ⇒ hundreds
+					// of serial round-trips). The results are folded sequentially below, in
+					// original order, so aggregation is byte-for-byte identical to the serial
+					// version; only the network I/O overlaps.
+					const prsForDetails: PullRequestForDetails[] = response.data.filter(
+						(pr) => this.prQualifiesForDetails(pr, sinceTime, untilTime),
+					);
+					const lineStatsByPr = new Map<
+						number,
+						{ additions: number; deletions: number }
+					>();
+					const prCommitsByNumber = new Map<
+						number,
+						Awaited<
+							ReturnType<typeof this.octokit.rest.pulls.listCommits>
+						>["data"]
+					>();
+					await mapWithConcurrency(
+						prsForDetails,
+						PR_DETAIL_CONCURRENCY,
+						async (pr) => {
+							const { baseRef, headRef } = this.deriveCompareRefs(
+								pr,
+								ownerLogin,
+							);
+							const stats = await this.loadPullRequestLineStats(
+								ownerLogin,
+								repo.name,
+								pr.number,
+								baseRef,
+								headRef,
+								pr.additions,
+								pr.deletions,
+								Boolean(onProgressUpdate),
+								errors,
+							);
+							lineStatsByPr.set(pr.number, stats);
+							try {
+								const commitsResponse =
+									await this.octokit.rest.pulls.listCommits({
+										owner: ownerLogin,
+										repo: repo.name,
+										pull_number: pr.number,
+										per_page: 100,
+									});
+								if (Array.isArray(commitsResponse.data)) {
+									prCommitsByNumber.set(pr.number, commitsResponse.data);
+								}
+							} catch (_error) {
+								// Swallow commit detail errors and continue; failure policy is
+								// to surface aggregate failures only.
+								if (!onProgressUpdate) {
+									this.logger.debug(
+										`Unable to load commit details for PR ${ownerLogin}/${repo.name}#${pr.number}`,
+									);
+								}
+							}
+						},
+					);
+
 					for (const pr of response.data) {
 						const updatedAtTime = pr.updated_at
 							? new Date(pr.updated_at).getTime()
@@ -880,44 +1028,10 @@ export class MetricsService implements MetricsProvider {
 							repoMergedCount += 1;
 						}
 
-						// Extract base and head refs, handling cross-repo PRs
-						// For cross-repo PRs, head.repo might be different from base.repo
-						let baseRef: string | undefined;
-						let headRef: string | undefined;
-
-						if (pr.base) {
-							// Prefer SHA if available, otherwise use ref
-							baseRef = pr.base.sha ?? pr.base.ref;
-							// For cross-repo PRs, we might need owner:ref format, but compareCommitsWithBasehead
-							// should handle refs within the same repo correctly
-						}
-
-						if (pr.head) {
-							// Prefer SHA if available, otherwise use ref
-							headRef = pr.head.sha ?? pr.head.ref;
-							// For cross-repo PRs where head is in a different repo, we'd need head.repo.owner.login:head.ref
-							// but compareCommitsWithBasehead only works within the same repo, so we'll rely on fallbacks
-							if (
-								pr.head.repo?.owner &&
-								pr.head.repo.owner.login !== ownerLogin
-							) {
-								// Cross-repo PR - compareCommitsWithBasehead won't work, will fall back to other methods
-								headRef = undefined;
-							}
-						}
-
-						const { additions, deletions } =
-							await this.loadPullRequestLineStats(
-								ownerLogin,
-								repo.name,
-								pr.number,
-								baseRef,
-								headRef,
-								pr.additions,
-								pr.deletions,
-								Boolean(onProgressUpdate),
-								errors,
-							);
+						const { additions, deletions } = lineStatsByPr.get(pr.number) ?? {
+							additions: 0,
+							deletions: 0,
+						};
 
 						if (aggregate.highlights.length < MAX_HIGHLIGHTS_PER_MEMBER) {
 							// Determine state
@@ -947,45 +1061,30 @@ export class MetricsService implements MetricsProvider {
 						aggregate.deletions += deletions;
 						totals.set(login, aggregate);
 
-						// Attempt to capture commit details for this PR to populate raw commits in reports
-						// This enables commits to show up even if they haven't landed on the default branch yet
-						try {
-							const commitsResponse = await this.octokit.rest.pulls.listCommits(
-								{
-									owner: ownerLogin,
-									repo: repo.name,
-									pull_number: pr.number,
-									per_page: 100,
-								},
-							);
-							if (Array.isArray(commitsResponse.data)) {
-								// Count commits from this PR toward the PR commit total
-								const commitCount = commitsResponse.data.length;
-								aggregate.commits += commitCount;
-								const existing = commitDetailsByLogin.get(login) ?? [];
-								for (const c of commitsResponse.data) {
-									const message = c.commit?.message ?? "";
-									const committedDate =
-										c.commit?.author?.date ?? c.commit?.committer?.date ?? "";
-									existing.push({
-										repoName: repo.name,
-										oid: c.sha,
-										message,
-										additions: 0,
-										deletions: 0,
-										committedAt: committedDate,
-										url: c.html_url,
-									});
-								}
-								commitDetailsByLogin.set(login, existing);
+						// Fold the prefetched PR commit details into raw-commit reporting.
+						// This lets commits show up even if they haven't landed on the
+						// default branch yet. Folded sequentially in PR order so the result
+						// matches the previous inline-await version exactly.
+						const prCommits = prCommitsByNumber.get(pr.number);
+						if (prCommits) {
+							// Count commits from this PR toward the PR commit total
+							aggregate.commits += prCommits.length;
+							const existing = commitDetailsByLogin.get(login) ?? [];
+							for (const c of prCommits) {
+								const message = c.commit?.message ?? "";
+								const committedDate =
+									c.commit?.author?.date ?? c.commit?.committer?.date ?? "";
+								existing.push({
+									repoName: repo.name,
+									oid: c.sha,
+									message,
+									additions: 0,
+									deletions: 0,
+									committedAt: committedDate,
+									url: c.html_url,
+								});
 							}
-						} catch (_error) {
-							// Swallow commit detail errors and continue; failure policy is to surface aggregate failures only
-							if (!onProgressUpdate) {
-								this.logger.debug(
-									`Unable to load commit details for PR ${ownerLogin}/${repo.name}#${pr.number}`,
-								);
-							}
+							commitDetailsByLogin.set(login, existing);
 						}
 					}
 
