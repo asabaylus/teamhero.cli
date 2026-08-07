@@ -45,41 +45,6 @@ implement:
 - **Issue types?** Default to the work units that carry points (Story, Task); skip Epics
   and Sub-tasks to avoid double-counting, mirroring the Jira estimation convention.
 
-## 0.2 Setup & configuration is a first-class, audit-time activity
-
-Story-point collection is **driven by saved configuration**, not hardcoded constants.
-Selecting the Jira projects and the story-point field for each project is one of the
-*first* activities of an audit — the same way org / members / repos / date range are
-selected today. Only once that configuration exists can the per-engineer reconciliation
-and fetch run.
-
-This mirrors the existing reporter setup exactly:
-
-- The **Go TUI** (`tui/setup.go`, `tui/config.go`) runs the interactive wizard and persists
-  `~/.config/teamhero/config.json` (`ReportConfig`). Add a Jira step and a
-  `DataSources.Jira` toggle (`tui/config.go` already has `DataSources.{Git,Asana}`).
-- The Jira project→field selection is persisted in a sibling **`jira-config.json`**,
-  loaded by a new **`src/lib/jira-config-loader.ts`** that mirrors
-  `src/lib/boards-config-loader.ts` (same shape: env-var override → default path under
-  `configDir()` → `null` when absent). `doctor` (`tui/doctor.go`) validates it.
-- During setup the wizard lists the user's accessible Jira projects, and for each selected
-  project lets the user pick the field that represents story points — **auto-detecting the
-  likely field** from the project's `simplified` flag / field metadata (company-managed →
-  `customfield_10005`; team-managed → `customfield_10617`) as the pre-filled default the
-  user can override.
-
-**Report-time guard (the second requirement).** When a report run requests the Jira
-source (`--sources jira` / `DataSources.Jira = true`) but no valid `jira-config.json`
-exists:
-
-- **Interactive** runs: pause and prompt — *run setup now* or *continue without story
-  points*. The user must have setup intact to collect points; there is no silent guess.
-- **Headless** runs: never block. Emit a WARNING (log file + the report's error appendix /
-  CLI stderr per §8) explaining that the Jira source was requested but unconfigured, and
-  proceed with story points omitted.
-
-This keeps a git/Asana report fully functional even when Jira is requested-but-unconfigured.
-
 ---
 
 ## 1. Architecture fit
@@ -149,12 +114,7 @@ Keep `StoryPointResult` keyed the same way `MemberTaskSummary` is so it merges c
   MCP. Document all in `.env.schema` (varlock `@env-spec`); secrets live in
   `~/.config/teamhero/.env`.
 
-### 3.2 Project → story-point-field resolution (fed by saved config — see §0.2)
-The authoritative source for each project's story-point field is the **saved
-`jira-config.json`** produced by setup (§0.2). The resolver below is what *populates* that
-config at setup time (auto-detect + default) and what *validates* it at fetch time (the two
-warnings). It is not a hardcoded runtime map.
-
+### 3.2 Project → story-point-field map (folds in the earlier requirement)
 Story points live in different fields per project and the fields are **not**
 interchangeable:
 - Company-managed projects (`simplified: false`): `customfield_10005`, JQL name
@@ -170,11 +130,10 @@ overrides:
   PT:     { fieldId: "customfield_10617", jqlName: "Story point estimate" }
 ```
 
-- The persisted `jira-config.json` entry per project (`{ key, fieldId, jqlName }`) is
-  authoritative; the built-in default + PT override only seed setup when nothing is saved.
-- Auto-detect at **setup time** by reading the project's `simplified` flag / field
-  metadata and pre-selecting the team-managed field when `simplified: true`; the user's
-  explicit choice (persisted) always wins over auto-detection.
+- Prefer real config (file/env) over hardcoding, but ship the PT override built-in.
+- Optional but preferred: auto-detect by reading the project's `simplified` flag /
+  field metadata and choosing the team-managed field when `simplified: true`; explicit
+  map overrides auto-detection.
 - **Two distinct warnings, both written to the log file at WARNING level, deduplicated
   once per project per run, never fatal:**
   - *Project not matched / not found*: no map entry and not auto-detectable, or the Jira
@@ -298,15 +257,11 @@ abort a git/Asana report.
 
 ## 10. Rollout
 
-1. **Setup & configuration first** (§0.2): TUI Jira step + `DataSources.Jira` toggle +
-   persisted `jira-config.json` + `jira-config-loader.ts` + auto-detect/field selection +
-   `doctor` validation. Everything downstream reads this config.
-2. Land the Jira client + fetch (fed by saved config) + report column behind the flag,
-   **including the report-time guard** (§0.2: interactive prompt vs headless warn-and-skip).
-3. Land identity-map Jira support + lookup + reconciliation surfacing.
-4. Land aggregation + renderer column.
-5. Land cache decorator + flush wiring.
-6. Dogfood on a known window/project (e.g. PT) and compare totals against the Jira board's
+1. Land the Jira client + field resolver + tests (no report wiring) behind the flag.
+2. Land identity-map Jira support + lookup + reconciliation surfacing.
+3. Land aggregation + renderer column.
+4. Land cache decorator + flush wiring.
+5. Dogfood on a known window/project (e.g. PT) and compare totals against the Jira board's
    own sum before enabling by default.
 
 ## 11. Out of scope / follow-ups
