@@ -8,8 +8,21 @@ import type {
 	StoryPointResult,
 	TaskTrackerMemberInput,
 } from "../../core/types.js";
+import {
+	applyFieldOverride,
+	type JiraFieldDescriptor,
+	resolveProjectField,
+} from "./jira-field-resolver.js";
 
-const DEFAULT_ISSUE_TYPES = ["Story", "Task"];
+/**
+ * Issue types that carry points when the operator names none.
+ *
+ * Empty means every type. A named list was the earlier default, and it silently
+ * dropped whole projects: a site that calls its pointed type "User Story",
+ * "Bug", or "Technical Design" matched nothing and reported zero for everyone.
+ * Narrowing is now an explicit choice, in `issueTypes` or `JIRA_ISSUE_TYPES`.
+ */
+const DEFAULT_ISSUE_TYPES: string[] = [];
 const MAX_RETRIES = 3;
 const PAGE_SIZE = 100;
 const SEARCH_TIMEOUT_MS = 30_000;
@@ -92,8 +105,12 @@ export class JiraStoryPointProvider implements StoryPointProvider {
 
 		const issueTypes = options.issueTypes ?? DEFAULT_ISSUE_TYPES;
 		const creditBy = options.creditBy ?? "assignee";
+		const projects = await this.resolveProjectFields(
+			options.projects,
+			options.storyPointField,
+		);
 
-		for (const project of options.projects) {
+		for (const project of projects) {
 			try {
 				const issues = await this.searchProject(
 					project,
@@ -155,6 +172,82 @@ export class JiraStoryPointProvider implements StoryPointProvider {
 			(existing.byProject[project.key] ?? 0) + points;
 		existing.issueCount += 1;
 		byPerson.set(canonicalId, existing);
+	}
+
+	private resolvedProjects?: JiraProjectFieldConfig[];
+
+	/**
+	 * Pin each project to a story-point field that this Jira site actually has.
+	 *
+	 * A configured id that the site does not define is not an error to Jira: the
+	 * search succeeds and every issue simply carries no value, so the report
+	 * prints zero for the whole team and nothing explains why. Reading the site's
+	 * field list first turns that silent zero into either a repaired id or a
+	 * warning. The list is fetched once per provider and reused for every week.
+	 */
+	private async resolveProjectFields(
+		projects: JiraProjectFieldConfig[],
+		override?: string,
+	): Promise<JiraProjectFieldConfig[]> {
+		if (this.resolvedProjects) {
+			return this.resolvedProjects;
+		}
+		const requested = override
+			? projects.map((project) => applyFieldOverride(project, override))
+			: projects;
+
+		let fields: JiraFieldDescriptor[];
+		try {
+			fields = await this.fetchFields();
+		} catch (err) {
+			// The field list is a repair aid, not a dependency: keep the configured
+			// ids and let the search report whatever it finds.
+			this.logger.warn(
+				`[jira] could not read the field list; using the configured field ids. (${(err as Error).message})`,
+			);
+			this.resolvedProjects = requested;
+			return requested;
+		}
+
+		const resolved = requested.map((project) => {
+			const resolution = resolveProjectField(project, fields);
+			if (resolution.outcome === "repaired") {
+				this.logger.warn(
+					`[jira] project ${project.key}: story-point field ${resolution.previousFieldId || "(unset)"} is not on this Jira site; using ${resolution.config.fieldId} ("${resolution.config.jqlName}") instead.`,
+				);
+			}
+			if (resolution.outcome === "unresolved") {
+				this.logger.warn(
+					`[jira] project ${project.key}: no story-point field named "${project.jqlName}" on this Jira site; points will read 0. Set "storyPointField" in jira-config.json or JIRA_STORY_POINT_FIELD.`,
+				);
+			}
+			return resolution.config;
+		});
+		this.resolvedProjects = resolved;
+		return resolved;
+	}
+
+	/** Read the site's field list. Overridable seam for tests. */
+	protected async fetchFields(): Promise<JiraFieldDescriptor[]> {
+		const auth = Buffer.from(`${this.email}:${this.apiToken}`).toString(
+			"base64",
+		);
+		const res = await fetch(`${this.baseUrl}/rest/api/3/field`, {
+			headers: {
+				authorization: `Basic ${auth}`,
+				accept: "application/json",
+				"user-agent": this.userAgent,
+			},
+		});
+		if (!res.ok) {
+			throw new Error(`Jira field list ${res.status}`);
+		}
+		const body = (await res.json()) as Array<{ id?: string; name?: string }>;
+		return body.flatMap((field) =>
+			typeof field.id === "string" && typeof field.name === "string"
+				? [{ id: field.id, name: field.name }]
+				: [],
+		);
 	}
 
 	/** Build per-project JQL and page through all matching issues. */
@@ -280,8 +373,16 @@ export class JiraStoryPointProvider implements StoryPointProvider {
  * Pure JQL builder — exported for unit assertions.
  *
  * `window.endISO` is treated as an EXCLUSIVE upper bound (start of the day after
- * `until`, via `resolveExclusiveEndISO`) so `resolutiondate < end` is exact at
- * the day boundary and free of the +2-day GitHub buffer.
+ * `until`, via `resolveExclusiveEndISO`) so the upper comparison is exact at the
+ * day boundary and free of the +2-day GitHub buffer.
+ *
+ * The window bounds `statusCategoryChangedDate`: the moment the issue last moved
+ * into its status category, which for `statusCategory = Done` is the moment it
+ * completed. The earlier bound was `resolutiondate`, which Jira sets only when a
+ * workflow step assigns a resolution. A board that simply drags an issue to a
+ * done column leaves it null, so most completed work fell outside every window.
+ * Because a category change is one event, an issue that passes through two done
+ * statuses — Done then LIVE — still counts once.
  */
 export function buildJql(
 	projectKey: string,
@@ -298,7 +399,8 @@ export function buildJql(
 	return (
 		`project = "${projectKey}" AND ${typeClause}` +
 		`statusCategory = Done ` +
-		`AND resolutiondate >= "${start}" AND resolutiondate < "${end}"`
+		`AND statusCategoryChangedDate >= "${start}" ` +
+		`AND statusCategoryChangedDate < "${end}"`
 	);
 }
 

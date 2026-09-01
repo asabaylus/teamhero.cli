@@ -123,6 +123,7 @@ export async function createReportService(
 				storyPointOptions = {
 					projects: jiraConfig.projects,
 					issueTypes: jiraConfig.issueTypes,
+					storyPointField: jiraConfig.storyPointField,
 					creditBy: jiraConfig.creditBy,
 				};
 			}

@@ -381,6 +381,7 @@ async function main(): Promise<void> {
 					storyPointOptions = {
 						projects: jiraConfig.projects,
 						issueTypes: jiraConfig.issueTypes,
+						storyPointField: jiraConfig.storyPointField,
 						creditBy: jiraConfig.creditBy,
 					};
 				}

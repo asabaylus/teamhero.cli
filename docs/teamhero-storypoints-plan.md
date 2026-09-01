@@ -196,6 +196,53 @@ overrides:
 - If `creditBy: "resolver"`, additionally pull the changelog to find who performed the
   Done transition; otherwise use `assignee`.
 
+### 3.4 Amendment 2026-09-01 — three silent zeros, measured against a live site
+
+The design above shipped, and it reported 0 points for every developer on a site that
+holds 1,236 points of completed work. Each cause produced no error, so nothing on screen
+separated "nobody completed work" from "the query matched nothing".
+
+**1. A custom-field id is never a portable default.** Jira allocates custom-field ids per
+site. `customfield_10617` and `customfield_10005` are ids observed on one site, not
+constants, and the site measured here stores team-managed points in `customfield_10016`.
+A search for an absent field is not an error: Jira returns the issues with no value, so
+every row reads 0. The provider now reads `GET /rest/api/3/field` once per run and repairs
+a configured id by name — the configured `jqlName` first, then the well-known names
+`Story point estimate` and `Story Points` (see `src/adapters/jira/jira-field-resolver.ts`).
+An id it cannot resolve produces a warning that names the project. `jira-config.json` also
+takes a `storyPointField` key, and `JIRA_STORY_POINT_FIELD` overrides it, so an operator
+can state the field outright without re-running setup.
+
+Note that `"Story Points[Number]"` is a JQL clause name, not a field name; the
+company-managed guess now carries the display name `"Story Points"` so name matching works.
+
+**2. `issuetype in (Story, Task)` is not a safe default.** On the site measured, the
+pointed issues are 301 `User Story`, 9 `Task`, 5 `Bug`, 2 `Test`, 1 `Support`, and
+1 `Technical Design`. The old default matched 9 of 319. The default is now every issue
+type; `issueTypes` in the config, or `JIRA_ISSUE_TYPES`, narrows it deliberately. An empty
+`JIRA_ISSUE_TYPES` widens a narrowed config for one run.
+
+**3. `resolutiondate` is not when work completed.** Jira sets it only when a workflow step
+assigns a resolution. A board that moves an issue into a done column leaves it null. On the
+site measured, 24 of 319 completed pointed issues carry one. The window now bounds
+`statusCategoryChangedDate`, the moment the issue last entered its status category, which
+every done issue has. Measured over 2026-01-01 to 2026-08-31:
+
+| Rule | Issues | Points |
+| --- | ---: | ---: |
+| `resolutiondate` | 14 | 68 |
+| `statusCategoryChangedDate` | 308 | 1,208 |
+| Every pointed issue in a done category | 319 | 1,236 |
+
+A category change is one event, so an issue that passes through two done statuses — `Done`
+then `LIVE` — still counts once. The story-point cache key carries a `rule` marker, so
+entries written under the old rule miss rather than replay a stale total.
+
+**Not fixed here.** `buildJiraLoginLookupFromPersons` keys attribution on `logins[0]`, so a
+person with a Jira account and no GitHub login is dropped from story-point credit. That is
+correct while the report keys members by GitHub login, but it means Jira-only contributors
+are invisible rather than reported. The unmatched-assignee warning names them.
+
 ---
 
 ## 4. Identity resolution — the crux (`src/models/`, `src/services/identity-resolver.service.ts`)

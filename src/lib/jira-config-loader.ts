@@ -16,18 +16,33 @@ import { configDir } from "./paths.js";
 
 export interface JiraConfig {
 	projects: JiraProjectFieldConfig[];
-	/** Issue types that carry points. Default ["Story", "Task"]. */
+	/** Issue types that carry points. Omitted or empty ⇒ every issue type. */
 	issueTypes?: string[];
+	/**
+	 * Story-point field for every project, as a custom-field id
+	 * ("customfield_10016") or a display name ("Story point estimate"). It
+	 * overrides each project's own `fieldId`, so one line repairs a whole config
+	 * that was written against another Jira site.
+	 */
+	storyPointField?: string;
 	creditBy?: "assignee" | "resolver";
 }
 
-/** Company-managed default (simplified: false). */
+/**
+ * Field guesses used at setup time, before any Jira site has been read.
+ *
+ * Jira allocates a custom-field id per site, so these ids are guesses and are
+ * wrong on most sites. The `jqlName` beside each one is the reliable half: the
+ * provider reads the site's field list and repairs the id by name on first use
+ * (see `jira-field-resolver.ts`). Prefer `storyPointField` to state the field
+ * outright.
+ */
 export const COMPANY_MANAGED_FIELD: Omit<JiraProjectFieldConfig, "key"> = {
 	fieldId: "customfield_10005",
-	jqlName: "Story Points[Number]",
+	jqlName: "Story Points",
 };
 
-/** Team-managed default (simplified: true, e.g. PT). */
+/** Team-managed guess (simplified: true, e.g. PT). See above: the id is a guess. */
 export const TEAM_MANAGED_FIELD: Omit<JiraProjectFieldConfig, "key"> = {
 	fieldId: "customfield_10617",
 	jqlName: "Story point estimate",
@@ -73,6 +88,25 @@ function coerceProject(
 }
 
 /**
+ * Read `JIRA_ISSUE_TYPES` as a comma-separated list.
+ *
+ * An unset variable returns undefined and leaves the file's value alone. A set
+ * but empty variable returns `[]`, which counts every issue type, so an operator
+ * can widen a narrowed config for one run.
+ */
+export function parseIssueTypesEnv(
+	value: string | undefined,
+): string[] | undefined {
+	if (value === undefined) {
+		return undefined;
+	}
+	return value
+		.split(",")
+		.map((part) => part.trim())
+		.filter((part) => part !== "");
+}
+
+/**
  * Load the Jira story-points config. Returns `null` when the file is absent so
  * the caller can apply the report-time guard. Throws on a malformed file.
  */
@@ -96,7 +130,12 @@ export async function loadJiraConfig(): Promise<JiraConfig | null> {
 		);
 	}
 
-	let parsed: { projects?: unknown; issueTypes?: unknown; creditBy?: unknown };
+	let parsed: {
+		projects?: unknown;
+		issueTypes?: unknown;
+		storyPointField?: unknown;
+		creditBy?: unknown;
+	};
 	try {
 		parsed = JSON.parse(raw);
 	} catch (err) {
@@ -129,6 +168,16 @@ export async function loadJiraConfig(): Promise<JiraConfig | null> {
 		issueTypes = parsed.issueTypes as string[];
 	}
 
+	if (
+		parsed.storyPointField !== undefined &&
+		(typeof parsed.storyPointField !== "string" ||
+			!parsed.storyPointField.trim())
+	) {
+		throw new Error(
+			`Invalid Jira config at ${path}: "storyPointField" must be a non-empty string`,
+		);
+	}
+
 	const creditBy =
 		parsed.creditBy === "assignee" || parsed.creditBy === "resolver"
 			? parsed.creditBy
@@ -139,5 +188,21 @@ export async function loadJiraConfig(): Promise<JiraConfig | null> {
 		);
 	}
 
-	return { projects, issueTypes, creditBy };
+	// Env wins over the file, so one run can try another field or narrow the
+	// issue types without editing the saved config.
+	const fieldOverride = getEnv("JIRA_STORY_POINT_FIELD")?.trim();
+	const storyPointField =
+		fieldOverride || (parsed.storyPointField as string | undefined)?.trim();
+
+	return {
+		projects,
+		// Read process.env first: getEnv() treats an empty value as unset, and an
+		// empty JIRA_ISSUE_TYPES is a meaningful instruction — count every type.
+		issueTypes:
+			parseIssueTypesEnv(
+				process.env.JIRA_ISSUE_TYPES ?? getEnv("JIRA_ISSUE_TYPES"),
+			) ?? issueTypes,
+		storyPointField,
+		creditBy,
+	};
 }

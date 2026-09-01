@@ -20,14 +20,21 @@ const OPTIONS: StoryPointOptions = {
 
 function provider(
 	extra: Partial<ConstructorParameters<typeof JiraStoryPointProvider>[0]> = {},
+	siteFields: Array<{ id: string; name: string }> = [
+		{ id: PT_FIELD, name: "Story point estimate" },
+	],
 ) {
-	return new JiraStoryPointProvider({
+	const p = new JiraStoryPointProvider({
 		baseUrl: "https://example.atlassian.net",
 		email: "bot@example.com",
 		apiToken: "tok",
 		jiraLookup: new Map([["acct-jane", "jane-doe"]]),
 		...extra,
 	});
+	// The site's field list is read before the first search. Stub it so a unit
+	// test never reaches the network.
+	spyOn(p as never, "fetchFields").mockResolvedValue(siteFields);
+	return p;
 }
 
 function issue(
@@ -67,14 +74,14 @@ describe("JiraStoryPointProvider — enabled", () => {
 });
 
 describe("buildJql", () => {
-	it("filters by project, issue types, Done, and the resolution window", () => {
+	it("filters by project, issue types, Done, and the completion window", () => {
 		const jql = buildJql("PT", ["Story", "Task"], WINDOW);
 		expect(jql).toContain('project = "PT"');
 		expect(jql).toContain('issuetype in ("Story", "Task")');
 		expect(jql).toContain("statusCategory = Done");
-		expect(jql).toContain('resolutiondate >= "2026-06-01 00:00"');
+		expect(jql).toContain('statusCategoryChangedDate >= "2026-06-01 00:00"');
 		// exclusive upper bound
-		expect(jql).toContain('resolutiondate < "2026-06-30 23:59"');
+		expect(jql).toContain('statusCategoryChangedDate < "2026-06-30 23:59"');
 	});
 
 	it("omits the issuetype filter when issueTypes is empty (count all types)", () => {
@@ -82,7 +89,93 @@ describe("buildJql", () => {
 		expect(jql).toContain('project = "SPVR"');
 		expect(jql).not.toContain("issuetype in");
 		expect(jql).toContain("statusCategory = Done");
-		expect(jql).toContain('resolutiondate >= "2026-06-01 00:00"');
+		expect(jql).toContain('statusCategoryChangedDate >= "2026-06-01 00:00"');
+	});
+
+	it("never filters on resolutiondate, which most completed issues lack", () => {
+		expect(buildJql("PT", [], WINDOW)).not.toContain("resolutiondate");
+	});
+});
+
+describe("JiraStoryPointProvider — story-point field resolution", () => {
+	const searchStub = { issues: [], isLast: true };
+
+	it("counts every issue type when the caller names none", async () => {
+		const p = provider();
+		const search = spyOn(p as never, "search").mockResolvedValue(searchStub);
+		await p.fetchCompletedStoryPoints([], WINDOW, OPTIONS);
+		expect(search.mock.calls[0][0] as string).not.toContain("issuetype in");
+	});
+
+	it("repairs a configured field id the site does not have", async () => {
+		const p = provider({}, [
+			{ id: "customfield_10016", name: "Story point estimate" },
+		]);
+		const search = spyOn(p as never, "search").mockResolvedValue(searchStub);
+
+		await p.fetchCompletedStoryPoints([], WINDOW, OPTIONS);
+
+		// The repaired id is the one requested from Jira, so the value arrives.
+		expect(search.mock.calls[0][1] as string[]).toContain("customfield_10016");
+		expect(search.mock.calls[0][1] as string[]).not.toContain(PT_FIELD);
+	});
+
+	it("credits points read from the repaired field", async () => {
+		const p = provider({}, [
+			{ id: "customfield_10016", name: "Story point estimate" },
+		]);
+		spyOn(p as never, "search").mockResolvedValue({
+			issues: [
+				{
+					key: "PT-9",
+					fields: {
+						assignee: { accountId: "acct-jane" },
+						customfield_10016: 8,
+					},
+				},
+			],
+			isLast: true,
+		});
+
+		const result = await p.fetchCompletedStoryPoints([], WINDOW, OPTIONS);
+
+		expect(result.byPerson.get("jane-doe")?.totalPoints).toBe(8);
+	});
+
+	it("honours a storyPointField override given as a display name", async () => {
+		const p = provider({}, [
+			{ id: "customfield_10036", name: "Story Points" },
+			{ id: "customfield_10016", name: "Story point estimate" },
+		]);
+		const search = spyOn(p as never, "search").mockResolvedValue(searchStub);
+
+		await p.fetchCompletedStoryPoints([], WINDOW, {
+			...OPTIONS,
+			storyPointField: "Story Points",
+		});
+
+		expect(search.mock.calls[0][1] as string[]).toContain("customfield_10036");
+	});
+
+	it("reads the field list once and reuses it for later windows", async () => {
+		const p = provider();
+		const fetchFields = spyOn(p as never, "fetchFields");
+		spyOn(p as never, "search").mockResolvedValue(searchStub);
+
+		await p.fetchCompletedStoryPoints([], WINDOW, OPTIONS);
+		await p.fetchCompletedStoryPoints([], WINDOW, OPTIONS);
+
+		expect(fetchFields).toHaveBeenCalledTimes(1);
+	});
+
+	it("keeps the configured id when the field list cannot be read", async () => {
+		const p = provider();
+		spyOn(p as never, "fetchFields").mockRejectedValue(new Error("403"));
+		const search = spyOn(p as never, "search").mockResolvedValue(searchStub);
+
+		await p.fetchCompletedStoryPoints([], WINDOW, OPTIONS);
+
+		expect(search.mock.calls[0][1] as string[]).toContain(PT_FIELD);
 	});
 });
 

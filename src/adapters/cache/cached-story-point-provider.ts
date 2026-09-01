@@ -73,8 +73,12 @@ export class CachedStoryPointProvider implements StoryPointProvider {
 				.sort()
 				.join(","),
 			issueTypes: (options.issueTypes ?? []).join(","),
+			storyPointField: options.storyPointField ?? "",
 			creditBy: options.creditBy ?? "assignee",
 			identityCacheKey: this.identityCacheKey,
+			// Bump when the completion rule changes, so entries written under the
+			// old rule miss instead of replaying a stale total.
+			rule: "status-category-changed",
 		});
 
 		const sourceMatch =

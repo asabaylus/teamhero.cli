@@ -262,8 +262,13 @@ export interface JiraProjectFieldConfig {
 export interface StoryPointOptions {
 	/** Per-project field config (from jira-config.json). Empty ⇒ nothing to fetch. */
 	projects: JiraProjectFieldConfig[];
-	/** Issue types that carry points. Default ["Story", "Task"]. */
+	/** Issue types that carry points. Omitted or empty ⇒ every issue type. */
 	issueTypes?: string[];
+	/**
+	 * Story-point field for every project, as a custom-field id or a display
+	 * name. Overrides each project's own `fieldId`.
+	 */
+	storyPointField?: string;
 	/** Whom to credit. Default "assignee". "resolver" is a later slice. */
 	creditBy?: "assignee" | "resolver";
 }
