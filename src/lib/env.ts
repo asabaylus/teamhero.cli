@@ -24,14 +24,23 @@ export function loadDotenv(): Record<string, string> {
 	return cachedDotenv;
 }
 
-export function getEnv(key: string): string | undefined {
+export function getEnv(
+	key: string,
+	options?: { preserveEmpty?: boolean },
+): string | undefined {
 	const direct = process.env[key];
-	if (typeof direct === "string" && direct.length > 0) {
+	if (
+		typeof direct === "string" &&
+		(options?.preserveEmpty || direct.length > 0)
+	) {
 		return direct;
 	}
 
 	const fallback = loadDotenv()[key];
-	return fallback && fallback.length > 0 ? fallback : undefined;
+	return typeof fallback === "string" &&
+		(options?.preserveEmpty || fallback.length > 0)
+		? fallback
+		: undefined;
 }
 
 /**

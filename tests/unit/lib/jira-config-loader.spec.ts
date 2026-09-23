@@ -78,7 +78,7 @@ describe("loadJiraConfig — field and issue-type options", () => {
 		configFile(
 			'{"projects":[{"key":"PT","fieldId":"a","jqlName":"b"}],"storyPointField":"  "}',
 		);
-		expect(loadJiraConfig()).rejects.toThrow(/storyPointField/);
+		await expect(loadJiraConfig()).rejects.toThrow(/storyPointField/);
 	});
 
 	it("lets JIRA_STORY_POINT_FIELD win over the file", async () => {

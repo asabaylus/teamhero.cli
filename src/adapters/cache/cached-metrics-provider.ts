@@ -22,6 +22,20 @@ import { computeCacheHash, FileSystemCacheStore } from "./fs-cache-store.js";
 const DEFAULT_TTL_SECONDS = 4 * 3600; // 4 hours
 const METRIC_RULE_SCHEMA_VERSION = "unified-engineering-metrics-v1";
 
+function hasIncompleteActivity(result: MetricsCollectionResult): boolean {
+	return result.members.some((member) =>
+		[
+			member.metrics.prActivityObservation,
+			member.metrics.reviewsObservation,
+			member.metrics.ticketsClosedObservation,
+		].some(
+			(observation) =>
+				observation?.status === "partial" ||
+				observation?.status === "unavailable",
+		),
+	);
+}
+
 export class CachedMetricsProvider implements MetricsProvider {
 	private readonly cache: FileSystemCacheStore<MetricsCollectionResult>;
 
@@ -83,7 +97,7 @@ export class CachedMetricsProvider implements MetricsProvider {
 			const windowClosed = new Date(options.until) < new Date();
 			const hit = await this.cache.get(inputHash, { permanent: windowClosed });
 
-			if (hit) {
+			if (hit && !hasIncompleteActivity(hit)) {
 				await appendUnifiedLog({
 					timestamp: new Date().toISOString(),
 					runId: "",
@@ -99,12 +113,19 @@ export class CachedMetricsProvider implements MetricsProvider {
 
 		const result = await this.inner.collect(options);
 
-		await this.cache.set(inputHash, result);
+		const incomplete = hasIncompleteActivity(result);
+		if (!incomplete) {
+			await this.cache.set(inputHash, result);
+		}
 		await appendUnifiedLog({
 			timestamp: new Date().toISOString(),
 			runId: "",
 			category: "cache",
-			event: shouldFlush ? "cache-flush-and-set" : "cache-miss-and-set",
+			event: incomplete
+				? "cache-skip-incomplete"
+				: shouldFlush
+					? "cache-flush-and-set"
+					: "cache-miss-and-set",
 			namespace: "metrics",
 			inputHash,
 			org: options.organization.login,

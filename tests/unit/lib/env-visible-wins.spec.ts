@@ -45,7 +45,14 @@ describe("Visible Wins env var access via getEnv()", () => {
 		}
 	});
 
-	it("getEnv() returns undefined for empty string values", () => {
+	it("getEnv() can preserve an explicitly empty value", () => {
+		const testKey = "VISIBLE_WINS_TEST_PRESERVE_EMPTY";
+		process.env[testKey] = "";
+		expect(getEnv(testKey, { preserveEmpty: true })).toBe("");
+		delete process.env[testKey];
+	});
+
+	it("getEnv() returns undefined for empty string values by default", () => {
 		// Use a key that won't exist in the .env file so the dotenv
 		// fallback doesn't mask the empty-string check
 		const testKey = "VISIBLE_WINS_TEST_EMPTY_VALUE";

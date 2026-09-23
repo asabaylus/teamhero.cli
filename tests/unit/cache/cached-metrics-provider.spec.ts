@@ -66,9 +66,40 @@ function makeOptions(
 	};
 }
 
-function makeResult(prsMerged = 5): MetricsCollectionResult {
+function makeResult(
+	prsMerged = 5,
+	activityStatus?: "partial" | "unavailable",
+): MetricsCollectionResult {
 	return {
-		members: [],
+		members: activityStatus
+			? [
+					{
+						displayName: "Alice",
+						highlights: [],
+						prHighlights: [],
+						commitHighlights: [],
+						metrics: {
+							memberLogin: "alice",
+							commitsCount: 0,
+							prsOpenedCount: 0,
+							prsClosedCount: 0,
+							prsMergedCount: 0,
+							linesAdded: 0,
+							linesDeleted: 0,
+							linesAddedInProgress: 0,
+							linesDeletedInProgress: 0,
+							reviewsCount: 0,
+							reviewCommentsCount: 0,
+							approvalsCount: 0,
+							changesRequestedCount: 0,
+							commentedCount: 0,
+							windowStart: "2026-02-01",
+							windowEnd: "2026-02-08",
+							prActivityObservation: { status: activityStatus },
+						},
+					},
+				]
+			: [],
 		warnings: [],
 		errors: [],
 		mergedTotal: prsMerged,
@@ -158,6 +189,17 @@ describe("CachedMetricsProvider", () => {
 		const provider = new CachedMetricsProvider(mockInner, {
 			flushSources: ["metrics"],
 		});
+		const options = makeOptions();
+
+		await provider.collect(options);
+		await provider.collect(options);
+
+		expect(collectSpy).toHaveBeenCalledTimes(2);
+	});
+
+	it("does not cache partial or unavailable activity", async () => {
+		collectSpy.mockResolvedValue(makeResult(0, "partial"));
+		const provider = new CachedMetricsProvider(mockInner);
 		const options = makeOptions();
 
 		await provider.collect(options);

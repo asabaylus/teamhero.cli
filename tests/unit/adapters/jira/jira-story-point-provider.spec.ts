@@ -182,11 +182,11 @@ describe("firstCompletionDay", () => {
 });
 
 describe("buildJql", () => {
-	it("asks for pointed issues that entered a done status near the window", () => {
+	it("asks for completed issues without requiring an estimate", () => {
 		const jql = buildJql(PT_PROJECT, ["Story", "Task"], DAYS, DONE);
 		expect(jql).toContain('project = "PT"');
 		expect(jql).toContain('issuetype in ("Story", "Task")');
-		expect(jql).toContain("cf[10617] is not EMPTY");
+		expect(jql).not.toContain("is not EMPTY");
 		expect(jql).toContain('status changed to ("Done", "LIVE")');
 		// A day of slack each side; the exact week is decided from the changelog.
 		expect(jql).toContain('during ("2026-05-31", "2026-07-01")');
@@ -210,8 +210,8 @@ describe("buildJql", () => {
 		);
 	});
 
-	it("drops the estimate filter when the field id could not be resolved", () => {
-		const jql = buildJql({ ...PT_PROJECT, fieldId: "" }, [], DAYS, DONE);
+	it("does not filter unpointed completed work even with a resolved field", () => {
+		const jql = buildJql(PT_PROJECT, [], DAYS, DONE);
 		expect(jql).not.toContain("is not EMPTY");
 	});
 });
@@ -256,7 +256,7 @@ describe("JiraStoryPointProvider — story-point field resolution", () => {
 		// The repaired id is the one requested from Jira, so the value arrives.
 		expect(search.mock.calls[0][1] as string[]).toContain("customfield_10016");
 		expect(search.mock.calls[0][1] as string[]).not.toContain(PT_FIELD);
-		expect(search.mock.calls[0][0] as string).toContain("cf[10016]");
+		expect(search.mock.calls[0][0] as string).not.toContain("cf[10016]");
 	});
 
 	it("credits points read from the repaired field", async () => {

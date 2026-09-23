@@ -55,17 +55,43 @@ export class GithubIssueClosedProvider
 				}
 				const items = data.items ?? [];
 				for (const item of items) {
-					const login = item.closed_by?.login;
+					const fullName = item.repository_url?.split("/repos/")[1] ?? "";
+					const [owner, repo] = fullName.split("/");
+					let closer = item.closed_by;
+					if (!closer) {
+						if (!owner || !repo) {
+							complete = false;
+							warnings.push(
+								`GitHub issue closer lookup skipped for issue #${item.number}: repository identity missing.`,
+							);
+							continue;
+						}
+						try {
+							const detail = await this.octokit.rest.issues.get({
+								owner,
+								repo,
+								issue_number: item.number,
+							});
+							closer = detail.data.closed_by;
+						} catch (error) {
+							complete = false;
+							warnings.push(
+								`GitHub issue closer lookup failed for ${fullName}#${item.number}: ${(error as Error).message}`,
+							);
+							continue;
+						}
+					}
+					const login = closer?.login;
 					if (
 						!login ||
 						!item.closed_at ||
-						item.closed_by?.type === "Bot" ||
+						closer?.type === "Bot" ||
 						login.endsWith("[bot]")
 					)
 						continue;
 					events.push({
 						login,
-						repository: item.repository_url?.split("/repos/")[1] ?? "",
+						repository: fullName,
 						number: item.number,
 						closedAt: item.closed_at,
 					});

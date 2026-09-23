@@ -623,6 +623,33 @@ func TestApplyFlagsTo_JiraProjects(t *testing.T) {
 	}
 }
 
+func TestApplyFlagsTo_JiraProjectsDoesNotPersistPerProjectIssueTypes(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+
+	oldProjects := *flagJiraProjects
+	oldTypes := *flagJiraIssueTypes
+	defer func() {
+		*flagJiraProjects = oldProjects
+		*flagJiraIssueTypes = oldTypes
+	}()
+	*flagJiraProjects = "DFA:team,SUPPORT"
+	*flagJiraIssueTypes = "DFA=Story,Bug;SUPPORT=any"
+
+	cfg := DefaultConfig()
+	applyFlagsTo(&cfg, func(name string) bool {
+		return name == "jira-projects" || name == "jira-issue-types"
+	})
+
+	loaded, err := LoadJiraConfig()
+	if err != nil || loaded == nil {
+		t.Fatalf("jira-config.json should have been written: cfg=%+v err=%v", loaded, err)
+	}
+	if loaded.IssueTypes != nil {
+		t.Fatalf("per-project run override must not be persisted: %+v", *loaded.IssueTypes)
+	}
+}
+
 func TestApplyFlagsTo_JiraProjectsFailFast(t *testing.T) {
 	oldExit := osExit
 	code := -1

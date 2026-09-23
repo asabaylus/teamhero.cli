@@ -317,12 +317,10 @@ export async function loadJiraConfig(): Promise<JiraConfig | null> {
 
 	return {
 		projects,
-		// Read process.env first: getEnv() treats an empty value as unset, and an
-		// empty JIRA_ISSUE_TYPES is a meaningful instruction — count every type.
+		// An explicitly empty value is meaningful: count every issue type.
 		issueTypes:
-			parseIssueTypesEnv(
-				process.env.JIRA_ISSUE_TYPES ?? getEnv("JIRA_ISSUE_TYPES"),
-			) ?? issueTypes,
+			parseIssueTypesEnv(getEnv("JIRA_ISSUE_TYPES", { preserveEmpty: true })) ??
+			issueTypes,
 		storyPointField,
 		creditBy,
 	};

@@ -38,9 +38,6 @@ export class GithubReviewActivityProvider implements ReviewActivityProvider {
 		window: ReportingWindow,
 	): Promise<ReviewActivityResult> {
 		const start = window.startISO.slice(0, 10);
-		const end = new Date(new Date(window.endISO).getTime() - 1)
-			.toISOString()
-			.slice(0, 10);
 		const warnings: string[] = [];
 		const events: ReviewActivity[] = [];
 		let complete = true;
@@ -50,7 +47,9 @@ export class GithubReviewActivityProvider implements ReviewActivityProvider {
 			let items: SearchPullRequest[];
 			try {
 				const response = await this.octokit.rest.search.issuesAndPullRequests({
-					q: `org:${organization} is:pr updated:${start}..${end}`,
+					// updated_at is the last update; any PR reviewed in the window was
+					// updated at or after start. submitted_at decides the exact window.
+					q: `org:${organization} is:pr updated:>=${start}`,
 					per_page: PAGE_SIZE,
 					page: searchPage,
 				});

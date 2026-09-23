@@ -11,6 +11,7 @@ import type {
 	JiraCompletedWorkProvider,
 	LatestProjectStatus,
 	MemberTaskSummary,
+	MetricObservationStatus,
 	MetricsCollectionResult,
 	MetricsProvider,
 	PeriodDeltas,
@@ -186,6 +187,17 @@ function hashVisibleWinsExtractionData(
 const DEFAULT_WINDOW_DAYS = 7;
 const METRICS_DEFINITION =
 	"PR lifecycle columns use their own event timestamps; reviews tally submitted events excluding self-reviews and bots; Jira work uses the first Done-category transition.";
+
+export function completedTicketsObservationStatus(
+	jiraComplete: boolean,
+	githubStatus: MetricObservationStatus | undefined,
+): "reported" | "partial" {
+	const githubComplete =
+		!githubStatus ||
+		githubStatus === "reported" ||
+		githubStatus === "not-requested";
+	return jiraComplete && githubComplete ? "reported" : "partial";
+}
 
 const NOOP_HANDLE: ProgressHandle = {
 	succeed() {},
@@ -2279,6 +2291,7 @@ export class ReportService {
 					delivery: 0,
 					support: 0,
 				};
+				const githubStatus = member.ticketsClosedObservation?.status;
 				return {
 					...member,
 					storyPointsCompleted: values.points,
@@ -2291,11 +2304,10 @@ export class ReportService {
 						warnings: result.warnings,
 					},
 					ticketsClosedObservation: {
-						status:
-							status === "reported" &&
-							member.ticketsClosedObservation?.status === "reported"
-								? "reported"
-								: "partial",
+						status: completedTicketsObservationStatus(
+							status === "reported",
+							githubStatus,
+						),
 						value: (member.ticketsClosed ?? 0) + values.delivery,
 						warnings: [
 							...(member.ticketsClosedObservation?.warnings ?? []),

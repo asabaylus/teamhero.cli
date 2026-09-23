@@ -588,11 +588,8 @@ export function buildJql(
 	if (issueTypes.length > 0) {
 		clauses.push(`issuetype in (${issueTypes.map(quoteJql).join(", ")})`);
 	}
-	// Addressed by id, so a site with two similarly named fields stays unambiguous.
-	const fieldId = /^customfield_(\d+)$/.exec(project.fieldId);
-	if (fieldId) {
-		clauses.push(`cf[${fieldId[1]}] is not EMPTY`);
-	}
+	// No estimate-presence filter: completed-work counts include unpointed
+	// delivery/support issues, which contribute zero to the points projection.
 	const statuses = [...doneStatuses].sort();
 	clauses.push(
 		`status changed to (${statuses.map(quoteJql).join(", ")}) ` +

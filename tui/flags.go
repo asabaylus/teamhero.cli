@@ -157,7 +157,9 @@ func applyFlagsTo(cfg *ReportConfig, wasSet func(string) bool) {
 	if wasSet("jira-projects") {
 		specs := splitCSV(*flagJiraProjects)
 		jiraCfg, err := buildJiraConfigFromSpec(specs)
-		if err == nil && wasSet("jira-issue-types") {
+		// Per-project selections are run-scoped and must never be persisted as
+		// literal issue-type names in the top-level Jira config.
+		if err == nil && wasSet("jira-issue-types") && !strings.Contains(*flagJiraIssueTypes, "=") {
 			jiraCfg.IssueTypes = parseIssueTypesSpec(*flagJiraIssueTypes)
 		}
 		// Jira was explicitly requested via the flag — a bad spec or failed write

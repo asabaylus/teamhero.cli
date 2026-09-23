@@ -53,6 +53,11 @@ describe("GithubReviewActivityProvider", () => {
 				endISO: "2026-03-08T00:00:00Z",
 			},
 		);
+		expect(search).toHaveBeenCalledWith({
+			q: "org:acme is:pr updated:>=2026-03-01",
+			per_page: 100,
+			page: 1,
+		});
 		expect(result.events).toHaveLength(2);
 		expect(result.events.map((event) => event.state)).toEqual([
 			"approved",
