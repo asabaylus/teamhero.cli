@@ -20,6 +20,7 @@ dotenvConfig({ path: join(configDir(), ".env"), override: true });
 import { resolve } from "node:path";
 import { consola, createConsola } from "consola";
 import { AsanaBoardAdapter } from "../src/adapters/asana/board-adapter.js";
+import { CachedCompletedWorkProvider } from "../src/adapters/cache/cached-completed-work-provider.js";
 import { CachedLocCollector } from "../src/adapters/cache/cached-loc-collector.js";
 import { CachedMetricsProvider } from "../src/adapters/cache/cached-metrics-provider.js";
 import { CachedStoryPointProvider } from "../src/adapters/cache/cached-story-point-provider.js";
@@ -45,7 +46,11 @@ import {
 	loadIdentityMapFile,
 	resolveIdentityMapPath,
 } from "../src/lib/identity-map.js";
-import { loadJiraConfig } from "../src/lib/jira-config-loader.js";
+import {
+	applyIssueTypeSelection,
+	loadJiraConfig,
+	parseIssueTypeSelection,
+} from "../src/lib/jira-config-loader.js";
 import { JsonLinesProgressDisplay } from "../src/lib/json-lines-progress.js";
 import { loadOctokitFromEnv } from "../src/lib/octokit.js";
 import { RunHistoryStore } from "../src/lib/run-history.js";
@@ -349,6 +354,7 @@ async function main(): Promise<void> {
 		// Story points (Jira) — only when auth env + a saved jira-config.json exist.
 		// The report-time guard handles the requested-but-unconfigured case.
 		let storyPointProvider: CachedStoryPointProvider | undefined;
+		let completedWorkProvider: CachedCompletedWorkProvider | undefined;
 		let storyPointOptions:
 			| import("../src/core/types.js").StoryPointOptions
 			| undefined;
@@ -364,23 +370,38 @@ async function main(): Promise<void> {
 			jiraToken
 		) {
 			try {
-				const jiraConfig = await loadJiraConfig();
+				const loaded = await loadJiraConfig();
+				// The flag narrows or widens this run only; the saved config is
+				// never rewritten by a report.
+				const jiraConfig = loaded
+					? applyIssueTypeSelection(
+							loaded,
+							parseIssueTypeSelection(input.jiraIssueTypes),
+						)
+					: null;
 				if (jiraConfig) {
 					const jiraLookup = buildJiraLoginLookupFromPersons(persons);
+					const jira = new JiraStoryPointProvider({
+						baseUrl: jiraBaseUrl,
+						email: jiraEmail,
+						apiToken: jiraToken,
+						jiraLookup,
+						logger: logger.withTag("jira"),
+					});
+					completedWorkProvider = new CachedCompletedWorkProvider(
+						jira,
+						cacheOptions,
+						jiraIdentityCacheKey(jiraLookup),
+					);
 					storyPointProvider = new CachedStoryPointProvider(
-						new JiraStoryPointProvider({
-							baseUrl: jiraBaseUrl,
-							email: jiraEmail,
-							apiToken: jiraToken,
-							jiraLookup,
-							logger: logger.withTag("jira"),
-						}),
+						jira,
 						cacheOptions,
 						jiraIdentityCacheKey(jiraLookup),
 					);
 					storyPointOptions = {
 						projects: jiraConfig.projects,
 						issueTypes: jiraConfig.issueTypes,
+						storyPointField: jiraConfig.storyPointField,
 						creditBy: jiraConfig.creditBy,
 					};
 				}
@@ -408,6 +429,7 @@ async function main(): Promise<void> {
 			userMap,
 			identityResolver,
 			storyPointProvider,
+			completedWorkProvider,
 			storyPointOptions,
 		});
 

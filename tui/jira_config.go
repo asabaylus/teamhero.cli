@@ -10,16 +10,27 @@ import (
 
 // JiraProjectField is the persisted per-project story-point field selection.
 // Mirrors the TS JiraProjectFieldConfig consumed by jira-config-loader.ts.
+type JiraCompletedWork struct {
+	Category   string    `json:"category"`
+	IssueTypes *[]string `json:"issueTypes,omitempty"`
+}
+
 type JiraProjectField struct {
-	Key     string `json:"key"`
-	FieldID string `json:"fieldId"`
-	JqlName string `json:"jqlName"`
+	Key           string             `json:"key"`
+	FieldID       string             `json:"fieldId"`
+	JqlName       string             `json:"jqlName"`
+	CompletedWork *JiraCompletedWork `json:"completedWork,omitempty"`
+	// IssueTypes are the types that carry points in THIS project, overriding the
+	// config-wide list. A pointer so an omitted list, an empty list ("every
+	// type"), and a named list stay distinguishable across a rewrite — setup
+	// must not quietly drop a per-project choice made by hand.
+	IssueTypes *[]string `json:"issueTypes,omitempty"`
 }
 
 // JiraConfig is the on-disk shape of jira-config.json.
 //
 // IssueTypes is a pointer so we can tell three states apart on disk:
-//   - nil            => field omitted => the TS loader defaults to Story/Task
+//   - nil            => field omitted => the TS loader counts every type
 //   - &[]string{}    => "issueTypes": [] => count EVERY issue type ("any")
 //   - &[]string{...} => count exactly those types
 type JiraConfig struct {
@@ -28,10 +39,14 @@ type JiraConfig struct {
 	CreditBy   string             `json:"creditBy,omitempty"`
 }
 
-// parseIssueTypesSpec turns the --jira-issue-types flag into an IssueTypes value:
-//   - ""                 => nil    (default: Story/Task)
+// parseIssueTypesSpec turns the --jira-issue-types flag into an IssueTypes value
+// for the file written by --jira-projects:
+//   - ""                 => nil    (omitted: every type)
 //   - "any"/"all"/"*"    => &[]{}  (count every type)
 //   - "Story,Bug"        => &[]{"Story","Bug"}
+//
+// The per-project form ("DFA=Story,Bug") is a run-scoped override rather than a
+// setup choice, so it travels to the TS loader in ReportCommandInput instead.
 func parseIssueTypesSpec(raw string) *[]string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -59,11 +74,16 @@ type JiraProject struct {
 	Key        string
 	Name       string
 	Simplified bool // team-managed when true
+	Category   string
 }
 
 const (
 	companyManagedFieldID = "customfield_10005"
-	companyManagedJQLName = "Story Points[Number]"
+	// The plain display name, which is what the field list is matched against
+	// when a configured id turns out not to exist on the site. The "[Number]"
+	// suffix JQL allows for disambiguation matches no field name and defeated
+	// that repair.
+	companyManagedJQLName = "Story Points"
 	teamManagedFieldID    = "customfield_10617"
 	teamManagedJQLName    = "Story point estimate"
 )
@@ -85,7 +105,11 @@ func autoDetectJiraField(key string, simplified bool) JiraProjectField {
 func buildJiraConfigFromProjects(projects []JiraProject) JiraConfig {
 	fields := make([]JiraProjectField, 0, len(projects))
 	for _, p := range projects {
-		fields = append(fields, autoDetectJiraField(p.Key, p.Simplified))
+		field := autoDetectJiraField(p.Key, p.Simplified)
+		if p.Category != "" && p.Category != "delivery" {
+			field.CompletedWork = &JiraCompletedWork{Category: p.Category}
+		}
+		fields = append(fields, field)
 	}
 	return JiraConfig{Projects: fields}
 }
@@ -97,13 +121,13 @@ func buildJiraConfigFromProjects(projects []JiraProject) JiraConfig {
 func buildJiraConfigFromSpec(specs []string) (JiraConfig, error) {
 	projects := make([]JiraProject, 0, len(specs))
 	for _, s := range specs {
-		parts := strings.SplitN(s, ":", 2)
+		parts := strings.SplitN(s, ":", 3)
 		key := strings.TrimSpace(parts[0])
 		if key == "" {
 			continue
 		}
 		simplified := false
-		if len(parts) == 2 {
+		if len(parts) >= 2 {
 			switch strings.ToLower(strings.TrimSpace(parts[1])) {
 			case "team", "team-managed", "simplified":
 				simplified = true
@@ -113,7 +137,14 @@ func buildJiraConfigFromSpec(specs []string) (JiraConfig, error) {
 				return JiraConfig{}, fmt.Errorf("unknown project type %q for %s (use team|company)", parts[1], key)
 			}
 		}
-		projects = append(projects, JiraProject{Key: key, Simplified: simplified})
+		category := "delivery"
+		if len(parts) == 3 {
+			category = strings.ToLower(strings.TrimSpace(parts[2]))
+			if category != "delivery" && category != "support" && category != "excluded" {
+				return JiraConfig{}, fmt.Errorf("unknown completed-work category %q for %s (use delivery|support|excluded)", parts[2], key)
+			}
+		}
+		projects = append(projects, JiraProject{Key: key, Simplified: simplified, Category: category})
 	}
 	if len(projects) == 0 {
 		return JiraConfig{}, fmt.Errorf("no Jira projects specified")
@@ -157,6 +188,9 @@ func LoadJiraConfig() (*JiraConfig, error) {
 	for i, p := range cfg.Projects {
 		if p.Key == "" || p.FieldID == "" || p.JqlName == "" {
 			return nil, fmt.Errorf("invalid jira-config.json: projects[%d] missing key/fieldId/jqlName", i)
+		}
+		if p.CompletedWork != nil && p.CompletedWork.Category != "delivery" && p.CompletedWork.Category != "support" && p.CompletedWork.Category != "excluded" {
+			return nil, fmt.Errorf("invalid jira-config.json: projects[%d] completedWork.category must be delivery, support, or excluded", i)
 		}
 	}
 	return &cfg, nil

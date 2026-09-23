@@ -16,18 +16,33 @@ import { configDir } from "./paths.js";
 
 export interface JiraConfig {
 	projects: JiraProjectFieldConfig[];
-	/** Issue types that carry points. Default ["Story", "Task"]. */
+	/** Issue types that carry points. Omitted or empty ⇒ every issue type. */
 	issueTypes?: string[];
+	/**
+	 * Story-point field for every project, as a custom-field id
+	 * ("customfield_10016") or a display name ("Story point estimate"). It
+	 * overrides each project's own `fieldId`, so one line repairs a whole config
+	 * that was written against another Jira site.
+	 */
+	storyPointField?: string;
 	creditBy?: "assignee" | "resolver";
 }
 
-/** Company-managed default (simplified: false). */
+/**
+ * Field guesses used at setup time, before any Jira site has been read.
+ *
+ * Jira allocates a custom-field id per site, so these ids are guesses and are
+ * wrong on most sites. The `jqlName` beside each one is the reliable half: the
+ * provider reads the site's field list and repairs the id by name on first use
+ * (see `jira-field-resolver.ts`). Prefer `storyPointField` to state the field
+ * outright.
+ */
 export const COMPANY_MANAGED_FIELD: Omit<JiraProjectFieldConfig, "key"> = {
 	fieldId: "customfield_10005",
-	jqlName: "Story Points[Number]",
+	jqlName: "Story Points",
 };
 
-/** Team-managed default (simplified: true, e.g. PT). */
+/** Team-managed guess (simplified: true, e.g. PT). See above: the id is a guess. */
 export const TEAM_MANAGED_FIELD: Omit<JiraProjectFieldConfig, "key"> = {
 	fieldId: "customfield_10617",
 	jqlName: "Story point estimate",
@@ -65,11 +80,159 @@ function coerceProject(
 			);
 		}
 	}
+	let completedWork: JiraProjectFieldConfig["completedWork"];
+	if (raw.completedWork !== undefined) {
+		if (!raw.completedWork || typeof raw.completedWork !== "object") {
+			throw new Error(
+				`Invalid Jira config at ${path}: projects[${index}].completedWork must be an object`,
+			);
+		}
+		const work = raw.completedWork as Record<string, unknown>;
+		if (!["delivery", "support", "excluded"].includes(String(work.category))) {
+			throw new Error(
+				`Invalid Jira config at ${path}: projects[${index}].completedWork.category must be "delivery", "support", or "excluded"`,
+			);
+		}
+		completedWork = {
+			category: work.category as "delivery" | "support" | "excluded",
+			...(work.issueTypes === undefined
+				? {}
+				: {
+						issueTypes: coerceIssueTypes(
+							work.issueTypes,
+							`${path}: projects[${index}].completedWork.issueTypes`,
+						),
+					}),
+		};
+	}
 	return {
 		key: (raw.key as string).trim(),
 		fieldId: (raw.fieldId as string).trim(),
 		jqlName: (raw.jqlName as string).trim(),
+		...(raw.issueTypes === undefined
+			? {}
+			: {
+					issueTypes: coerceIssueTypes(
+						raw.issueTypes,
+						`${path}: projects[${index}].issueTypes`,
+					),
+				}),
+		...(completedWork ? { completedWork } : {}),
 	};
+}
+
+/** Validate an `issueTypes` value from disk: an array of non-empty strings. */
+function coerceIssueTypes(value: unknown, where: string): string[] {
+	if (
+		!Array.isArray(value) ||
+		!value.every((type) => typeof type === "string" && type.trim())
+	) {
+		throw new Error(
+			`Invalid Jira config at ${where} must be an array of non-empty strings`,
+		);
+	}
+	return (value as string[]).map((type) => type.trim());
+}
+
+/**
+ * Parse an issue-type selection written as one string, for `--jira-issue-types`
+ * and `JIRA_ISSUE_TYPES`.
+ *
+ * Three shapes, so one flag can say all three things an operator wants:
+ *   "any" | "all" | "*"        every issue type, everywhere
+ *   "Story,Bug"                those types, in every project
+ *   "DFA=Story,Bug;SUPPORT=any"  those types, per project
+ * A bare list may ride along with per-project entries ("any;DFA=Bug") and then
+ * applies to every project the string does not name.
+ */
+export function parseIssueTypeSelection(
+	raw: string | undefined,
+): { all?: string[]; byProject: Record<string, string[]> } | undefined {
+	if (raw === undefined) {
+		return undefined;
+	}
+	const selection: { all?: string[]; byProject: Record<string, string[]> } = {
+		byProject: {},
+	};
+	for (const segment of raw.split(";")) {
+		const trimmed = segment.trim();
+		if (trimmed === "") continue;
+		const scoped = /^([^=]+)=(.*)$/.exec(trimmed);
+		if (scoped?.[1] !== undefined && scoped[2] !== undefined) {
+			selection.byProject[scoped[1].trim()] = parseTypeList(scoped[2]);
+		} else {
+			selection.all = parseTypeList(trimmed);
+		}
+	}
+	// A string of only separators means "every type", the same as "any".
+	if (
+		selection.all === undefined &&
+		Object.keys(selection.byProject).length === 0
+	) {
+		selection.all = [];
+	}
+	return selection;
+}
+
+/** "any"/"all"/"*" and the empty list both mean every issue type. */
+function parseTypeList(raw: string): string[] {
+	const trimmed = raw.trim();
+	if (["any", "all", "*", ""].includes(trimmed.toLowerCase())) {
+		return [];
+	}
+	return trimmed
+		.split(",")
+		.map((part) => part.trim())
+		.filter((part) => part !== "");
+}
+
+/**
+ * Apply an issue-type selection over a loaded config, without touching the file.
+ *
+ * A per-project entry wins over the project's own `issueTypes`, which in turn
+ * wins over the run-wide list — the same precedence the provider applies, so a
+ * flag narrows exactly what it names and leaves the rest as configured.
+ */
+export function applyIssueTypeSelection(
+	config: JiraConfig,
+	selection:
+		| { all?: string[]; byProject: Record<string, string[]> }
+		| undefined,
+): JiraConfig {
+	if (!selection) {
+		return config;
+	}
+	return {
+		...config,
+		issueTypes: selection.all ?? config.issueTypes,
+		projects: config.projects.map((project) => {
+			const scoped = selection.byProject[project.key];
+			if (scoped) return { ...project, issueTypes: scoped };
+			// A run-wide list from the flag replaces a per-project list from the
+			// file; otherwise "--jira-issue-types any" could not widen a config.
+			if (selection.all) {
+				const { issueTypes: _dropped, ...rest } = project;
+				return rest;
+			}
+			return project;
+		}),
+	};
+}
+
+/**
+ * Read `JIRA_ISSUE_TYPES` as a comma-separated list.
+ *
+ * An unset variable returns undefined and leaves the file's value alone. A set
+ * but empty variable returns `[]`, which counts every issue type, so an operator
+ * can widen a narrowed config for one run.
+ */
+export function parseIssueTypesEnv(
+	value: string | undefined,
+): string[] | undefined {
+	if (value === undefined) {
+		return undefined;
+	}
+	return parseTypeList(value);
 }
 
 /**
@@ -96,7 +259,12 @@ export async function loadJiraConfig(): Promise<JiraConfig | null> {
 		);
 	}
 
-	let parsed: { projects?: unknown; issueTypes?: unknown; creditBy?: unknown };
+	let parsed: {
+		projects?: unknown;
+		issueTypes?: unknown;
+		storyPointField?: unknown;
+		creditBy?: unknown;
+	};
 	try {
 		parsed = JSON.parse(raw);
 	} catch (err) {
@@ -118,15 +286,17 @@ export async function loadJiraConfig(): Promise<JiraConfig | null> {
 
 	let issueTypes: string[] | undefined;
 	if (parsed.issueTypes !== undefined) {
-		if (
-			!Array.isArray(parsed.issueTypes) ||
-			!parsed.issueTypes.every((t) => typeof t === "string" && t.trim())
-		) {
-			throw new Error(
-				`Invalid Jira config at ${path}: "issueTypes" must be an array of non-empty strings`,
-			);
-		}
-		issueTypes = parsed.issueTypes as string[];
+		issueTypes = coerceIssueTypes(parsed.issueTypes, `${path}: "issueTypes"`);
+	}
+
+	if (
+		parsed.storyPointField !== undefined &&
+		(typeof parsed.storyPointField !== "string" ||
+			!parsed.storyPointField.trim())
+	) {
+		throw new Error(
+			`Invalid Jira config at ${path}: "storyPointField" must be a non-empty string`,
+		);
 	}
 
 	const creditBy =
@@ -139,5 +309,19 @@ export async function loadJiraConfig(): Promise<JiraConfig | null> {
 		);
 	}
 
-	return { projects, issueTypes, creditBy };
+	// Env wins over the file, so one run can try another field or narrow the
+	// issue types without editing the saved config.
+	const fieldOverride = getEnv("JIRA_STORY_POINT_FIELD")?.trim();
+	const storyPointField =
+		fieldOverride || (parsed.storyPointField as string | undefined)?.trim();
+
+	return {
+		projects,
+		// An explicitly empty value is meaningful: count every issue type.
+		issueTypes:
+			parseIssueTypesEnv(getEnv("JIRA_ISSUE_TYPES", { preserveEmpty: true })) ??
+			issueTypes,
+		storyPointField,
+		creditBy,
+	};
 }

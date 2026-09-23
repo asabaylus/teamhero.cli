@@ -170,6 +170,43 @@ func TestToCommandInput(t *testing.T) {
 	}
 }
 
+// TestToCommandInputJiraIssueTypes covers the run-scoped issue-type override.
+// It rides in the command input rather than rewriting jira-config.json, so a
+// narrowed run leaves the saved configuration alone.
+func TestToCommandInputJiraIssueTypes(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Org = "acme"
+	cfg.JiraIssueTypes = "DFA=Bug;SUPPORT=any"
+
+	input := cfg.ToCommandInput("headless")
+
+	if input.JiraIssueTypes != "DFA=Bug;SUPPORT=any" {
+		t.Errorf("expected the issue-type selection to be passed through, got %q", input.JiraIssueTypes)
+	}
+}
+
+// TestToCommandInputJiraIssueTypesOmitted keeps the field out of the JSON when
+// no selection was made, so the TS loader reads jira-config.json unchanged.
+func TestToCommandInputMetricFamilies(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.MetricFamilies = []string{"prs", "reviews", "jira"}
+	input := cfg.ToCommandInput("headless")
+	if len(input.MetricFamilies) != 3 || input.MetricFamilies[1] != "reviews" {
+		t.Fatalf("metric families not passed through: %+v", input.MetricFamilies)
+	}
+}
+
+func TestToCommandInputJiraIssueTypesOmitted(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Org = "acme"
+
+	input := cfg.ToCommandInput("headless")
+
+	if input.JiraIssueTypes != "" {
+		t.Errorf("expected no issue-type selection, got %q", input.JiraIssueTypes)
+	}
+}
+
 func TestToCommandInputAllRepos(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.Org = "acme"

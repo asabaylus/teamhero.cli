@@ -1,11 +1,18 @@
 import { type ConsolaInstance, consola } from "consola";
+import { GithubIssueClosedProvider } from "../adapters/github/github-issue-completion-provider.js";
+import { GithubPullRequestActivityProvider } from "../adapters/github/pull-request-activity-provider.js";
+import { GithubReviewActivityProvider } from "../adapters/github/review-activity-provider.js";
 import type {
+	GithubIssueCompletionProvider,
 	IdentityResolver,
+	MetricObservation,
 	MetricsCollectionOptions,
 	MetricsCollectionResult,
 	MetricsMemberResult,
 	MetricsProvider,
+	PullRequestActivityProvider,
 	RawPullRequestInfo,
+	ReviewActivityProvider,
 } from "../core/types.js";
 import { mapWithConcurrency } from "../lib/concurrency.js";
 import { resolveEndEpochMs, resolveStartISO } from "../lib/date-utils.js";
@@ -116,6 +123,11 @@ export class MetricsService implements MetricsProvider {
 		),
 		defaults?: { maxCommitPages?: number; maxPullRequestPages?: number },
 		private readonly resolver?: IdentityResolver,
+		private readonly activityProviders: {
+			pullRequests?: PullRequestActivityProvider;
+			reviews?: ReviewActivityProvider;
+			issues?: GithubIssueCompletionProvider;
+		} = {},
 	) {
 		this.defaultMaxCommitPages =
 			defaults?.maxCommitPages ?? DEFAULT_MAX_COMMIT_HISTORY_PAGES;
@@ -146,6 +158,9 @@ export class MetricsService implements MetricsProvider {
 		const maxCommitPages = options.maxCommitPages ?? this.defaultMaxCommitPages;
 		const maxPullRequestPages =
 			options.maxPullRequestPages ?? this.defaultMaxPullRequestPages;
+		const familyEnabled = (
+			family: "commits" | "prs" | "reviews" | "github-issues",
+		) => !options.metricFamilies || options.metricFamilies.includes(family);
 
 		// Collect commit statistics from all repositories
 		let commitTotalsResult;
@@ -193,10 +208,155 @@ export class MetricsService implements MetricsProvider {
 
 		const commitTotals = commitTotalsResult.totals;
 		const pullRequestTotals = pullRequestTotalsResult.totals;
+		const window = {
+			startISO: options.activitySince ?? options.since,
+			endISO: options.activityUntil ?? options.until,
+		};
+		let prObservation: MetricObservation<number> = { status: "unavailable" };
+		let reviewObservation: MetricObservation<number> = {
+			status: "unavailable",
+		};
+		let issueObservation: MetricObservation<number> = { status: "unavailable" };
+		const reviewTotals = new Map<
+			string,
+			{ approved: number; changesRequested: number; commented: number }
+		>();
+		const issueTotals = new Map<string, number>();
+
+		const prProvider =
+			this.activityProviders.pullRequests ??
+			new GithubPullRequestActivityProvider(this.octokit);
+		const reviewProvider =
+			this.activityProviders.reviews ??
+			new GithubReviewActivityProvider(this.octokit);
+		const issueProvider =
+			this.activityProviders.issues ??
+			new GithubIssueClosedProvider(this.octokit);
+		const collectOrPartial = async <
+			T extends { events: unknown[]; warnings: string[]; complete: boolean },
+		>(
+			label: string,
+			collect: () => Promise<T>,
+		): Promise<T> => {
+			try {
+				return await collect();
+			} catch (error) {
+				return {
+					events: [],
+					warnings: [`${label} collection failed: ${(error as Error).message}`],
+					complete: false,
+				} as unknown as T;
+			}
+		};
+		const [prActivity, reviewActivity, issueActivity] = await Promise.all([
+			familyEnabled("prs")
+				? collectOrPartial("GitHub PR activity", () =>
+						prProvider.collect(options.organization.login, window),
+					)
+				: Promise.resolve({ events: [], warnings: [], complete: false }),
+			familyEnabled("reviews")
+				? collectOrPartial("GitHub reviews", () =>
+						reviewProvider.collect(options.organization.login, window),
+					)
+				: Promise.resolve({ events: [], warnings: [], complete: false }),
+			familyEnabled("github-issues")
+				? collectOrPartial("GitHub issue closures", () =>
+						issueProvider.collect(options.organization.login, window),
+					)
+				: Promise.resolve({ events: [], warnings: [], complete: false }),
+		]);
+		const selectedLogins = new Set(
+			options.members.map((member) => member.login.toLowerCase()),
+		);
+		const identityResolver = await this.getResolver();
+		const attributionLogin = (sourceLogin: string): string => {
+			const normalized = sourceLogin.toLowerCase();
+			if (selectedLogins.has(normalized)) return normalized;
+			const resolution = identityResolver.resolve({ login: sourceLogin });
+			if (resolution.type !== "resolved") return normalized;
+			return (
+				resolution.person.logins.find((login) => selectedLogins.has(login)) ??
+				normalized
+			);
+		};
+
+		// A complete PR event result is authoritative and org-wide. Reset only
+		// those counts; keep legacy per-repo details/LOC as narrative evidence.
+		// On partial coverage the renderer prints an em dash, while the legacy
+		// values remain available to diagnostics rather than becoming a fake zero.
+		if (prActivity.complete) {
+			for (const aggregate of pullRequestTotals.values()) {
+				aggregate.opened = 0;
+				aggregate.closed = 0;
+				aggregate.merged = 0;
+			}
+		}
+		for (const event of prActivity.complete ? prActivity.events : []) {
+			const login = attributionLogin(event.login);
+			const aggregate = pullRequestTotals.get(login) ?? {
+				opened: 0,
+				closed: 0,
+				merged: 0,
+				commits: 0,
+				additions: 0,
+				deletions: 0,
+				highlights: [],
+			};
+			if (event.event === "opened") aggregate.opened += 1;
+			else if (event.event === "merged") aggregate.merged += 1;
+			else aggregate.closed += 1;
+			pullRequestTotals.set(login, aggregate);
+		}
+		prObservation = {
+			status: !familyEnabled("prs")
+				? "not-requested"
+				: prActivity.complete
+					? "reported"
+					: "partial",
+			value: prActivity.events.length,
+			warnings: prActivity.warnings,
+		};
+		for (const event of reviewActivity.events) {
+			const login = attributionLogin(event.login);
+			const total = reviewTotals.get(login) ?? {
+				approved: 0,
+				changesRequested: 0,
+				commented: 0,
+			};
+			if (event.state === "approved") total.approved += 1;
+			else if (event.state === "changes-requested") total.changesRequested += 1;
+			else total.commented += 1;
+			reviewTotals.set(login, total);
+		}
+		reviewObservation = {
+			status: !familyEnabled("reviews")
+				? "not-requested"
+				: reviewActivity.complete
+					? "reported"
+					: "partial",
+			value: reviewActivity.events.length,
+			warnings: reviewActivity.warnings,
+		};
+		for (const event of issueActivity.events) {
+			const login = attributionLogin(event.login);
+			issueTotals.set(login, (issueTotals.get(login) ?? 0) + 1);
+		}
+		issueObservation = {
+			status: !familyEnabled("github-issues")
+				? "not-requested"
+				: issueActivity.complete
+					? "reported"
+					: "partial",
+			value: issueActivity.events.length,
+			warnings: issueActivity.warnings,
+		};
 		const commitDetailsByLogin = pullRequestTotalsResult.commitDetailsByLogin;
 		const warnings = [
 			...commitTotalsResult.warnings,
 			...pullRequestTotalsResult.warnings,
+			...prActivity.warnings,
+			...reviewActivity.warnings,
+			...issueActivity.warnings,
 		];
 		const errors = [
 			...commitTotalsResult.errors,
@@ -212,7 +372,11 @@ export class MetricsService implements MetricsProvider {
 				deletions: 0,
 				highlights: [],
 			};
-			const seen = new Set<string>(aggregate.highlights.map((h) => h.oid));
+			const seen = new Set<string>(
+				(aggregate.highlights as CommitContributionInfo[]).map(
+					(h: CommitContributionInfo) => h.oid,
+				),
+			);
 			for (const info of details) {
 				if (!seen.has(info.oid)) {
 					aggregate.highlights.push(info);
@@ -239,7 +403,42 @@ export class MetricsService implements MetricsProvider {
 					options,
 					commitStatsForMember,
 					prStatsForMember,
+					reviewTotals.get(normalizedLogin),
+					issueTotals.get(normalizedLogin) ?? 0,
+					prObservation,
+					reviewObservation,
+					issueObservation,
 				),
+			);
+		}
+
+		const unmapped = new Map<
+			string,
+			{ prs: number; reviews: number; issues: number }
+		>();
+		const noteUnmapped = (
+			login: string,
+			metric: "prs" | "reviews" | "issues",
+		) => {
+			const normalized = login.toLowerCase();
+			if (selectedLogins.has(normalized)) return;
+			const counts = unmapped.get(normalized) ?? {
+				prs: 0,
+				reviews: 0,
+				issues: 0,
+			};
+			counts[metric] += 1;
+			unmapped.set(normalized, counts);
+		};
+		for (const event of prActivity.events)
+			noteUnmapped(attributionLogin(event.login), "prs");
+		for (const event of reviewActivity.events)
+			noteUnmapped(attributionLogin(event.login), "reviews");
+		for (const event of issueActivity.events)
+			noteUnmapped(attributionLogin(event.login), "issues");
+		for (const [login, counts] of unmapped) {
+			warnings.push(
+				`Unmapped GitHub actor ${login}: PR events=${counts.prs}, reviews=${counts.reviews}, issue closures=${counts.issues}.`,
 			);
 		}
 
@@ -297,6 +496,13 @@ export class MetricsService implements MetricsProvider {
 		options: CollectMetricsOptions,
 		commitStats: CommitAggregate | undefined,
 		prStats: PullRequestAggregate | undefined,
+		reviewStats:
+			| { approved: number; changesRequested: number; commented: number }
+			| undefined,
+		githubIssuesClosed: number,
+		prObservation: MetricObservation<number>,
+		reviewObservation: MetricObservation<number>,
+		issueObservation: MetricObservation<number>,
 	): MemberMetricsResult {
 		// All data comes from REST API - commitStats and prStats
 		const commitTotals: CommitAggregate = commitStats ?? {
@@ -321,6 +527,11 @@ export class MetricsService implements MetricsProvider {
 				? this.computeRestApiLineTotals(prTotals.highlights)
 				: { additions: prTotals.additions, deletions: prTotals.deletions };
 
+		const reviews = reviewStats ?? {
+			approved: 0,
+			changesRequested: 0,
+			commented: 0,
+		};
 		const metrics: ContributionMetricSet = {
 			memberLogin: member.login,
 			commitsCount: commitTotals.highlights.length, // Deduplicated across default-branch and PR commits
@@ -339,11 +550,16 @@ export class MetricsService implements MetricsProvider {
 			),
 			linesAddedInProgress: 0,
 			linesDeletedInProgress: 0,
-			reviewsCount: 0, // Reviews not tracked in current REST API collection
-			reviewCommentsCount: 0,
-			approvalsCount: 0,
-			changesRequestedCount: 0,
-			commentedCount: 0,
+			reviewsCount:
+				reviews.approved + reviews.changesRequested + reviews.commented,
+			reviewCommentsCount: reviews.commented,
+			approvalsCount: reviews.approved,
+			changesRequestedCount: reviews.changesRequested,
+			commentedCount: reviews.commented,
+			ticketsClosedCount: githubIssuesClosed,
+			prActivityObservation: prObservation,
+			reviewsObservation: reviewObservation,
+			ticketsClosedObservation: issueObservation,
 			windowStart: options.since,
 			windowEnd: options.until,
 		};

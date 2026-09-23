@@ -91,7 +91,7 @@ describe("renderReport — Story Points column", () => {
 		expect(out).not.toContain("In-Progress +");
 		// the value lands on the developer row
 		const row = out.split("\n").find((l) => l.startsWith("| Dev One |"));
-		expect(row?.endsWith("13 |")).toBe(true);
+		expect(row?.endsWith("13 | 0 | 0 |")).toBe(true);
 	});
 
 	it("renders the column in the in-progress table variant", () => {
@@ -106,7 +106,7 @@ describe("renderReport — Story Points column", () => {
 		expect(out).toContain("In-Progress +");
 		expect(out).toContain("Story Points |");
 		const row = out.split("\n").find((l) => l.startsWith("| Dev One |"));
-		expect(row?.endsWith("8 |")).toBe(true);
+		expect(row?.endsWith("8 | 0 | 0 |")).toBe(true);
 	});
 });
 

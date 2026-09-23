@@ -196,6 +196,126 @@ overrides:
 - If `creditBy: "resolver"`, additionally pull the changelog to find who performed the
   Done transition; otherwise use `assignee`.
 
+### 3.4 Amendment 2026-09-01 — three silent zeros, measured against a live site
+
+The design above shipped, and it reported 0 points for every developer on a site that
+holds 1,236 points of completed work. Each cause produced no error, so nothing on screen
+separated "nobody completed work" from "the query matched nothing".
+
+**1. A custom-field id is never a portable default.** Jira allocates custom-field ids per
+site. `customfield_10617` and `customfield_10005` are ids observed on one site, not
+constants, and the site measured here stores team-managed points in `customfield_10016`.
+A search for an absent field is not an error: Jira returns the issues with no value, so
+every row reads 0. The provider now reads `GET /rest/api/3/field` once per run and repairs
+a configured id by name — the configured `jqlName` first, then the well-known names
+`Story point estimate` and `Story Points` (see `src/adapters/jira/jira-field-resolver.ts`).
+An id it cannot resolve produces a warning that names the project. `jira-config.json` also
+takes a `storyPointField` key, and `JIRA_STORY_POINT_FIELD` overrides it, so an operator
+can state the field outright without re-running setup.
+
+Note that `"Story Points[Number]"` is a JQL clause name, not a field name; the
+company-managed guess now carries the display name `"Story Points"` so name matching works.
+
+**2. `issuetype in (Story, Task)` is not a safe default.** On the site measured, the
+pointed issues are 301 `User Story`, 9 `Task`, 5 `Bug`, 2 `Test`, 1 `Support`, and
+1 `Technical Design`. The old default matched 9 of 319. The default is now every issue
+type; `issueTypes` in the config, or `JIRA_ISSUE_TYPES`, narrows it deliberately. An empty
+`JIRA_ISSUE_TYPES` widens a narrowed config for one run.
+
+**3. `resolutiondate` is not when work completed.** Jira sets it only when a workflow step
+assigns a resolution. A board that moves an issue into a done column leaves it null. On the
+site measured, 24 of 319 completed pointed issues carry one. The window now bounds
+`statusCategoryChangedDate`, the moment the issue last entered its status category, which
+every done issue has. Measured over 2026-01-01 to 2026-08-31:
+
+| Rule | Issues | Points |
+| --- | ---: | ---: |
+| `resolutiondate` | 14 | 68 |
+| `statusCategoryChangedDate` | 308 | 1,208 |
+| Every pointed issue in a done category | 319 | 1,236 |
+
+A category change is one event, so an issue that passes through two done statuses — `Done`
+then `LIVE` — still counts once. The story-point cache key carries a `rule` marker, so
+entries written under the old rule miss rather than replay a stale total.
+
+**Not fixed here.** `buildJiraLoginLookupFromPersons` keys attribution on `logins[0]`, so a
+person with a Jira account and no GitHub login is dropped from story-point credit. That is
+correct while the report keys members by GitHub login, but it means Jira-only contributors
+are invisible rather than reported. The unmatched-assignee warning names them.
+
+### 3.5 Amendment 2026-09-03 — a third of the points, and a cache that hid it
+
+Amendment 2026-09-01 got the field and the issue types right, and the totals were still
+short: 1,112 points where an independent collector, reading the same Jira with the same
+identity map, read 1,722 over the same 36 weeks. Two causes, one large and one structural.
+
+**4. A past week is not settled data, and caching it permanently made a wrong number look
+reproducible.** `CachedStoryPointProvider` wrote a closed window with `ttlSeconds: 0` —
+permanent — on the analogy of a closed git window, where the commits really are fixed.
+Jira is not fixed: an estimate is added to an issue that shipped weeks ago, an issue is
+reopened and finished again, an assignee is corrected. Every one of those rewrites a
+"closed" week. The 36-week collection that read 1,112 was, entry for entry, a replay of a
+snapshot taken two days earlier; re-running it produced byte-identical totals *because*
+nothing was re-read. A closed window now carries a 24-hour TTL instead.
+
+**5. `statusCategoryChangedDate` is the LAST completion, and only for issues still done.**
+Amendment 3 above traded one wrong instant for another. The field holds a single current
+value, so:
+
+- An issue finished in June and shipped in August (`Deploy Ready → LIVE` in June,
+  `LIVE → Done` in August) keeps its June value — correct, and the reason the amendment
+  looked right. But an issue *reopened* between the two — `LIVE → Build → LIVE` — carries
+  the second LIVE, and lands in the week it was re-shipped rather than the week it was
+  finished.
+- `statusCategory = Done` also required the issue to be done *now*. An issue that went LIVE
+  in the window and was pulled back afterwards fell out of every week.
+
+The provider now reads the transition history and dates each issue by the moment it FIRST
+entered a status in the Done category. That instant is a property of the issue alone, which
+matters more than it sounds: the report runs one window at a time and holds no memory
+between runs, so a rule that says "the first completion in this window" would count a
+re-completed issue twice across two weeks. "The first completion, full stop" lands it in
+exactly one week however many weeks are asked for, with no cross-week bookkeeping.
+
+Three supporting facts, each measured on the site:
+
+- *Which statuses mean done is a per-site fact.* This site has four in the Done category —
+  `Done`, `LIVE`, `Closed`, `Review/Accept`. A hard-coded `Done`/`LIVE` pair mis-dated
+  DFA-194 by seven weeks: it entered `Closed` on 2026-02-17 and was only relabelled `Done`
+  on 2026-04-03. The list now comes from `GET /rest/api/3/status`.
+- *`/rest/api/3/search/jql` takes `expand` as a string.* Passing `["changelog"]` is
+  rejected with a 400 whose body reads like a payload error; the provider's 400 handler
+  treated that as "field not present on project" and contributed 0. `creditBy: "resolver"`
+  had therefore never worked. `expand: "changelog"` is the only accepted shape.
+- *JQL date literals are read in the searching account's timezone*, which need not be the
+  timezone the site renders issue timestamps in — on this site the account is US/Eastern
+  and issues render Central. The JQL window is therefore padded by a day on each side and
+  used only as a candidate filter; the week is decided from the changelog timestamp, whose
+  date part is the day in the timezone the team's week is drawn in.
+
+Measured over the same 36 weeks (2026-01-01 – 2026-09-02), against an independent
+collector reading Jira directly:
+
+| Rule | Points | Person-week cells |
+| --- | ---: | ---: |
+| `statusCategoryChangedDate`, served from the permanent cache | 1,112 | 121 |
+| `statusCategoryChangedDate`, live | 1,713 | 139 |
+| First entry into a Done-category status (this amendment) | 1,716 | 140 |
+| Independent collector | 1,722 | 140 |
+
+Thirty-four of the thirty-six weeks now agree exactly. The remaining six points are six
+issues where the independent collector is the one that is wrong: it names its done statuses
+by hand (missing `Closed`, worth one issue mis-dated by seven weeks) and bounds its JQL with
+`during ("<start>", "<day after end>")`, which Jira reads as including the whole of that
+extra day — pulling two issues completed on the following Saturday into the previous week
+and three completed on 2026-09-03 into a week that ended 2026-09-02.
+
+**6. Issue types are now selectable per project.** `issueTypes` may sit on an individual
+entry in `projects[]` as well as at the top level, and `--jira-issue-types` narrows or
+widens a single run without rewriting `jira-config.json`: `any`, `Story,Bug`, or
+`DFA=Story,Bug;SUPPORT=any`. The flag previously existed but was read only when
+`--jira-projects` was also passed, so on its own it did nothing.
+
 ---
 
 ## 4. Identity resolution — the crux (`src/models/`, `src/services/identity-resolver.service.ts`)

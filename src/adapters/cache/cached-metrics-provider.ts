@@ -20,6 +20,21 @@ import { appendUnifiedLog } from "../../lib/unified-log.js";
 import { computeCacheHash, FileSystemCacheStore } from "./fs-cache-store.js";
 
 const DEFAULT_TTL_SECONDS = 4 * 3600; // 4 hours
+const METRIC_RULE_SCHEMA_VERSION = "unified-engineering-metrics-v1";
+
+function hasIncompleteActivity(result: MetricsCollectionResult): boolean {
+	return result.members.some((member) =>
+		[
+			member.metrics.prActivityObservation,
+			member.metrics.reviewsObservation,
+			member.metrics.ticketsClosedObservation,
+		].some(
+			(observation) =>
+				observation?.status === "partial" ||
+				observation?.status === "unavailable",
+		),
+	);
+}
 
 export class CachedMetricsProvider implements MetricsProvider {
 	private readonly cache: FileSystemCacheStore<MetricsCollectionResult>;
@@ -44,9 +59,12 @@ export class CachedMetricsProvider implements MetricsProvider {
 
 		// Cache key includes members and repos to prevent scope mismatch
 		const inputHash = computeCacheHash({
+			ruleSchema: METRIC_RULE_SCHEMA_VERSION,
 			org: options.organization.login,
 			since: options.since,
 			until: options.until,
+			activitySince: options.activitySince ?? options.since,
+			activityUntil: options.activityUntil ?? options.until,
 			members: options.members
 				.map((m) => m.login)
 				.sort()
@@ -55,11 +73,20 @@ export class CachedMetricsProvider implements MetricsProvider {
 				.map((r) => r.name)
 				.sort()
 				.join(","),
+			metricFamilies: [...(options.metricFamilies ?? [])].sort().join(","),
 		});
 
+		const activitySources = [
+			"pr-activity",
+			"reviews",
+			"github-issues",
+		] as const;
 		const sourceMatch =
 			this.cacheOptions.flush ||
-			this.cacheOptions.flushSources?.includes("metrics");
+			this.cacheOptions.flushSources?.includes("metrics") ||
+			activitySources.some((source) =>
+				this.cacheOptions.flushSources?.includes(source),
+			);
 		const shouldFlush =
 			sourceMatch &&
 			(!this.cacheOptions.flushSince ||
@@ -70,7 +97,7 @@ export class CachedMetricsProvider implements MetricsProvider {
 			const windowClosed = new Date(options.until) < new Date();
 			const hit = await this.cache.get(inputHash, { permanent: windowClosed });
 
-			if (hit) {
+			if (hit && !hasIncompleteActivity(hit)) {
 				await appendUnifiedLog({
 					timestamp: new Date().toISOString(),
 					runId: "",
@@ -86,12 +113,19 @@ export class CachedMetricsProvider implements MetricsProvider {
 
 		const result = await this.inner.collect(options);
 
-		await this.cache.set(inputHash, result);
+		const incomplete = hasIncompleteActivity(result);
+		if (!incomplete) {
+			await this.cache.set(inputHash, result);
+		}
 		await appendUnifiedLog({
 			timestamp: new Date().toISOString(),
 			runId: "",
 			category: "cache",
-			event: shouldFlush ? "cache-flush-and-set" : "cache-miss-and-set",
+			event: incomplete
+				? "cache-skip-incomplete"
+				: shouldFlush
+					? "cache-flush-and-set"
+					: "cache-miss-and-set",
 			namespace: "metrics",
 			inputHash,
 			org: options.organization.login,

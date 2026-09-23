@@ -1,3 +1,5 @@
+import type { MetricObservation } from "../core/types.js";
+
 export interface ContributionMetricSet {
 	memberLogin: string;
 	commitsCount: number;
@@ -36,6 +38,14 @@ export interface ContributionMetricSet {
 	approvalsCount: number;
 	changesRequestedCount: number;
 	commentedCount: number;
+	storyPointsCount?: number;
+	ticketsClosedCount?: number;
+	supportTicketsCount?: number;
+	prActivityObservation?: MetricObservation<number>;
+	reviewsObservation?: MetricObservation<number>;
+	storyPointsObservation?: MetricObservation<number>;
+	ticketsClosedObservation?: MetricObservation<number>;
+	supportTicketsObservation?: MetricObservation<number>;
 	windowStart: string;
 	windowEnd: string;
 }

@@ -57,6 +57,14 @@ export const executiveRenderer: ReportRenderer = {
 
 		// 3. Key Metrics
 		const { prsMerged, repoCount, contributorCount } = input.totals;
+		const prActivityComplete = input.memberMetrics.every(
+			(member) =>
+				!member.prActivityObservation ||
+				member.prActivityObservation.status === "reported",
+		);
+		const prSummary = prActivityComplete
+			? `${prsMerged} PRs merged`
+			: "PR activity unavailable";
 		const hasStoryPoints = input.memberMetrics.some(
 			(m) => m.storyPointsCompleted !== undefined,
 		);
@@ -64,11 +72,35 @@ export const executiveRenderer: ReportRenderer = {
 			(sum, m) => sum + (m.storyPointsCompleted ?? 0),
 			0,
 		);
+		const storyPointsComplete = input.memberMetrics.every(
+			(member) =>
+				!member.storyPointsObservation ||
+				member.storyPointsObservation.status === "reported",
+		);
 		const storyPointsSuffix = hasStoryPoints
-			? `, ${storyPointsTotal} story point${storyPointsTotal === 1 ? "" : "s"} completed`
+			? storyPointsComplete
+				? `, ${storyPointsTotal} story point${storyPointsTotal === 1 ? "" : "s"} completed`
+				: ", story points unavailable"
+			: "";
+		const hasTickets = input.memberMetrics.some(
+			(member) => member.ticketsClosed !== undefined,
+		);
+		const ticketsComplete = input.memberMetrics.every(
+			(member) =>
+				!member.ticketsClosedObservation ||
+				member.ticketsClosedObservation.status === "reported",
+		);
+		const ticketsTotal = input.memberMetrics.reduce(
+			(sum, member) => sum + (member.ticketsClosed ?? 0),
+			0,
+		);
+		const ticketsSuffix = hasTickets
+			? ticketsComplete
+				? `, ${ticketsTotal} ticket${ticketsTotal === 1 ? "" : "s"} closed`
+				: ", tickets closed unavailable"
 			: "";
 		parts.push(
-			`**Key Metrics:** ${prsMerged} PRs merged across ${repoCount} repos by ${contributorCount} engineers${storyPointsSuffix}`,
+			`**Key Metrics:** ${prSummary} across ${repoCount} repos by ${contributorCount} engineers${storyPointsSuffix}${ticketsSuffix}`,
 		);
 		parts.push("");
 

@@ -10,6 +10,7 @@ import {
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { FileSystemCacheStore } from "../../../src/adapters/cache/fs-cache-store.js";
 import type {
 	ReportingWindow,
 	StoryPointFetchResult,
@@ -135,5 +136,35 @@ describe("CachedStoryPointProvider", () => {
 
 	it("reflects enabled from the inner provider", () => {
 		expect(new CachedStoryPointProvider(fakeInner(RESULT)).enabled).toBe(true);
+	});
+
+	it("gives a closed window a TTL, because a past week's points still change", async () => {
+		// An estimate added to an issue that shipped in March, an issue reopened
+		// and finished again, an assignee corrected — all rewrite a "closed" week.
+		// A permanent entry replayed the first answer forever.
+		const inner = fakeInner(RESULT);
+		const cached = new CachedStoryPointProvider(inner);
+		await cached.fetchCompletedStoryPoints(MEMBERS, CLOSED, OPTIONS);
+
+		const entries = await new FileSystemCacheStore({
+			namespace: "storypoints",
+			defaultTtlSeconds: 0,
+		}).list();
+
+		expect(entries).toHaveLength(1);
+		expect(entries[0]?.ttlSeconds).toBeGreaterThan(0);
+	});
+
+	it("keys separately on the issue types, so narrowing them re-fetches", async () => {
+		const inner = fakeInner(RESULT);
+		const cached = new CachedStoryPointProvider(inner);
+
+		await cached.fetchCompletedStoryPoints(MEMBERS, CLOSED, OPTIONS);
+		await cached.fetchCompletedStoryPoints(MEMBERS, CLOSED, {
+			...OPTIONS,
+			issueTypes: ["Bug"],
+		});
+
+		expect(inner.calls).toBe(2);
 	});
 });

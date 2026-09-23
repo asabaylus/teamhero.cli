@@ -142,14 +142,101 @@ export interface IdentityResolver {
 // Source-control metrics collection
 // ---------------------------------------------------------------------------
 
+export type MetricObservationStatus =
+	| "reported"
+	| "not-requested"
+	| "unavailable"
+	| "partial";
+
+/** A metric value plus collection state; zero is only authoritative when reported. */
+export interface MetricObservation<T> {
+	status: MetricObservationStatus;
+	value?: T;
+	warnings?: string[];
+}
+
+export interface SourceActorCount {
+	login: string;
+	count: number;
+}
+
+export interface PullRequestActivity {
+	login: string;
+	repository: string;
+	number: number;
+	event: "opened" | "merged" | "closed-unmerged";
+	occurredAt: string;
+}
+
+export interface PullRequestActivityResult {
+	events: PullRequestActivity[];
+	warnings: string[];
+	complete: boolean;
+}
+
+export interface PullRequestActivityProvider {
+	collect(
+		organization: string,
+		window: ReportingWindow,
+	): Promise<PullRequestActivityResult>;
+}
+
+export interface ReviewActivity {
+	login: string;
+	pullRequestAuthor?: string;
+	repository: string;
+	pullNumber: number;
+	submittedAt: string;
+	state: "approved" | "changes-requested" | "commented";
+}
+
+export interface ReviewActivityResult {
+	events: ReviewActivity[];
+	warnings: string[];
+	complete: boolean;
+}
+
+export interface ReviewActivityProvider {
+	collect(
+		organization: string,
+		window: ReportingWindow,
+	): Promise<ReviewActivityResult>;
+}
+
+export interface GithubIssueCompletion {
+	login: string;
+	repository: string;
+	number: number;
+	closedAt: string;
+}
+
+export interface GithubIssueCompletionResult {
+	events: GithubIssueCompletion[];
+	warnings: string[];
+	complete: boolean;
+}
+
+export interface GithubIssueCompletionProvider {
+	collect(
+		organization: string,
+		window: ReportingWindow,
+	): Promise<GithubIssueCompletionResult>;
+}
+
 export interface MetricsCollectionOptions {
 	organization: Organization;
 	members: Member[];
 	repositories: Repository[];
 	since: string;
 	until: string;
+	/** Exact event window; unlike commit `until`, this is never timezone-buffered. */
+	activitySince?: string;
+	/** Exclusive exact end for PR/review/issue events. */
+	activityUntil?: string;
 	maxCommitPages?: number;
 	maxPullRequestPages?: number;
+	/** Optional metric-family allowlist; omitted means all families. */
+	metricFamilies?: Array<"commits" | "prs" | "reviews" | "github-issues">;
 	onCommitProgressUpdate?: (text: string, progress?: number) => void;
 	onProgressUpdate?: (text: string, progress?: number) => void;
 }
@@ -250,6 +337,14 @@ export interface TaskTrackerProvider {
 // ---------------------------------------------------------------------------
 
 /** Per-project story-point field resolution, as persisted in jira-config.json. */
+export type CompletedWorkCategory = "delivery" | "support" | "excluded";
+
+export interface JiraCompletedWorkConfig {
+	category: CompletedWorkCategory;
+	/** Omitted or empty means every issue type. */
+	issueTypes?: string[];
+}
+
 export interface JiraProjectFieldConfig {
 	/** Jira project key, e.g. "PT" or "SPVR". */
 	key: string;
@@ -257,13 +352,60 @@ export interface JiraProjectFieldConfig {
 	fieldId: string;
 	/** JQL field name, e.g. "Story point estimate". */
 	jqlName: string;
+	/**
+	 * Issue types that carry points in THIS project. Omitted falls back to the
+	 * run-wide {@link StoryPointOptions.issueTypes}; empty counts every type.
+	 * Per-project because one board can point only its stories while another
+	 * points its bugs too, and a single list forces the narrower answer on both.
+	 */
+	issueTypes?: string[];
+	/** Classification for completed-item counts; defaults to delivery. */
+	completedWork?: JiraCompletedWorkConfig;
+}
+
+export interface CompletedWorkItem {
+	key: string;
+	project: string;
+	issueType: string;
+	isSubtask: boolean;
+	countsForStoryPoints: boolean;
+	countsForCompletedWork: boolean;
+	firstCompletedAt: string;
+	assigneeAccountId?: string;
+	assigneeDisplayName?: string;
+	personId?: string;
+	points?: number;
+	category: CompletedWorkCategory;
+}
+
+export interface CompletedWorkFetchResult {
+	items: CompletedWorkItem[];
+	unmatchedAssignees: string[];
+	warnings: string[];
+	complete: boolean;
+}
+
+export interface JiraCompletedWorkProvider {
+	readonly enabled: boolean;
+	fetchCompletedWork(
+		window: ReportingWindow,
+		options: StoryPointOptions,
+	): Promise<CompletedWorkFetchResult>;
 }
 
 export interface StoryPointOptions {
 	/** Per-project field config (from jira-config.json). Empty ⇒ nothing to fetch. */
 	projects: JiraProjectFieldConfig[];
-	/** Issue types that carry points. Default ["Story", "Task"]. */
+	/**
+	 * Issue types that carry points, for every project that names none of its
+	 * own. Omitted or empty ⇒ every issue type.
+	 */
 	issueTypes?: string[];
+	/**
+	 * Story-point field for every project, as a custom-field id or a display
+	 * name. Overrides each project's own `fieldId`.
+	 */
+	storyPointField?: string;
 	/** Whom to credit. Default "assignee". "resolver" is a later slice. */
 	creditBy?: "assignee" | "resolver";
 }
@@ -569,7 +711,11 @@ export type CacheSourceType =
 	| "audit"
 	| "technical-wins"
 	| "project-statuses"
-	| "storypoints";
+	| "storypoints"
+	| "pr-activity"
+	| "reviews"
+	| "github-issues"
+	| "jira-completed-work";
 
 // ---------------------------------------------------------------------------
 // Technical / Foundational Wins section

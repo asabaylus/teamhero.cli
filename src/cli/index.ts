@@ -49,6 +49,16 @@ export interface ReportCommandInput {
 	discrepancyThreshold?: number;
 	/** Flush cached data before run: "all" or comma-separated source types. */
 	flushCache?: string;
+	/**
+	 * Which Jira issue types carry story points for this run, overriding
+	 * jira-config.json without rewriting it. "any" for every type, "Story,Bug"
+	 * for a list, "DFA=Story,Bug;SUPPORT=any" to scope it per project.
+	 */
+	jiraIssueTypes?: string;
+	/** Metric-family allowlist; omitted means every family. */
+	metricFamilies?: Array<
+		"commits" | "prs" | "reviews" | "github-issues" | "jira"
+	>;
 	/** Report template: "detailed" (default), "executive", "individual". */
 	template?: string;
 	/** Optional custom system prompts. Use "default" for all sections, or section-specific keys to override. */

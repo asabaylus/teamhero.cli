@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { consola } from "consola";
 import { config as dotenvConfig } from "dotenv";
+import { CachedCompletedWorkProvider } from "../adapters/cache/cached-completed-work-provider.js";
 import { CachedLocCollector } from "../adapters/cache/cached-loc-collector.js";
 import { CachedMetricsProvider } from "../adapters/cache/cached-metrics-provider.js";
 import { CachedStoryPointProvider } from "../adapters/cache/cached-story-point-provider.js";
@@ -99,6 +100,7 @@ export async function createReportService(
 	// Jira story points are optional — only wire when both auth env and a saved
 	// jira-config.json are present. Otherwise the report-time guard warns and skips.
 	let storyPointProvider: CachedStoryPointProvider | undefined;
+	let completedWorkProvider: CachedCompletedWorkProvider | undefined;
 	let storyPointOptions: StoryPointOptions | undefined;
 	const jiraBaseUrl = getEnv("JIRA_BASE_URL");
 	const jiraEmail = getEnv("JIRA_EMAIL");
@@ -115,6 +117,11 @@ export async function createReportService(
 					jiraLookup,
 					logger: logger.withTag("jira"),
 				});
+				completedWorkProvider = new CachedCompletedWorkProvider(
+					jira,
+					options.cacheOptions ?? {},
+					jiraIdentityCacheKey(jiraLookup),
+				);
 				storyPointProvider = new CachedStoryPointProvider(
 					jira,
 					options.cacheOptions ?? {},
@@ -123,6 +130,7 @@ export async function createReportService(
 				storyPointOptions = {
 					projects: jiraConfig.projects,
 					issueTypes: jiraConfig.issueTypes,
+					storyPointField: jiraConfig.storyPointField,
 					creditBy: jiraConfig.creditBy,
 				};
 			}
@@ -148,6 +156,7 @@ export async function createReportService(
 		userMap,
 		identityResolver,
 		storyPointProvider,
+		completedWorkProvider,
 		storyPointOptions,
 	});
 }

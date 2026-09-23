@@ -70,6 +70,30 @@ teamhero report --headless --foreground --flush-cache loc  # Force re-fetch LOC
 - `src/metrics/loc.stats.ts` (the `/stats/contributors` collector) is **dead code** with
   stale types — not wired to anything. Don't build on it.
 
+## Jira Story Points (Measured, Not Guessed)
+
+- Custom-field ids are per-site. `customfield_10617` / `customfield_10005` in the setup
+  defaults are guesses; the provider repairs them by name from `GET /rest/api/3/field`.
+  Never assume an id is right because the config names it.
+- **Which status names mean "done" is per-site too** — one site here uses `Done`, `LIVE`,
+  `Closed`, AND `Review/Accept`. Read them from `GET /rest/api/3/status` by
+  `statusCategory.key === "done"`; never hard-code a name list.
+- `statusCategoryChangedDate` is the **last** category change and only exists on the
+  issue's current status, so it mis-dates a reopened issue and loses one that was pulled
+  back out of Done. The completion week comes from the changelog: the FIRST transition
+  into a Done-category status.
+- `/rest/api/3/search/jql` takes `expand` as a **string** (`"changelog"`). An array is a
+  400 whose body reads like a payload error, which the provider's 400 handler used to
+  downgrade to "field not present" — a silent 0.
+- JQL date literals are read in the **searching account's** timezone, which need not match
+  the timezone Jira renders issue timestamps in. Pad the JQL window and decide the exact
+  day from the changelog timestamp instead of trusting the bound.
+- A past week's story points are NOT settled data — estimates get added to old issues.
+  Closed windows are cached with a TTL, not permanently. `--flush-cache storypoints`
+  forces a re-read; `--flush-cache all` also works.
+- `--jira-issue-types` is run-scoped and does not rewrite `jira-config.json`. Accepts
+  `any`, `Story,Bug`, or per-project `DFA=Story,Bug;SUPPORT=any`.
+
 ## TUI: Gum Is Legacy
 
 - The Go TUI in `tui/` is now primary; `src/adapters/ui/gum-ui.ts` is a deprecated fallback
