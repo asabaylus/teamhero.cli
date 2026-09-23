@@ -2,6 +2,7 @@ import type {
 	ContributorDiscrepancy,
 	DiscrepancyReport,
 	MemberTaskSummary,
+	MetricObservation,
 	PeriodDeltas,
 	ReportRenderer,
 	RoadmapEntry,
@@ -48,6 +49,14 @@ export interface ReportMemberMetrics {
 	storyPointsCompleted?: number;
 	/** Story points per Jira project key. */
 	storyPointsByProject?: Record<string, number>;
+	/** Jira delivery issues plus GitHub issues closed by this person. */
+	ticketsClosed?: number;
+	supportTickets?: number;
+	prActivityObservation?: MetricObservation<number>;
+	reviewsObservation?: MetricObservation<number>;
+	storyPointsObservation?: MetricObservation<number>;
+	ticketsClosedObservation?: MetricObservation<number>;
+	supportTicketsObservation?: MetricObservation<number>;
 	aiSummary: string;
 	highlights: string[];
 	prHighlights: string[];
@@ -116,6 +125,11 @@ export interface ReportRenderInput {
 	 * Wins section. Grouped by subheading (category).
 	 */
 	technicalFoundationalWins?: TechnicalFoundationalWinsResult;
+	provenance?: {
+		teamheroVersion: string;
+		commit?: string;
+		metricRules: Record<string, string>;
+	};
 }
 
 export interface ReportSections {
@@ -217,32 +231,48 @@ export function renderReport(input: ReportRenderInput): string {
 		// member values), so reports with the source off stay byte-for-byte
 		// unchanged and an all-zero week still shows the column when Jira ran.
 		const hasStoryPoints = input.sections.storyPoints === true;
-		const spHeader = hasStoryPoints ? " Story Points |" : "";
-		const spAlign = hasStoryPoints ? "-------------:|" : "";
-		const spCell = (m: ReportMemberMetrics) =>
-			hasStoryPoints ? ` ${m.storyPointsCompleted ?? 0} |` : "";
+		const completedHeader = hasStoryPoints
+			? " Story Points | Tickets Closed | Support Tickets |"
+			: " Tickets Closed |";
+		const completedAlign = hasStoryPoints
+			? "-------------:|---------------:|----------------:|"
+			: "---------------:|";
+		const cell = (
+			value: number | undefined,
+			observation: MetricObservation<number> | undefined,
+		): string =>
+			observation && observation.status !== "reported"
+				? "—"
+				: String(value ?? 0);
+		const completedCells = (m: ReportMemberMetrics) => {
+			const tickets = cell(m.ticketsClosed, m.ticketsClosedObservation);
+			if (!hasStoryPoints) return ` ${tickets} |`;
+			return ` ${cell(m.storyPointsCompleted, m.storyPointsObservation)} | ${tickets} | ${cell(m.supportTickets, m.supportTicketsObservation)} |`;
+		};
+		const reviewCell = (m: ReportMemberMetrics) =>
+			cell(m.reviews, m.reviewsObservation);
 		if (hasInProgress) {
 			parts.push(
-				`| Developer        | Commits | PRs Opened | PRs Closed | PRs Merged | Lines Added | Lines Deleted | In-Progress + | In-Progress - | Reviews |${spHeader}`,
+				`| Developer        | Commits | PRs Opened | Closed (not merged) | PRs Merged | Lines Added | Lines Deleted | In-Progress + | In-Progress - | Reviews |${completedHeader}`,
 			);
 			parts.push(
-				`|------------------|--------:|-----------:|-----------:|-----------:|------------:|--------------:|--------------:|--------------:|--------:|${spAlign}`,
+				`|------------------|--------:|-----------:|--------------------:|-----------:|------------:|--------------:|--------------:|--------------:|--------:|${completedAlign}`,
 			);
 			for (const member of members) {
 				parts.push(
-					`| ${member.displayName} | ${member.commits} | ${member.prsOpened} | ${member.prsClosed} | ${member.prsMerged} | ${member.linesAdded} | ${member.linesDeleted} | ${member.linesAddedInProgress ?? 0} | ${member.linesDeletedInProgress ?? 0} | ${member.reviews} |${spCell(member)}`,
+					`| ${member.displayName} | ${member.commits} | ${cell(member.prsOpened, member.prActivityObservation)} | ${cell(member.prsClosed, member.prActivityObservation)} | ${cell(member.prsMerged, member.prActivityObservation)} | ${member.linesAdded} | ${member.linesDeleted} | ${member.linesAddedInProgress ?? 0} | ${member.linesDeletedInProgress ?? 0} | ${reviewCell(member)} |${completedCells(member)}`,
 				);
 			}
 		} else {
 			parts.push(
-				`| Developer        | Commits | PRs Opened | PRs Closed | PRs Merged | Lines Added | Lines Deleted | Reviews |${spHeader}`,
+				`| Developer        | Commits | PRs Opened | Closed (not merged) | PRs Merged | Lines Added | Lines Deleted | Reviews |${completedHeader}`,
 			);
 			parts.push(
-				`|------------------|--------:|-----------:|-----------:|-----------:|------------:|--------------:|--------:|${spAlign}`,
+				`|------------------|--------:|-----------:|--------------------:|-----------:|------------:|--------------:|--------:|${completedAlign}`,
 			);
 			for (const member of members) {
 				parts.push(
-					`| ${member.displayName} | ${member.commits} | ${member.prsOpened} | ${member.prsClosed} | ${member.prsMerged} | ${member.linesAdded} | ${member.linesDeleted} | ${member.reviews} |${spCell(member)}`,
+					`| ${member.displayName} | ${member.commits} | ${cell(member.prsOpened, member.prActivityObservation)} | ${cell(member.prsClosed, member.prActivityObservation)} | ${cell(member.prsMerged, member.prActivityObservation)} | ${member.linesAdded} | ${member.linesDeleted} | ${reviewCell(member)} |${completedCells(member)}`,
 				);
 			}
 		}
@@ -330,6 +360,9 @@ export function renderReport(input: ReportRenderInput): string {
 				w.includes("Skipped") || w.includes("repository") || w.includes("repo"),
 		);
 
+		const coverageWarnings = input.warnings.filter(
+			(warning) => !repoWarnings.includes(warning),
+		);
 		if (repoWarnings.length > 0) {
 			parts.push("---");
 			parts.push("");
@@ -352,6 +385,14 @@ export function renderReport(input: ReportRenderInput): string {
 			}
 			parts.push("");
 		}
+		if (coverageWarnings.length > 0) {
+			parts.push("---");
+			parts.push("");
+			parts.push("## **Data Coverage Warnings**");
+			parts.push("");
+			for (const warning of coverageWarnings) parts.push(`- ${warning}`);
+			parts.push("");
+		}
 	}
 
 	if (input.errors && input.errors.length > 0) {
@@ -372,7 +413,18 @@ export function renderReport(input: ReportRenderInput): string {
 
 function buildOverviewSentence(input: ReportRenderInput): string {
 	const pieces: string[] = [];
-	if (input.sections.git) {
+	if (
+		input.sections.git &&
+		input.memberMetrics.some(
+			(member) =>
+				member.prActivityObservation &&
+				member.prActivityObservation.status !== "reported",
+		)
+	) {
+		pieces.push(
+			`PR activity was unavailable or partial across ${input.totals.repoCount} repositories`,
+		);
+	} else if (input.sections.git) {
 		pieces.push(
 			`Processed ${input.totals.prs} PRs across ${input.totals.repoCount} repositories`,
 		);

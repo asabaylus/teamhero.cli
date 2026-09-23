@@ -20,6 +20,7 @@ import { appendUnifiedLog } from "../../lib/unified-log.js";
 import { computeCacheHash, FileSystemCacheStore } from "./fs-cache-store.js";
 
 const DEFAULT_TTL_SECONDS = 4 * 3600; // 4 hours
+const METRIC_RULE_SCHEMA_VERSION = "unified-engineering-metrics-v1";
 
 export class CachedMetricsProvider implements MetricsProvider {
 	private readonly cache: FileSystemCacheStore<MetricsCollectionResult>;
@@ -44,9 +45,12 @@ export class CachedMetricsProvider implements MetricsProvider {
 
 		// Cache key includes members and repos to prevent scope mismatch
 		const inputHash = computeCacheHash({
+			ruleSchema: METRIC_RULE_SCHEMA_VERSION,
 			org: options.organization.login,
 			since: options.since,
 			until: options.until,
+			activitySince: options.activitySince ?? options.since,
+			activityUntil: options.activityUntil ?? options.until,
 			members: options.members
 				.map((m) => m.login)
 				.sort()
@@ -55,11 +59,20 @@ export class CachedMetricsProvider implements MetricsProvider {
 				.map((r) => r.name)
 				.sort()
 				.join(","),
+			metricFamilies: [...(options.metricFamilies ?? [])].sort().join(","),
 		});
 
+		const activitySources = [
+			"pr-activity",
+			"reviews",
+			"github-issues",
+		] as const;
 		const sourceMatch =
 			this.cacheOptions.flush ||
-			this.cacheOptions.flushSources?.includes("metrics");
+			this.cacheOptions.flushSources?.includes("metrics") ||
+			activitySources.some((source) =>
+				this.cacheOptions.flushSources?.includes(source),
+			);
 		const shouldFlush =
 			sourceMatch &&
 			(!this.cacheOptions.flushSince ||

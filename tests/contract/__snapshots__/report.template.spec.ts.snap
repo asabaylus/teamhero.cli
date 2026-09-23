@@ -8,10 +8,10 @@ Processed 42 PRs across 12 repositories, with contributions from 18 engineers.
 ---
 
 ## **At-a-Glance Summary**
-| Developer        | Commits | PRs Opened | PRs Closed | PRs Merged | Lines Added | Lines Deleted | Reviews |
-|------------------|--------:|-----------:|-----------:|-----------:|------------:|--------------:|--------:|
-| Dev Two | 8 | 6 | 0 | 6 | 890 | 450 | 4 |
-| Dev One | 12 | 4 | 0 | 4 | 1234 | 220 | 9 |
+| Developer        | Commits | PRs Opened | Closed (not merged) | PRs Merged | Lines Added | Lines Deleted | Reviews | Tickets Closed |
+|------------------|--------:|-----------:|--------------------:|-----------:|------------:|--------------:|--------:|---------------:|
+| Dev Two | 8 | 6 | 0 | 6 | 890 | 450 | 4 | 0 |
+| Dev One | 12 | 4 | 0 | 4 | 1234 | 220 | 9 | 0 |
 
 > *Note: This table provides a quick view of activity across the team. Reviews are counted as approved, changes requested, or commented.*
 

@@ -77,7 +77,8 @@ type ReportConfig struct {
 
 	// Transient fields — not persisted to config.json
 	FlushCache     string `json:"-"` // wizard cache flush choice (e.g. "all", "all:since=2026-02-20")
-	JiraIssueTypes string `json:"-"` // --jira-issue-types: "any", "Story,Bug", "DFA=Bug;SUPPORT=any"
+	JiraIssueTypes string   `json:"-"` // --jira-issue-types: "any", "Story,Bug", "DFA=Bug;SUPPORT=any"
+	MetricFamilies []string `json:"-"` // --metric-families: explicit collector allowlist
 	AIProvider     string `json:"-"` // e.g. "OpenAI"
 	AIModel        string `json:"-"` // e.g. "gpt-5-mini"
 	ServiceTier    string `json:"-"` // e.g. "flex" or ""
@@ -125,6 +126,7 @@ type ReportCommandInput struct {
 	DiscrepancyThreshold *int              `json:"discrepancyThreshold,omitempty"`
 	FlushCache           string            `json:"flushCache,omitempty"`
 	JiraIssueTypes       string            `json:"jiraIssueTypes,omitempty"` // run-scoped --jira-issue-types
+	MetricFamilies       []string          `json:"metricFamilies,omitempty"`
 	Mode                 string            `json:"mode,omitempty"`
 	OutputPath           string            `json:"outputPath,omitempty"`
 	OutputFormat         string            `json:"outputFormat,omitempty"`
@@ -247,6 +249,7 @@ func (c *ReportConfig) ToCommandInput(mode string) ReportCommandInput {
 		MaxPrPages:      c.MaxPrPages,
 		Sections:        c.Sections,
 		Mode:            mode,
+		MetricFamilies:  c.MetricFamilies,
 	}
 	input.Sequential = &c.Sequential
 	v := c.DiscrepancyThreshold

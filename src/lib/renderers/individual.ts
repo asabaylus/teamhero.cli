@@ -14,19 +14,45 @@ function renderMemberSection(
 	parts.push(`## ${window.start} – ${window.end}`);
 	parts.push("");
 
+	const observed = (
+		value: number,
+		observation: ReportMemberMetrics["reviewsObservation"],
+	) => (observation && observation.status !== "reported" ? "—" : String(value));
+
 	// Metrics table
 	parts.push("### Metrics");
 	parts.push("");
 	parts.push("| Metric | Value |");
 	parts.push("|--------|------:|");
 	parts.push(`| Commits | ${member.commits} |`);
-	parts.push(`| PRs Opened | ${member.prsOpened} |`);
-	parts.push(`| PRs Merged | ${member.prsMerged} |`);
+	parts.push(
+		`| PRs Opened | ${observed(member.prsOpened, member.prActivityObservation)} |`,
+	);
+	parts.push(
+		`| Closed (not merged) | ${observed(member.prsClosed, member.prActivityObservation)} |`,
+	);
+	parts.push(
+		`| PRs Merged | ${observed(member.prsMerged, member.prActivityObservation)} |`,
+	);
 	parts.push(`| Lines Added | ${member.linesAdded} |`);
 	parts.push(`| Lines Deleted | ${member.linesDeleted} |`);
-	parts.push(`| Reviews | ${member.reviews} |`);
+	parts.push(
+		`| Reviews | ${observed(member.reviews, member.reviewsObservation)} |`,
+	);
 	if (member.storyPointsCompleted !== undefined) {
-		parts.push(`| Story Points | ${member.storyPointsCompleted} |`);
+		parts.push(
+			`| Story Points | ${observed(member.storyPointsCompleted, member.storyPointsObservation)} |`,
+		);
+	}
+	if (member.ticketsClosed !== undefined) {
+		parts.push(
+			`| Tickets Closed | ${observed(member.ticketsClosed, member.ticketsClosedObservation)} |`,
+		);
+	}
+	if (member.supportTickets !== undefined) {
+		parts.push(
+			`| Support Tickets | ${observed(member.supportTickets, member.supportTicketsObservation)} |`,
+		);
 	}
 	parts.push("");
 

@@ -187,6 +187,15 @@ func TestToCommandInputJiraIssueTypes(t *testing.T) {
 
 // TestToCommandInputJiraIssueTypesOmitted keeps the field out of the JSON when
 // no selection was made, so the TS loader reads jira-config.json unchanged.
+func TestToCommandInputMetricFamilies(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.MetricFamilies = []string{"prs", "reviews", "jira"}
+	input := cfg.ToCommandInput("headless")
+	if len(input.MetricFamilies) != 3 || input.MetricFamilies[1] != "reviews" {
+		t.Fatalf("metric families not passed through: %+v", input.MetricFamilies)
+	}
+}
+
 func TestToCommandInputJiraIssueTypesOmitted(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.Org = "acme"

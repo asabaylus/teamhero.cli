@@ -1,5 +1,8 @@
 import { type ConsolaInstance, consola } from "consola";
 import type {
+	CompletedWorkFetchResult,
+	CompletedWorkItem,
+	JiraCompletedWorkProvider,
 	JiraProjectFieldConfig,
 	ReportingWindow,
 	StoryPointFetchResult,
@@ -81,6 +84,7 @@ interface JiraIssue {
 	key: string;
 	fields: {
 		assignee?: JiraUser | null;
+		issuetype?: { name?: string; subtask?: boolean };
 		[fieldId: string]: unknown;
 	};
 	changelog?: JiraChangelog;
@@ -104,7 +108,9 @@ export interface CompletionWindowDays {
  * Fetches story points completed in the window from Jira, keyed by canonical
  * Person id. Read-only. See docs/teamhero-storypoints-plan.md.
  */
-export class JiraStoryPointProvider implements StoryPointProvider {
+export class JiraStoryPointProvider
+	implements StoryPointProvider, JiraCompletedWorkProvider
+{
 	private readonly baseUrl?: string;
 	private readonly email?: string;
 	private readonly apiToken?: string;
@@ -130,24 +136,58 @@ export class JiraStoryPointProvider implements StoryPointProvider {
 		window: ReportingWindow,
 		options: StoryPointOptions,
 	): Promise<StoryPointFetchResult> {
+		const completed = await this.fetchCompletedWork(window, options);
 		const byPerson = new Map<string, StoryPointResult>();
-		const unmatched = new Set<string>();
-
-		if (!this.enabled) {
-			return { byPerson, unmatchedAssignees: [] };
+		for (const item of completed.items) {
+			if (!item.personId || !item.countsForStoryPoints) continue;
+			const existing =
+				byPerson.get(item.personId) ??
+				({
+					status: "matched",
+					totalPoints: 0,
+					byProject: {},
+					issueCount: 0,
+				} satisfies StoryPointResult);
+			existing.totalPoints += item.points ?? 0;
+			existing.byProject[item.project] =
+				(existing.byProject[item.project] ?? 0) + (item.points ?? 0);
+			existing.issueCount += 1;
+			byPerson.set(item.personId, existing);
 		}
+		return {
+			byPerson,
+			unmatchedAssignees: completed.unmatchedAssignees,
+		};
+	}
 
-		const creditBy = options.creditBy ?? "assignee";
+	async fetchCompletedWork(
+		window: ReportingWindow,
+		options: StoryPointOptions,
+	): Promise<CompletedWorkFetchResult> {
+		const items: CompletedWorkItem[] = [];
+		const unmatched = new Set<string>();
+		const warnings: string[] = [];
+		let complete = true;
+		if (!this.enabled) {
+			return { items, unmatchedAssignees: [], warnings, complete: false };
+		}
 		const projects = await this.resolveProjectFields(
 			options.projects,
 			options.storyPointField,
 		);
 		const doneStatuses = await this.resolveDoneStatuses();
 		const days = completionWindowDays(window);
-
 		for (const project of projects) {
-			const issueTypes =
+			const storyPointTypes =
 				project.issueTypes ?? options.issueTypes ?? DEFAULT_ISSUE_TYPES;
+			const completedWorkTypes =
+				project.completedWork?.issueTypes ?? storyPointTypes;
+			// One Jira fetch must support both projections. An empty policy means
+			// every type, otherwise query the union and filter each projection below.
+			const issueTypes =
+				storyPointTypes.length === 0 || completedWorkTypes.length === 0
+					? []
+					: [...new Set([...storyPointTypes, ...completedWorkTypes])];
 			try {
 				const issues = await this.searchProject(
 					project,
@@ -156,79 +196,64 @@ export class JiraStoryPointProvider implements StoryPointProvider {
 					doneStatuses,
 				);
 				for (const issue of issues) {
-					const completed = await this.completionDay(issue, doneStatuses);
-					// An issue reached by the padded search but whose *first*
-					// completion falls outside this week belongs to another week.
-					// Deciding it per issue rather than per query is what keeps a
-					// re-completed issue from being counted twice across two runs.
+					const histories = await this.completeHistories(issue);
+					const event = completionEvent(histories, doneStatuses);
+					const completedDay = event?.created?.slice(0, 10);
 					if (
-						!completed ||
-						completed < days.firstDay ||
-						completed > days.lastDay
-					) {
+						!event?.created ||
+						!completedDay ||
+						completedDay < days.firstDay ||
+						completedDay > days.lastDay
+					)
 						continue;
+					const creditee =
+						(options.creditBy ?? "assignee") === "resolver"
+							? (event.author ?? issue.fields.assignee)
+							: issue.fields.assignee;
+					const accountId = creditee?.accountId;
+					const personId = accountId
+						? this.jiraLookup.get(accountId)
+						: undefined;
+					if (!personId) {
+						unmatched.add(
+							creditee?.displayName ?? accountId ?? `${issue.key} (unassigned)`,
+						);
 					}
-					this.creditIssue(
-						issue,
-						project,
-						byPerson,
-						unmatched,
-						creditBy,
-						doneStatuses,
-					);
+					const rawPoints = issue.fields[project.fieldId];
+					const issueType = issue.fields.issuetype?.name ?? "Unknown";
+					items.push({
+						key: issue.key,
+						project: project.key,
+						issueType,
+						isSubtask: issue.fields.issuetype?.subtask === true,
+						countsForStoryPoints:
+							storyPointTypes.length === 0 ||
+							storyPointTypes.includes(issueType),
+						countsForCompletedWork:
+							completedWorkTypes.length === 0 ||
+							completedWorkTypes.includes(issueType),
+						firstCompletedAt: event.created,
+						assigneeAccountId: accountId,
+						assigneeDisplayName: creditee?.displayName,
+						personId,
+						points: typeof rawPoints === "number" ? rawPoints : 0,
+						category: project.completedWork?.category ?? "delivery",
+					});
 				}
 			} catch (err) {
-				// Only genuine not-found / field-absent cases are downgraded to a
-				// warning; auth (401/403), rate-limit/transient (429/5xx), and
-				// network errors rethrow so they surface accurately (the report-time
-				// guard catches them and never aborts a git/Asana report).
 				if (!this.warnProjectFailure(project.key, err)) throw err;
+				complete = false;
+				warnings.push(
+					`Jira completed-work collection skipped project ${project.key}: ${(err as Error).message}`,
+				);
 			}
 		}
-
-		return { byPerson, unmatchedAssignees: [...unmatched] };
-	}
-
-	/** Sum one issue's points onto the credited Person (or record an unmatched assignee). */
-	private creditIssue(
-		issue: JiraIssue,
-		project: JiraProjectFieldConfig,
-		byPerson: Map<string, StoryPointResult>,
-		unmatched: Set<string>,
-		creditBy: "assignee" | "resolver",
-		doneStatuses: ReadonlySet<string>,
-	): void {
-		const rawPoints = issue.fields[project.fieldId];
-		const points = typeof rawPoints === "number" ? rawPoints : 0;
-
-		const creditee =
-			creditBy === "resolver"
-				? (completionAuthor(issue, doneStatuses) ?? issue.fields.assignee)
-				: issue.fields.assignee;
-		// Deterministic mapping: credit by Jira accountId only, no email fallback.
-		const accountId = creditee?.accountId;
-		const canonicalId = accountId ? this.jiraLookup.get(accountId) : undefined;
-
-		if (!canonicalId) {
-			unmatched.add(
-				creditee?.displayName ?? accountId ?? `${issue.key} (unassigned)`,
-			);
-			return;
-		}
-
-		const existing =
-			byPerson.get(canonicalId) ??
-			({
-				status: "matched",
-				totalPoints: 0,
-				byProject: {},
-				issueCount: 0,
-			} satisfies StoryPointResult);
-		existing.totalPoints += points;
-		existing.byProject[project.key] =
-			(existing.byProject[project.key] ?? 0) + points;
-		existing.issueCount += 1;
-		byPerson.set(canonicalId, existing);
+		return {
+			items,
+			unmatchedAssignees: [...unmatched],
+			warnings,
+			complete,
+		};
 	}
 
 	private resolvedProjects?: JiraProjectFieldConfig[];
@@ -390,16 +415,13 @@ export class JiraStoryPointProvider implements StoryPointProvider {
 	 * The day this issue first entered a completed status, or undefined when it
 	 * never did. Refetches the changelog when the search embedded only part of it.
 	 */
-	private async completionDay(
-		issue: JiraIssue,
-		doneStatuses: ReadonlySet<string>,
-	): Promise<string | undefined> {
+	private async completeHistories(issue: JiraIssue): Promise<JiraHistory[]> {
 		let histories = issue.changelog?.histories ?? [];
 		const total = issue.changelog?.total;
 		if (typeof total === "number" && total > histories.length) {
 			histories = await this.fetchIssueChangelog(issue.key);
 		}
-		return firstCompletionDay(histories, doneStatuses);
+		return histories;
 	}
 
 	/** Build per-project JQL and page through all matching issues. */
@@ -610,19 +632,6 @@ function completionEvent(
 			),
 		)
 		.sort((a, b) => (a.created ?? "").localeCompare(b.created ?? ""))[0];
-}
-
-/**
- * Who moved the issue into a completed status for the first time. Used for
- * `creditBy: "resolver"` — the completion is the event the week is dated by, so
- * it is also the event the credit follows.
- */
-function completionAuthor(
-	issue: JiraIssue,
-	doneStatuses: ReadonlySet<string>,
-): JiraUser | undefined {
-	return completionEvent(issue.changelog?.histories ?? [], doneStatuses)
-		?.author;
 }
 
 /** Quote and escape a JQL string literal (backslashes and double quotes). */

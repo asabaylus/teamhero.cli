@@ -35,8 +35,9 @@ var (
 	flagFormat               = flag.String("format", "", "Output format: json (for doctor command)")
 	flagOutputFormat         = flag.String("output-format", "", "Report output format: markdown (default), json, both")
 	flagFlushCache           = flag.String("flush-cache", "", "Flush cached data: 'all', sources (metrics,loc,...), or with date 'all:since=2026-02-20'")
-	flagJiraProjects         = flag.String("jira-projects", "", "Configure Jira story points headlessly: KEY[:team|company],... (writes jira-config.json)")
+	flagJiraProjects         = flag.String("jira-projects", "", "Configure Jira headlessly: KEY[:team|company][:delivery|support|excluded],... (writes jira-config.json)")
 	flagJiraIssueTypes       = flag.String("jira-issue-types", "", "Which Jira issue types count for story points: \"any\" (default), a comma list (Story,Task,Bug), or per project (DFA=Story,Bug;SUPPORT=any)")
+	flagMetricFamilies       = flag.String("metric-families", "", "Metric families to collect: commits,prs,reviews,github-issues,jira (default all)")
 	flagForeground           = flag.Bool("foreground", false, "Run subprocess with direct I/O (bypass event piping)")
 	flagAdvanced             = flag.Bool("advanced", false, "Use full configuration wizard (skip express mode)")
 	flagSequential           = flag.Bool("sequential", false, "Run API requests sequentially instead of in parallel")
@@ -129,6 +130,9 @@ func applyFlagsTo(cfg *ReportConfig, wasSet func(string) bool) {
 
 	if wasSet("template") {
 		cfg.Template = *flagTemplate
+	}
+	if wasSet("metric-families") {
+		cfg.MetricFamilies = splitCSV(*flagMetricFamilies)
 	}
 
 	// Subtractive flag model: --sources narrows data sources

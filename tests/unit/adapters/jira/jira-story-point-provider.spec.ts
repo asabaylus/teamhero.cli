@@ -64,6 +64,8 @@ function issue(
 		displayName?: string;
 		author?: string;
 		histories?: unknown[];
+		issueType?: string;
+		subtask?: boolean;
 	} = {},
 ) {
 	const {
@@ -76,6 +78,10 @@ function issue(
 		key,
 		fields: {
 			assignee: accountId ? { accountId, displayName } : null,
+			issuetype: {
+				name: options.issueType ?? "Story",
+				subtask: options.subtask ?? false,
+			},
 			[PT_FIELD]: points,
 		},
 		changelog: {
@@ -658,5 +664,45 @@ describe("JiraStoryPointProvider — creditBy: resolver", () => {
 			creditBy: "resolver",
 		});
 		expect(result.byPerson.get("jane-doe")?.totalPoints).toBe(3);
+	});
+});
+
+describe("JiraStoryPointProvider — shared completed-work model", () => {
+	it("returns stable completion facts and the project's exclusive category", async () => {
+		const p = provider();
+		spyOn(p as never, "search").mockResolvedValue({
+			issues: [
+				issue("PT-42", "acct-jane", 8, {
+					issueType: "Support",
+					completedAt: "2026-06-10T09:00:00.000-05:00",
+				}),
+			],
+			isLast: true,
+		});
+		const result = await p.fetchCompletedWork(WINDOW, {
+			projects: [
+				{
+					...PT_PROJECT,
+					completedWork: { category: "support", issueTypes: ["Support"] },
+				},
+			],
+		});
+		expect(result.complete).toBe(true);
+		expect(result.items).toEqual([
+			{
+				key: "PT-42",
+				project: "PT",
+				issueType: "Support",
+				isSubtask: false,
+				countsForStoryPoints: true,
+				countsForCompletedWork: true,
+				firstCompletedAt: "2026-06-10T09:00:00.000-05:00",
+				assigneeAccountId: "acct-jane",
+				assigneeDisplayName: undefined,
+				personId: "jane-doe",
+				points: 8,
+				category: "support",
+			},
+		]);
 	});
 });

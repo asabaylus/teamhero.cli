@@ -124,9 +124,28 @@ func TestBuildJiraConfigFromSpec(t *testing.T) {
 	}
 }
 
+func TestBuildJiraConfigFromSpec_CompletedWorkCategory(t *testing.T) {
+	cfg, err := buildJiraConfigFromSpec([]string{"SUPPORT:company:support", "OLD:team:excluded", "APP"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Projects[0].CompletedWork == nil || cfg.Projects[0].CompletedWork.Category != "support" {
+		t.Fatalf("support category not persisted: %+v", cfg.Projects[0])
+	}
+	if cfg.Projects[1].CompletedWork == nil || cfg.Projects[1].CompletedWork.Category != "excluded" {
+		t.Fatalf("excluded category not persisted: %+v", cfg.Projects[1])
+	}
+	if cfg.Projects[2].CompletedWork != nil {
+		t.Fatalf("default delivery should be omitted: %+v", cfg.Projects[2])
+	}
+}
+
 func TestBuildJiraConfigFromSpec_Errors(t *testing.T) {
 	if _, err := buildJiraConfigFromSpec([]string{"PT:bogus"}); err == nil {
 		t.Error("expected error for unknown project type")
+	}
+	if _, err := buildJiraConfigFromSpec([]string{"PT:team:both"}); err == nil {
+		t.Error("expected error for unknown completed-work category")
 	}
 	if _, err := buildJiraConfigFromSpec([]string{"", "  "}); err == nil {
 		t.Error("expected error when no valid projects")

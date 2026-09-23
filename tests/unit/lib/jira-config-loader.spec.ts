@@ -303,6 +303,44 @@ describe("loadJiraConfig — per-project issue types", () => {
 		expect(config?.projects[0]?.issueTypes).toEqual([]);
 	});
 
+	it("reads completed-work classification and issue types", async () => {
+		configFile(
+			JSON.stringify({
+				projects: [
+					{
+						key: "SUPPORT",
+						fieldId: "customfield_10016",
+						jqlName: "Story point estimate",
+						completedWork: {
+							category: "support",
+							issueTypes: [" Support "],
+						},
+					},
+				],
+			}),
+		);
+		expect((await loadJiraConfig())?.projects[0]?.completedWork).toEqual({
+			category: "support",
+			issueTypes: ["Support"],
+		});
+	});
+
+	it("rejects an invalid completed-work category", async () => {
+		configFile(
+			JSON.stringify({
+				projects: [
+					{
+						key: "PT",
+						fieldId: "customfield_10016",
+						jqlName: "Story point estimate",
+						completedWork: { category: "both" },
+					},
+				],
+			}),
+		);
+		await expect(loadJiraConfig()).rejects.toThrow(/completedWork.category/);
+	});
+
 	it("rejects a malformed per-project issueTypes", async () => {
 		configFile(
 			JSON.stringify({

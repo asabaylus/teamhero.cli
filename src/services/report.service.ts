@@ -8,6 +8,7 @@ import type {
 	CacheOptions,
 	DiscrepancyReport,
 	IdentityResolver,
+	JiraCompletedWorkProvider,
 	LatestProjectStatus,
 	MemberTaskSummary,
 	MetricsCollectionResult,
@@ -123,6 +124,16 @@ function hashMemberData(
 		linesAdded: member.linesAdded,
 		linesDeleted: member.linesDeleted,
 		reviews: member.reviews,
+		storyPoints: member.storyPointsCompleted,
+		ticketsClosed: member.ticketsClosed,
+		supportTickets: member.supportTickets,
+		metricObservations: {
+			prs: member.prActivityObservation,
+			reviews: member.reviewsObservation,
+			storyPoints: member.storyPointsObservation,
+			tickets: member.ticketsClosedObservation,
+			support: member.supportTicketsObservation,
+		},
 		prHighlights: member.prHighlights,
 		commitHighlights: member.commitHighlights,
 		taskTracker: member.taskTracker,
@@ -174,7 +185,7 @@ function hashVisibleWinsExtractionData(
 
 const DEFAULT_WINDOW_DAYS = 7;
 const METRICS_DEFINITION =
-	"Commits reflect default-branch contributions; reviews tally submitted pull-request reviews excluding self-approvals.";
+	"PR lifecycle columns use their own event timestamps; reviews tally submitted events excluding self-reviews and bots; Jira work uses the first Done-category transition.";
 
 const NOOP_HANDLE: ProgressHandle = {
 	succeed() {},
@@ -230,6 +241,8 @@ export interface ReportServiceDependencies {
 	identityResolver?: IdentityResolver;
 	/** Optional Jira story-point provider (gated by dataSources.jira). */
 	storyPointProvider?: StoryPointProvider;
+	/** Shared Jira collector used for points and completed ticket counts in one fetch. */
+	completedWorkProvider?: JiraCompletedWorkProvider;
 	/** Story-point fetch options (projects + fields), loaded from jira-config.json. */
 	storyPointOptions?: StoryPointOptions;
 }
@@ -239,6 +252,7 @@ export class ReportService {
 	private readonly logger: ConsolaInstance;
 	private readonly taskTracker?: TaskTrackerProvider;
 	private readonly storyPointProvider?: StoryPointProvider;
+	private readonly completedWorkProvider?: JiraCompletedWorkProvider;
 	private readonly individualsCacheDir: string;
 
 	constructor(private readonly deps: ReportServiceDependencies) {
@@ -246,6 +260,7 @@ export class ReportService {
 		this.logger = deps.logger ?? consola.withTag("teamhero:report");
 		this.taskTracker = deps.taskTracker;
 		this.storyPointProvider = deps.storyPointProvider;
+		this.completedWorkProvider = deps.completedWorkProvider;
 
 		const individualsDeps = deps.individuals ?? {};
 		this.individualsCacheDir =
@@ -401,8 +416,18 @@ export class ReportService {
 						repositories,
 						since: window.startISO,
 						until: window.endISO,
+						activitySince: window.startISO,
+						activityUntil: resolveExclusiveEndISO(
+							input.until ?? window.endDate,
+						),
 						maxCommitPages: input.maxCommitPages,
 						maxPullRequestPages: input.maxPrPages,
+						metricFamilies: input.metricFamilies?.filter(
+							(
+								family,
+							): family is "commits" | "prs" | "reviews" | "github-issues" =>
+								family !== "jira",
+						),
 						onCommitProgressUpdate: (message, p) =>
 							metricsStep.update(
 								message,
@@ -488,14 +513,38 @@ export class ReportService {
 			// Story points (Jira) — gated by dataSources.jira. Never fatal: a
 			// missing/unconfigured Jira source warns and is skipped (the
 			// interactive run prompts to run setup; see docs §0.2).
-			if (input.sections.dataSources.jira) {
+			if (
+				input.sections.dataSources.jira &&
+				(!input.metricFamilies || input.metricFamilies.includes("jira"))
+			) {
 				const projects = this.deps.storyPointOptions?.projects ?? [];
-				if (!this.storyPointProvider?.enabled || projects.length === 0) {
+				if (
+					!(
+						this.completedWorkProvider?.enabled ||
+						this.storyPointProvider?.enabled
+					) ||
+					projects.length === 0
+				) {
 					// Pushed to storyPointWarnings, which the post-cleanup stderr layer
 					// logs once — don't also logger.warn here (avoids a duplicate line).
-					storyPointWarnings.push(
-						"Story points requested but Jira is not configured. Run `teamhero setup` to select Jira projects and story-point fields, or omit the jira source.",
-					);
+					const warning =
+						"Story points requested but Jira is not configured. Run `teamhero setup` to select Jira projects and story-point fields, or omit the jira source.";
+					storyPointWarnings.push(warning);
+					memberMetrics = memberMetrics.map((member) => ({
+						...member,
+						storyPointsObservation: {
+							status: "unavailable",
+							warnings: [warning],
+						},
+						ticketsClosedObservation: {
+							status: "partial",
+							warnings: [warning],
+						},
+						supportTicketsObservation: {
+							status: "unavailable",
+							warnings: [warning],
+						},
+					}));
 					progress
 						.start("Skipping story points (Jira unconfigured).")
 						.succeed();
@@ -505,13 +554,18 @@ export class ReportService {
 						// Exact, unbuffered window: Jira resolutiondate is server-
 						// authoritative, so the +2-day GitHub buffer in window.endISO
 						// would over-include. Use an exclusive end at the day after `until`.
-						const attached = await this.attachStoryPointData(memberMetrics, {
-							startISO: window.startISO,
-							// Prefer the original `until` so a timestamp boundary keeps its
-							// precision instead of being widened to the next midnight by the
-							// date-only window.endDate. Falls back to window.endDate for "now".
-							endISO: resolveExclusiveEndISO(input.until ?? window.endDate),
-						});
+						const attached = this.completedWorkProvider
+							? await this.attachCompletedWorkData(memberMetrics, {
+									startISO: window.startISO,
+									endISO: resolveExclusiveEndISO(input.until ?? window.endDate),
+								})
+							: await this.attachStoryPointData(memberMetrics, {
+									startISO: window.startISO,
+									// Prefer the original `until` so a timestamp boundary keeps its
+									// precision instead of being widened to the next midnight by the
+									// date-only window.endDate. Falls back to window.endDate for "now".
+									endISO: resolveExclusiveEndISO(input.until ?? window.endDate),
+								});
 						memberMetrics = attached.members;
 						if (attached.unmatchedAssignees.length > 0) {
 							// Surface unmatched Jira assignees through the reconciliation
@@ -530,11 +584,31 @@ export class ReportService {
 						spStep.succeed("Story points collected");
 					} catch (error) {
 						spStep.fail("Failed to collect story points");
-						storyPointWarnings.push(
-							`Story-point collection failed: ${(error as Error).message}`,
-						);
+						const warning = `Jira completed-work collection failed: ${(error as Error).message}`;
+						storyPointWarnings.push(warning);
+						memberMetrics = memberMetrics.map((member) => ({
+							...member,
+							storyPointsObservation: {
+								status: "unavailable",
+								warnings: [warning],
+							},
+							ticketsClosedObservation: {
+								status: "partial",
+								warnings: [warning],
+							},
+							supportTicketsObservation: {
+								status: "unavailable",
+								warnings: [warning],
+							},
+						}));
 					}
 				}
+			} else if (input.sections.dataSources.jira) {
+				memberMetrics = memberMetrics.map((member) => ({
+					...member,
+					storyPointsObservation: { status: "not-requested" },
+					supportTicketsObservation: { status: "not-requested" },
+				}));
 			}
 
 			// Collect LOC metrics if requested (report section — auto-enables git)
@@ -1494,7 +1568,17 @@ export class ReportService {
 			);
 
 			const reportData: ReportRenderInput = {
-				schemaVersion: 1,
+				schemaVersion: 2,
+				provenance: {
+					teamheroVersion: "0.1.0",
+					commit: getEnv("TEAMHERO_BUILD_COMMIT"),
+					metricRules: {
+						pullRequests: "event-timestamp-v1",
+						reviews: "submitted-event-v1",
+						storyPoints: "first-done-transition-v1",
+						completedWork: "first-done-transition-v1",
+					},
+				},
 				orgSlug: organization.login,
 				orgName: organization.name,
 				generatedAt: window.generatedAt,
@@ -1959,6 +2043,11 @@ export class ReportService {
 				changesRequested: member.metrics.changesRequestedCount,
 				commented: member.metrics.commentedCount,
 				reviewComments: member.metrics.reviewCommentsCount,
+				ticketsClosed: member.metrics.ticketsClosedCount ?? 0,
+				supportTickets: member.metrics.supportTicketsCount ?? 0,
+				prActivityObservation: member.metrics.prActivityObservation,
+				reviewsObservation: member.metrics.reviewsObservation,
+				ticketsClosedObservation: member.metrics.ticketsClosedObservation,
 				highlights: member.highlights,
 				prHighlights: member.prHighlights,
 				commitHighlights: member.commitHighlights,
@@ -2022,6 +2111,12 @@ export class ReportService {
 				changesRequested: 0,
 				commented: 0,
 				reviewComments: 0,
+				ticketsClosed: 0,
+				supportTickets: 0,
+				prActivityObservation: { status: "not-requested" },
+				reviewsObservation: { status: "not-requested" },
+				ticketsClosedObservation: { status: "not-requested" },
+				supportTicketsObservation: { status: "not-requested" },
 				highlights: [],
 				prHighlights: [],
 				commitHighlights: [],
@@ -2116,14 +2211,106 @@ export class ReportService {
 			const points =
 				result.byPerson.get(member.login) ??
 				byLoginLower.get(member.login.toLowerCase());
-			if (!points) return member;
 			return {
 				...member,
-				storyPointsCompleted: points.totalPoints,
-				storyPointsByProject: points.byProject,
+				storyPointsCompleted: points?.totalPoints ?? 0,
+				storyPointsByProject: points?.byProject ?? {},
+				storyPointsObservation: {
+					status: "reported",
+					value: points?.totalPoints ?? 0,
+				},
 			} satisfies ReportMemberMetrics;
 		});
 		return { members: merged, unmatchedAssignees: result.unmatchedAssignees };
+	}
+
+	private async attachCompletedWorkData(
+		members: ReportMemberMetrics[],
+		window: { startISO: string; endISO: string },
+	): Promise<{ members: ReportMemberMetrics[]; unmatchedAssignees: string[] }> {
+		const provider = this.completedWorkProvider;
+		const options = this.deps.storyPointOptions;
+		if (!provider || !options) return { members, unmatchedAssignees: [] };
+		const result = await provider.fetchCompletedWork(window, options);
+		const byPerson = new Map<
+			string,
+			{
+				points: number;
+				byProject: Record<string, number>;
+				delivery: number;
+				support: number;
+			}
+		>();
+		for (const item of result.items) {
+			if (!item.personId) continue;
+			const values = byPerson.get(item.personId.toLowerCase()) ?? {
+				points: 0,
+				byProject: {},
+				delivery: 0,
+				support: 0,
+			};
+			if (item.countsForStoryPoints) {
+				values.points += item.points ?? 0;
+				values.byProject[item.project] =
+					(values.byProject[item.project] ?? 0) + (item.points ?? 0);
+			}
+			// Subtasks are excluded from completed-ticket counts by default. A key
+			// has one project category, so no Jira item can reach both columns.
+			if (
+				item.countsForCompletedWork &&
+				!item.isSubtask &&
+				item.category === "delivery"
+			)
+				values.delivery += 1;
+			if (
+				item.countsForCompletedWork &&
+				!item.isSubtask &&
+				item.category === "support"
+			)
+				values.support += 1;
+			byPerson.set(item.personId.toLowerCase(), values);
+		}
+		const status = result.complete ? "reported" : "partial";
+		return {
+			members: members.map((member) => {
+				const values = byPerson.get(member.login.toLowerCase()) ?? {
+					points: 0,
+					byProject: {},
+					delivery: 0,
+					support: 0,
+				};
+				return {
+					...member,
+					storyPointsCompleted: values.points,
+					storyPointsByProject: values.byProject,
+					ticketsClosed: (member.ticketsClosed ?? 0) + values.delivery,
+					supportTickets: values.support,
+					storyPointsObservation: {
+						status,
+						value: values.points,
+						warnings: result.warnings,
+					},
+					ticketsClosedObservation: {
+						status:
+							status === "reported" &&
+							member.ticketsClosedObservation?.status === "reported"
+								? "reported"
+								: "partial",
+						value: (member.ticketsClosed ?? 0) + values.delivery,
+						warnings: [
+							...(member.ticketsClosedObservation?.warnings ?? []),
+							...result.warnings,
+						],
+					},
+					supportTicketsObservation: {
+						status,
+						value: values.support,
+						warnings: result.warnings,
+					},
+				};
+			}),
+			unmatchedAssignees: result.unmatchedAssignees,
+		};
 	}
 
 	private buildTaskTrackerPlaceholder(): MemberTaskSummary {

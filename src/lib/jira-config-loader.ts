@@ -80,6 +80,31 @@ function coerceProject(
 			);
 		}
 	}
+	let completedWork: JiraProjectFieldConfig["completedWork"];
+	if (raw.completedWork !== undefined) {
+		if (!raw.completedWork || typeof raw.completedWork !== "object") {
+			throw new Error(
+				`Invalid Jira config at ${path}: projects[${index}].completedWork must be an object`,
+			);
+		}
+		const work = raw.completedWork as Record<string, unknown>;
+		if (!["delivery", "support", "excluded"].includes(String(work.category))) {
+			throw new Error(
+				`Invalid Jira config at ${path}: projects[${index}].completedWork.category must be "delivery", "support", or "excluded"`,
+			);
+		}
+		completedWork = {
+			category: work.category as "delivery" | "support" | "excluded",
+			...(work.issueTypes === undefined
+				? {}
+				: {
+						issueTypes: coerceIssueTypes(
+							work.issueTypes,
+							`${path}: projects[${index}].completedWork.issueTypes`,
+						),
+					}),
+		};
+	}
 	return {
 		key: (raw.key as string).trim(),
 		fieldId: (raw.fieldId as string).trim(),
@@ -92,6 +117,7 @@ function coerceProject(
 						`${path}: projects[${index}].issueTypes`,
 					),
 				}),
+		...(completedWork ? { completedWork } : {}),
 	};
 }
 

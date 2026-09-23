@@ -38,22 +38,18 @@ rules:
 
 ## Metrics
 
-### Tracked PRs — `prsMerged` and `prsClosedUnmerged`
+### Pull-request lifecycle activity
 
-Counted **org-wide via the GitHub search API** by author login
-(`type:pr author:<login> org:<org> created:START..END`), all states, created
-within the window, **summed across every login** belonging to the Person
-(`src/lib/pr-search.ts`). PR authors are always real logins, so search is
-authoritative — this replaces per-repo pull-list iteration, which undercounted
-(a lead read 22 vs an actual 26 because PRs in unscanned repos or beyond the page
-cap were dropped).
+Counted **org-wide via the GitHub search API** and summed across every login
+belonging to the Person. Each column has an independent event query and date:
 
-- **Merged**: closed with `merged_at` set.
-- **Closed-unmerged**: closed with no `merged_at`. Reported **distinctly** — a
-  single "closed" figure is never emitted, so abandoned PRs aren't counted as
-  delivered work.
-- A Person's legacy account contributing zero PRs neither inflates nor deflates
-  the count.
+- **Opened**: author of a PR whose `created_at` is in the window.
+- **Merged**: author of a PR whose `merged_at` is in the window.
+- **Closed-unmerged**: author of an unmerged PR whose `closed_at` is in the
+  window. Reported distinctly so abandoned PRs are not counted as delivered.
+
+This replaces per-repo pull-list iteration and prevents a PR's current state
+from moving an older opening into the week it later merged.
 
 ### Commits — `commitsByMonth`
 
@@ -98,9 +94,8 @@ picked up.
 external collaborators (e.g. a Vendor Pod) alongside org members.
 
 **Excluded:** merge / web-flow commits; generated and data files (the exclusion
-set above) from codeLoc; GitHub's unverified-email attribution shortcut (we
-attribute locally instead); and the **Tickets** column of the tracking
-spreadsheet (task-tracker reconciliation is out of scope).
+set above) from codeLoc; and GitHub's unverified-email attribution shortcut (we
+attribute locally instead).
 
 ## How it's derived (pipeline)
 
@@ -121,3 +116,46 @@ spreadsheet (task-tracker reconciliation is out of scope).
 A contributor reading as zero is therefore distinguishable from one we failed to
 attribute: real zeros are real, and unattributed identities show up in the
 reconciliation report rather than as zero Persons.
+
+## Weekly At-a-Glance event contracts
+
+The deterministic collector and renderer own these values; AI never calculates
+a metric. GitHub search qualifiers use the intended calendar window, never the
+commit API's timezone buffer.
+
+- **PRs Opened** credits the author by `created_at`.
+- **PRs Merged** credits the author by `merged_at`.
+- **Closed (not merged)** credits the author by `closed_at` only when unmerged.
+  Lifecycle columns are independent: a March opening and July merge count in
+  their respective windows.
+- **Reviews** credits the reviewer by `submitted_at`, excluding self-reviews and
+  bots. Approved, changes-requested, and commented are retained internally.
+  Dismissed reviews remain historical submissions and use the commented bucket
+  because GitHub mutates their state but preserves their submission timestamp.
+- **GitHub Tickets Closed** credits `closed_by`; pull requests are excluded.
+
+Org-wide searches are subject to GitHub's 1,000-result cap. Capped, incomplete,
+or failed collection is marked partial/unavailable and rendered as `—`, never as
+an authoritative zero.
+
+## Jira completed work
+
+Every project has one completed-work category: `delivery` feeds **Tickets
+Closed**, `support` feeds **Support Tickets**, and `excluded` feeds neither. The
+default is `delivery`; project-specific issue types may narrow collection.
+Sub-tasks are excluded from ticket counts by default. A project has exactly one
+category, so no Jira key can reach both columns.
+
+Completion is the issue's first changelog transition into any status in the
+site-defined Done category. Candidate JQL is timezone-padded, then exact weekly
+placement comes from the full changelog timestamp. Reopening or completing an
+issue again does not count it twice. Story Points project from the same completed
+item, resolve the field from site metadata/name, and count every issue type
+unless explicitly narrowed.
+
+## Observation states
+
+Serialized metrics distinguish `reported` (including a real zero),
+`not-requested`, `unavailable`, and `partial`. Unmapped source actors remain in
+reconciliation diagnostics with their affected item count; they are never
+reassigned or silently converted to a team zero.

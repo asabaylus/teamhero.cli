@@ -55,6 +55,10 @@ export interface ReportCommandInput {
 	 * for a list, "DFA=Story,Bug;SUPPORT=any" to scope it per project.
 	 */
 	jiraIssueTypes?: string;
+	/** Metric-family allowlist; omitted means every family. */
+	metricFamilies?: Array<
+		"commits" | "prs" | "reviews" | "github-issues" | "jira"
+	>;
 	/** Report template: "detailed" (default), "executive", "individual". */
 	template?: string;
 	/** Optional custom system prompts. Use "default" for all sections, or section-specific keys to override. */
