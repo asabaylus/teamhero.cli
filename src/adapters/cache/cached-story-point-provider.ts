@@ -1,9 +1,15 @@
 /**
  * Caching decorator for StoryPointProvider.
  *
- * Mirrors cached-task-tracker.ts. Namespace "storypoints". Closed windows
- * (end date in the past) are cached permanently; open windows use the default
- * TTL since recent issues can still transition to Done.
+ * Mirrors cached-task-tracker.ts. Namespace "storypoints".
+ *
+ * A past week is NOT settled data. Jira story points are edited after the fact:
+ * an estimate is added to an issue that shipped weeks ago, an issue is reopened
+ * and finished again, an assignee changes. A closed window was once cached
+ * permanently on the analogy of a closed git window, and the result was a
+ * report that replayed a months-old snapshot of Jira for every historical week
+ * and answered a re-run with byte-identical totals — the shape of a wrong
+ * number that looks reproducible. Closed windows now expire too, just slowly.
  */
 
 import type {
@@ -19,7 +25,9 @@ import { getEnv } from "../../lib/env.js";
 import { appendUnifiedLog } from "../../lib/unified-log.js";
 import { computeCacheHash, FileSystemCacheStore } from "./fs-cache-store.js";
 
-const DEFAULT_TTL_SECONDS = 3600; // 1 hour
+const DEFAULT_TTL_SECONDS = 3600; // 1 hour — the window is still open
+/** A closed window changes rarely, but it does change. Re-read once a day. */
+const CLOSED_WINDOW_TTL_SECONDS = 24 * 3600;
 const NAMESPACE = "storypoints";
 
 interface SerializedResult {
@@ -78,7 +86,7 @@ export class CachedStoryPointProvider implements StoryPointProvider {
 			identityCacheKey: this.identityCacheKey,
 			// Bump when the completion rule changes, so entries written under the
 			// old rule miss instead of replaying a stale total.
-			rule: "status-category-changed",
+			rule: "first-completion-from-changelog",
 		});
 
 		const sourceMatch =
@@ -90,9 +98,7 @@ export class CachedStoryPointProvider implements StoryPointProvider {
 				window.startISO >= this.cacheOptions.flushSince);
 
 		if (!shouldFlush) {
-			const hit = await this.cache.get(inputHash, {
-				permanent: isClosedWindow,
-			});
+			const hit = await this.cache.get(inputHash);
 			if (hit) {
 				await appendUnifiedLog({
 					timestamp: new Date().toISOString(),
@@ -119,7 +125,11 @@ export class CachedStoryPointProvider implements StoryPointProvider {
 			byPerson: Object.fromEntries(result.byPerson),
 			unmatchedAssignees: result.unmatchedAssignees,
 		};
-		await this.cache.set(inputHash, serialized, isClosedWindow ? 0 : undefined);
+		await this.cache.set(
+			inputHash,
+			serialized,
+			isClosedWindow ? CLOSED_WINDOW_TTL_SECONDS : undefined,
+		);
 		await appendUnifiedLog({
 			timestamp: new Date().toISOString(),
 			runId: "",

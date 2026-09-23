@@ -45,7 +45,11 @@ import {
 	loadIdentityMapFile,
 	resolveIdentityMapPath,
 } from "../src/lib/identity-map.js";
-import { loadJiraConfig } from "../src/lib/jira-config-loader.js";
+import {
+	applyIssueTypeSelection,
+	loadJiraConfig,
+	parseIssueTypeSelection,
+} from "../src/lib/jira-config-loader.js";
 import { JsonLinesProgressDisplay } from "../src/lib/json-lines-progress.js";
 import { loadOctokitFromEnv } from "../src/lib/octokit.js";
 import { RunHistoryStore } from "../src/lib/run-history.js";
@@ -364,7 +368,15 @@ async function main(): Promise<void> {
 			jiraToken
 		) {
 			try {
-				const jiraConfig = await loadJiraConfig();
+				const loaded = await loadJiraConfig();
+				// The flag narrows or widens this run only; the saved config is
+				// never rewritten by a report.
+				const jiraConfig = loaded
+					? applyIssueTypeSelection(
+							loaded,
+							parseIssueTypeSelection(input.jiraIssueTypes),
+						)
+					: null;
 				if (jiraConfig) {
 					const jiraLookup = buildJiraLoginLookupFromPersons(persons);
 					storyPointProvider = new CachedStoryPointProvider(

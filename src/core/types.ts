@@ -257,12 +257,22 @@ export interface JiraProjectFieldConfig {
 	fieldId: string;
 	/** JQL field name, e.g. "Story point estimate". */
 	jqlName: string;
+	/**
+	 * Issue types that carry points in THIS project. Omitted falls back to the
+	 * run-wide {@link StoryPointOptions.issueTypes}; empty counts every type.
+	 * Per-project because one board can point only its stories while another
+	 * points its bugs too, and a single list forces the narrower answer on both.
+	 */
+	issueTypes?: string[];
 }
 
 export interface StoryPointOptions {
 	/** Per-project field config (from jira-config.json). Empty ⇒ nothing to fetch. */
 	projects: JiraProjectFieldConfig[];
-	/** Issue types that carry points. Omitted or empty ⇒ every issue type. */
+	/**
+	 * Issue types that carry points, for every project that names none of its
+	 * own. Omitted or empty ⇒ every issue type.
+	 */
 	issueTypes?: string[];
 	/**
 	 * Story-point field for every project, as a custom-field id or a display

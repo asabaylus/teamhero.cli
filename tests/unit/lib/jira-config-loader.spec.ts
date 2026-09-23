@@ -3,8 +3,11 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+	applyIssueTypeSelection,
 	autoDetectStoryPointField,
+	type JiraConfig,
 	loadJiraConfig,
+	parseIssueTypeSelection,
 	parseIssueTypesEnv,
 } from "../../../src/lib/jira-config-loader.js";
 
@@ -179,5 +182,140 @@ describe("loadJiraConfig", () => {
 			}),
 		);
 		await expect(loadJiraConfig()).rejects.toThrow(/issueTypes/);
+	});
+});
+
+describe("parseIssueTypeSelection", () => {
+	it("leaves the config alone when nothing was asked for", () => {
+		expect(parseIssueTypeSelection(undefined)).toBeUndefined();
+	});
+
+	it("reads 'any' as every issue type, everywhere", () => {
+		expect(parseIssueTypeSelection("any")).toEqual({ all: [], byProject: {} });
+		expect(parseIssueTypeSelection("ALL")).toEqual({ all: [], byProject: {} });
+		expect(parseIssueTypeSelection("*")).toEqual({ all: [], byProject: {} });
+		expect(parseIssueTypeSelection("")).toEqual({ all: [], byProject: {} });
+	});
+
+	it("reads a bare comma list as the run-wide list", () => {
+		expect(parseIssueTypeSelection("User Story, Bug")).toEqual({
+			all: ["User Story", "Bug"],
+			byProject: {},
+		});
+	});
+
+	it("reads KEY=types entries as per-project lists", () => {
+		expect(parseIssueTypeSelection("DFA=Story,Bug;SUPPORT=any")).toEqual({
+			byProject: { DFA: ["Story", "Bug"], SUPPORT: [] },
+		});
+	});
+
+	it("lets a bare list ride along as the default for unnamed projects", () => {
+		expect(parseIssueTypeSelection("Story;DFA=Bug")).toEqual({
+			all: ["Story"],
+			byProject: { DFA: ["Bug"] },
+		});
+	});
+});
+
+describe("applyIssueTypeSelection", () => {
+	const config: JiraConfig = {
+		projects: [
+			{
+				key: "DFA",
+				fieldId: "customfield_10016",
+				jqlName: "Story point estimate",
+			},
+			{
+				key: "SUPPORT",
+				fieldId: "customfield_10016",
+				jqlName: "Story point estimate",
+				issueTypes: ["Support Request"],
+			},
+		],
+		issueTypes: ["Story"],
+	};
+
+	it("returns the config untouched when nothing was asked for", () => {
+		expect(applyIssueTypeSelection(config, undefined)).toBe(config);
+	});
+
+	it("narrows only the project it names", () => {
+		const applied = applyIssueTypeSelection(
+			config,
+			parseIssueTypeSelection("DFA=Bug"),
+		);
+		expect(applied.projects[0]?.issueTypes).toEqual(["Bug"]);
+		expect(applied.projects[1]?.issueTypes).toEqual(["Support Request"]);
+		expect(applied.issueTypes).toEqual(["Story"]);
+	});
+
+	it("clears per-project lists so a run-wide list can widen a narrowed config", () => {
+		const applied = applyIssueTypeSelection(
+			config,
+			parseIssueTypeSelection("any"),
+		);
+		expect(applied.issueTypes).toEqual([]);
+		expect(applied.projects.every((p) => p.issueTypes === undefined)).toBe(
+			true,
+		);
+	});
+
+	it("never rewrites the config it was given", () => {
+		applyIssueTypeSelection(config, parseIssueTypeSelection("DFA=Bug"));
+		expect(config.projects[0]?.issueTypes).toBeUndefined();
+	});
+});
+
+describe("loadJiraConfig — per-project issue types", () => {
+	it("reads a per-project issueTypes list", async () => {
+		configFile(
+			JSON.stringify({
+				projects: [
+					{
+						key: "PT",
+						fieldId: "customfield_10016",
+						jqlName: "Story point estimate",
+						issueTypes: ["Bug", " Story "],
+					},
+				],
+			}),
+		);
+		const config = await loadJiraConfig();
+		expect(config?.projects[0]?.issueTypes).toEqual(["Bug", "Story"]);
+	});
+
+	it("reads an empty per-project list as every issue type for that project", async () => {
+		configFile(
+			JSON.stringify({
+				projects: [
+					{
+						key: "PT",
+						fieldId: "customfield_10016",
+						jqlName: "Story point estimate",
+						issueTypes: [],
+					},
+				],
+				issueTypes: ["Story"],
+			}),
+		);
+		const config = await loadJiraConfig();
+		expect(config?.projects[0]?.issueTypes).toEqual([]);
+	});
+
+	it("rejects a malformed per-project issueTypes", async () => {
+		configFile(
+			JSON.stringify({
+				projects: [
+					{
+						key: "PT",
+						fieldId: "customfield_10016",
+						jqlName: "Story point estimate",
+						issueTypes: "Bug",
+					},
+				],
+			}),
+		);
+		await expect(loadJiraConfig()).rejects.toThrow(/projects\[0\].issueTypes/);
 	});
 });

@@ -14,12 +14,17 @@ type JiraProjectField struct {
 	Key     string `json:"key"`
 	FieldID string `json:"fieldId"`
 	JqlName string `json:"jqlName"`
+	// IssueTypes are the types that carry points in THIS project, overriding the
+	// config-wide list. A pointer so an omitted list, an empty list ("every
+	// type"), and a named list stay distinguishable across a rewrite — setup
+	// must not quietly drop a per-project choice made by hand.
+	IssueTypes *[]string `json:"issueTypes,omitempty"`
 }
 
 // JiraConfig is the on-disk shape of jira-config.json.
 //
 // IssueTypes is a pointer so we can tell three states apart on disk:
-//   - nil            => field omitted => the TS loader defaults to Story/Task
+//   - nil            => field omitted => the TS loader counts every type
 //   - &[]string{}    => "issueTypes": [] => count EVERY issue type ("any")
 //   - &[]string{...} => count exactly those types
 type JiraConfig struct {
@@ -28,10 +33,14 @@ type JiraConfig struct {
 	CreditBy   string             `json:"creditBy,omitempty"`
 }
 
-// parseIssueTypesSpec turns the --jira-issue-types flag into an IssueTypes value:
-//   - ""                 => nil    (default: Story/Task)
+// parseIssueTypesSpec turns the --jira-issue-types flag into an IssueTypes value
+// for the file written by --jira-projects:
+//   - ""                 => nil    (omitted: every type)
 //   - "any"/"all"/"*"    => &[]{}  (count every type)
 //   - "Story,Bug"        => &[]{"Story","Bug"}
+//
+// The per-project form ("DFA=Story,Bug") is a run-scoped override rather than a
+// setup choice, so it travels to the TS loader in ReportCommandInput instead.
 func parseIssueTypesSpec(raw string) *[]string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -63,7 +72,11 @@ type JiraProject struct {
 
 const (
 	companyManagedFieldID = "customfield_10005"
-	companyManagedJQLName = "Story Points[Number]"
+	// The plain display name, which is what the field list is matched against
+	// when a configured id turns out not to exist on the site. The "[Number]"
+	// suffix JQL allows for disambiguation matches no field name and defeated
+	// that repair.
+	companyManagedJQLName = "Story Points"
 	teamManagedFieldID    = "customfield_10617"
 	teamManagedJQLName    = "Story point estimate"
 )

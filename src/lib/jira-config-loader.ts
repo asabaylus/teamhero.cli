@@ -84,6 +84,112 @@ function coerceProject(
 		key: (raw.key as string).trim(),
 		fieldId: (raw.fieldId as string).trim(),
 		jqlName: (raw.jqlName as string).trim(),
+		...(raw.issueTypes === undefined
+			? {}
+			: {
+					issueTypes: coerceIssueTypes(
+						raw.issueTypes,
+						`${path}: projects[${index}].issueTypes`,
+					),
+				}),
+	};
+}
+
+/** Validate an `issueTypes` value from disk: an array of non-empty strings. */
+function coerceIssueTypes(value: unknown, where: string): string[] {
+	if (
+		!Array.isArray(value) ||
+		!value.every((type) => typeof type === "string" && type.trim())
+	) {
+		throw new Error(
+			`Invalid Jira config at ${where} must be an array of non-empty strings`,
+		);
+	}
+	return (value as string[]).map((type) => type.trim());
+}
+
+/**
+ * Parse an issue-type selection written as one string, for `--jira-issue-types`
+ * and `JIRA_ISSUE_TYPES`.
+ *
+ * Three shapes, so one flag can say all three things an operator wants:
+ *   "any" | "all" | "*"        every issue type, everywhere
+ *   "Story,Bug"                those types, in every project
+ *   "DFA=Story,Bug;SUPPORT=any"  those types, per project
+ * A bare list may ride along with per-project entries ("any;DFA=Bug") and then
+ * applies to every project the string does not name.
+ */
+export function parseIssueTypeSelection(
+	raw: string | undefined,
+): { all?: string[]; byProject: Record<string, string[]> } | undefined {
+	if (raw === undefined) {
+		return undefined;
+	}
+	const selection: { all?: string[]; byProject: Record<string, string[]> } = {
+		byProject: {},
+	};
+	for (const segment of raw.split(";")) {
+		const trimmed = segment.trim();
+		if (trimmed === "") continue;
+		const scoped = /^([^=]+)=(.*)$/.exec(trimmed);
+		if (scoped?.[1] !== undefined && scoped[2] !== undefined) {
+			selection.byProject[scoped[1].trim()] = parseTypeList(scoped[2]);
+		} else {
+			selection.all = parseTypeList(trimmed);
+		}
+	}
+	// A string of only separators means "every type", the same as "any".
+	if (
+		selection.all === undefined &&
+		Object.keys(selection.byProject).length === 0
+	) {
+		selection.all = [];
+	}
+	return selection;
+}
+
+/** "any"/"all"/"*" and the empty list both mean every issue type. */
+function parseTypeList(raw: string): string[] {
+	const trimmed = raw.trim();
+	if (["any", "all", "*", ""].includes(trimmed.toLowerCase())) {
+		return [];
+	}
+	return trimmed
+		.split(",")
+		.map((part) => part.trim())
+		.filter((part) => part !== "");
+}
+
+/**
+ * Apply an issue-type selection over a loaded config, without touching the file.
+ *
+ * A per-project entry wins over the project's own `issueTypes`, which in turn
+ * wins over the run-wide list — the same precedence the provider applies, so a
+ * flag narrows exactly what it names and leaves the rest as configured.
+ */
+export function applyIssueTypeSelection(
+	config: JiraConfig,
+	selection:
+		| { all?: string[]; byProject: Record<string, string[]> }
+		| undefined,
+): JiraConfig {
+	if (!selection) {
+		return config;
+	}
+	return {
+		...config,
+		issueTypes: selection.all ?? config.issueTypes,
+		projects: config.projects.map((project) => {
+			const scoped = selection.byProject[project.key];
+			if (scoped) return { ...project, issueTypes: scoped };
+			// A run-wide list from the flag replaces a per-project list from the
+			// file; otherwise "--jira-issue-types any" could not widen a config.
+			if (selection.all) {
+				const { issueTypes: _dropped, ...rest } = project;
+				return rest;
+			}
+			return project;
+		}),
 	};
 }
 
@@ -100,10 +206,7 @@ export function parseIssueTypesEnv(
 	if (value === undefined) {
 		return undefined;
 	}
-	return value
-		.split(",")
-		.map((part) => part.trim())
-		.filter((part) => part !== "");
+	return parseTypeList(value);
 }
 
 /**
@@ -157,15 +260,7 @@ export async function loadJiraConfig(): Promise<JiraConfig | null> {
 
 	let issueTypes: string[] | undefined;
 	if (parsed.issueTypes !== undefined) {
-		if (
-			!Array.isArray(parsed.issueTypes) ||
-			!parsed.issueTypes.every((t) => typeof t === "string" && t.trim())
-		) {
-			throw new Error(
-				`Invalid Jira config at ${path}: "issueTypes" must be an array of non-empty strings`,
-			);
-		}
-		issueTypes = parsed.issueTypes as string[];
+		issueTypes = coerceIssueTypes(parsed.issueTypes, `${path}: "issueTypes"`);
 	}
 
 	if (

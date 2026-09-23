@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,7 +14,7 @@ func TestAutoDetectJiraField(t *testing.T) {
 		t.Errorf("team-managed: got %+v", team)
 	}
 	company := autoDetectJiraField("SPVR", false)
-	if company.FieldID != "customfield_10005" || company.JqlName != "Story Points[Number]" {
+	if company.FieldID != "customfield_10005" || company.JqlName != "Story Points" {
 		t.Errorf("company-managed: got %+v", company)
 	}
 }
@@ -183,5 +184,36 @@ func TestWriteJiraConfig_DefaultOmitsIssueTypes(t *testing.T) {
 	data, _ := os.ReadFile(filepath.Join(configDir(), "jira-config.json"))
 	if strings.Contains(string(data), "issueTypes") {
 		t.Errorf("default must omit issueTypes, got:\n%s", data)
+	}
+}
+
+// TestJiraProjectField_PerProjectIssueTypesRoundTrip guards the per-project
+// narrowing an operator can write by hand: setup rewrites this file, and a
+// dropped field would silently widen the project back to every issue type.
+func TestJiraProjectField_PerProjectIssueTypesRoundTrip(t *testing.T) {
+	types := []string{"Bug", "User Story"}
+	cfg := JiraConfig{Projects: []JiraProjectField{
+		{Key: "DFA", FieldID: "customfield_10016", JqlName: "Story point estimate", IssueTypes: &types},
+		{Key: "ARC", FieldID: "customfield_10016", JqlName: "Story point estimate"},
+	}}
+
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(data), `"issueTypes":["Bug","User Story"]`) {
+		t.Errorf("per-project issueTypes not written: %s", data)
+	}
+
+	var back JiraConfig
+	if err := json.Unmarshal(data, &back); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if back.Projects[0].IssueTypes == nil || len(*back.Projects[0].IssueTypes) != 2 {
+		t.Errorf("per-project issueTypes lost on read: %+v", back.Projects[0])
+	}
+	// A project that names none must stay absent, not become an empty list.
+	if back.Projects[1].IssueTypes != nil {
+		t.Errorf("absent issueTypes became %+v", back.Projects[1].IssueTypes)
 	}
 }

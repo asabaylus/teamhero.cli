@@ -36,7 +36,7 @@ var (
 	flagOutputFormat         = flag.String("output-format", "", "Report output format: markdown (default), json, both")
 	flagFlushCache           = flag.String("flush-cache", "", "Flush cached data: 'all', sources (metrics,loc,...), or with date 'all:since=2026-02-20'")
 	flagJiraProjects         = flag.String("jira-projects", "", "Configure Jira story points headlessly: KEY[:team|company],... (writes jira-config.json)")
-	flagJiraIssueTypes       = flag.String("jira-issue-types", "", "Which Jira issue types count for story points: comma list (e.g. Story,Task,Bug) or \"any\" for all types. Default: Story,Task")
+	flagJiraIssueTypes       = flag.String("jira-issue-types", "", "Which Jira issue types count for story points: \"any\" (default), a comma list (Story,Task,Bug), or per project (DFA=Story,Bug;SUPPORT=any)")
 	flagForeground           = flag.Bool("foreground", false, "Run subprocess with direct I/O (bypass event piping)")
 	flagAdvanced             = flag.Bool("advanced", false, "Use full configuration wizard (skip express mode)")
 	flagSequential           = flag.Bool("sequential", false, "Run API requests sequentially instead of in parallel")

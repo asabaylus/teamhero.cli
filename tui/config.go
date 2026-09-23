@@ -76,10 +76,11 @@ type ReportConfig struct {
 	SystemPrompts        map[string]string `json:"systemPrompts,omitempty"`
 
 	// Transient fields — not persisted to config.json
-	FlushCache  string `json:"-"` // wizard cache flush choice (e.g. "all", "all:since=2026-02-20")
-	AIProvider  string `json:"-"` // e.g. "OpenAI"
-	AIModel     string `json:"-"` // e.g. "gpt-5-mini"
-	ServiceTier string `json:"-"` // e.g. "flex" or ""
+	FlushCache     string `json:"-"` // wizard cache flush choice (e.g. "all", "all:since=2026-02-20")
+	JiraIssueTypes string `json:"-"` // --jira-issue-types: "any", "Story,Bug", "DFA=Bug;SUPPORT=any"
+	AIProvider     string `json:"-"` // e.g. "OpenAI"
+	AIModel        string `json:"-"` // e.g. "gpt-5-mini"
+	ServiceTier    string `json:"-"` // e.g. "flex" or ""
 }
 
 // ReportSections maps to the nested sections structure.
@@ -123,6 +124,7 @@ type ReportCommandInput struct {
 	Sequential           *bool             `json:"sequential,omitempty"`
 	DiscrepancyThreshold *int              `json:"discrepancyThreshold,omitempty"`
 	FlushCache           string            `json:"flushCache,omitempty"`
+	JiraIssueTypes       string            `json:"jiraIssueTypes,omitempty"` // run-scoped --jira-issue-types
 	Mode                 string            `json:"mode,omitempty"`
 	OutputPath           string            `json:"outputPath,omitempty"`
 	OutputFormat         string            `json:"outputFormat,omitempty"`
@@ -254,6 +256,14 @@ func (c *ReportConfig) ToCommandInput(mode string) ReportCommandInput {
 		input.FlushCache = *flagFlushCache
 	} else if c.FlushCache != "" {
 		input.FlushCache = c.FlushCache
+	}
+	// Pass through --jira-issue-types: a run-scoped override of the issue types
+	// in jira-config.json, applied by the TS loader. Setting it alone no longer
+	// does nothing; it used to be read only alongside --jira-projects.
+	if flagWasSet("jira-issue-types") {
+		input.JiraIssueTypes = *flagJiraIssueTypes
+	} else if c.JiraIssueTypes != "" {
+		input.JiraIssueTypes = c.JiraIssueTypes
 	}
 	// Pass through --output if set
 	if flagWasSet("output") && *flagOutput != "" {
