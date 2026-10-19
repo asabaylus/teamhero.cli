@@ -637,6 +637,79 @@ describe("MetricsService REST API Collection", () => {
 			expect(result.members[0].metrics.linesDeleted).toBe(15);
 		});
 
+		it("credits pull request commits to the window they were written in, not the window the PR closed in", async () => {
+			const mockListCommits = mock().mockResolvedValue({ data: [] });
+			const mockListPulls = mock().mockResolvedValue({
+				data: [
+					{
+						number: 1759,
+						title: "Stale branch closed during cleanup",
+						html_url: "https://github.com/org/repo/pull/1759",
+						state: "closed",
+						created_at: "2025-09-11T12:00:00Z",
+						merged_at: null,
+						closed_at: "2025-10-08T15:00:00Z",
+						updated_at: "2025-10-08T15:00:00Z",
+						additions: 10,
+						deletions: 1,
+						body: "",
+						user: { login: "dev1" },
+					},
+				],
+			});
+			const mockGetPull = mock().mockResolvedValue({
+				data: { additions: 10, deletions: 1 },
+			});
+			const commit = (sha: string, date: string) => ({
+				sha,
+				html_url: `https://github.com/org/repo/commit/${sha}`,
+				commit: {
+					message: `commit ${sha}`,
+					author: { date },
+					committer: { date },
+				},
+			});
+			const mockListPullCommits = mock().mockResolvedValue({
+				data: [
+					commit("old0001", "2025-09-11T10:00:00Z"),
+					commit("old0002", "2025-09-15T10:00:00Z"),
+					commit("new0001", "2025-10-07T10:00:00Z"),
+				],
+			});
+
+			const service = new MetricsService({
+				rest: {
+					repos: { listCommits: mockListCommits },
+					pulls: {
+						list: mockListPulls,
+						get: mockGetPull,
+						listCommits: mockListPullCommits,
+					},
+				},
+			} as any);
+			const result = await service.collect({
+				organization: { id: 1, login: "org", name: "Organization", nodeId: "ORG1" },
+				members: [
+					{
+						id: 1,
+						nodeId: "DEV1",
+						login: "dev1",
+						displayName: "Developer One",
+						isBot: false,
+						teamSlugs: [],
+					},
+				],
+				repositories: [
+					{ id: 1, name: "repo", isPrivate: false, isArchived: false },
+				],
+				since: "2025-10-04T00:00:00Z",
+				until: "2025-10-10T23:59:59Z",
+			});
+
+			expect(result.members[0].metrics.commitsCount).toBe(1);
+			expect(result.members[0].rawCommits?.map((c) => c.oid)).toEqual(["new0001"]);
+		});
+
 		it("tracks LOC totals even when highlights are omitted and records PR detail failures", async () => {
 			const mockListCommits = mock().mockResolvedValue({ data: [] });
 			const mockListPulls = mock().mockResolvedValue({

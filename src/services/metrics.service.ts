@@ -1307,8 +1307,23 @@ export class MetricsService implements MetricsProvider {
 						// This lets commits show up even if they haven't landed on the
 						// default branch yet. Folded sequentially in PR order so the result
 						// matches the previous inline-await version exactly.
-						const prCommits = prCommitsByNumber.get(pr.number);
-						if (prCommits) {
+						//
+						// A commit belongs to the window it was written in, not the window its
+						// pull request happened to be opened, merged, or closed in. Closing a stale
+						// branch during cleanup must not move weeks-old commits into this week.
+						const prCommits = prCommitsByNumber
+							.get(pr.number)
+							?.filter((c) => {
+								const writtenAt = new Date(
+									c.commit?.author?.date ?? c.commit?.committer?.date ?? "",
+								).getTime();
+								return (
+									!Number.isNaN(writtenAt) &&
+									writtenAt >= sinceTime &&
+									writtenAt <= untilTime
+								);
+							});
+						if (prCommits && prCommits.length > 0) {
 							// Count commits from this PR toward the PR commit total
 							aggregate.commits += prCommits.length;
 							const existing = commitDetailsByLogin.get(login) ?? [];
