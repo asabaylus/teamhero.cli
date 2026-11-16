@@ -18,6 +18,16 @@ across all repos and all states. This is the number that goes in the
 spreadsheet's weekly PR columns.
 _Avoid_: Merged PR (a separate metric), closed PR
 
+**Commit credit**:
+A pull request's commits are credited to the reporting week in which the pull
+request **merged into the default branch** — every commit, whenever it was
+written. A pull request merged into another branch credits no commits; its
+commits count when they reach the default branch. A pull request that
+was only opened, closed without merging, or updated in the week contributes no
+commits. Commits pushed straight to the default branch count by their own date.
+See `docs/adr/0002-credit-commits-to-merge-week.md`.
+_Avoid_: crediting commits by author or committer date ("written in" week)
+
 **Identity map**:
 The version-controlled, human-edited mapping of git emails / author names /
 GitHub logins onto a Person, used for cases GitHub cannot auto-link. Real

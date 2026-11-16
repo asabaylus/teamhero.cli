@@ -58,6 +58,19 @@ teamhero report --headless --foreground --flush-cache loc  # Force re-fetch LOC
 - Use `consola` for logging — never `console.log` (CLI layer has legacy violations)
 - `@inquirer/prompts` is being removed — do not use in new code
 
+## Commit Credit Rule (Manager Decision — Do Not Change)
+
+- A pull request's commits count in the week the PR **merged**, all of them, whenever they were
+  written. PRs only opened, closed unmerged, or updated in the week add **no** commits.
+- Never place PR commits by author/committer date. `3e45ba7` did that and was reverted.
+- Default-branch copies of merged PRs (squash, rebase, merge commits) are never counted; direct
+  pushes are. The count is uncapped: `TEAMHERO_MAX_HIGHLIGHTS_PER_MEMBER` limits only the sample.
+- Only PRs merged **into the default branch** credit commits. Stacked PRs (into a feature branch)
+  and promotion PRs (into a release branch) credit none, or the same commits count twice.
+- Never count a commit twice: each PR once per run, each SHA once per person.
+- Rule and history: `docs/adr/0002-credit-commits-to-merge-week.md`. Guard tests: "commit credit
+  follows the pull request's merge week" in `tests/unit/metrics.rest-api.spec.ts`.
+
 ## LoC Commit Collection (Easy to Get Wrong)
 
 - LoC line counts come from **GraphQL** (`src/metrics/loc.graphql.ts`), not REST. The
