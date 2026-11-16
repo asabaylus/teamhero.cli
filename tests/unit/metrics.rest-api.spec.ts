@@ -637,29 +637,12 @@ describe("MetricsService REST API Collection", () => {
 			expect(result.members[0].metrics.linesDeleted).toBe(15);
 		});
 
-		it("credits pull request commits to the window they were written in, not the window the PR closed in", async () => {
-			const mockListCommits = mock().mockResolvedValue({ data: [] });
-			const mockListPulls = mock().mockResolvedValue({
-				data: [
-					{
-						number: 1759,
-						title: "Stale branch closed during cleanup",
-						html_url: "https://github.com/org/repo/pull/1759",
-						state: "closed",
-						created_at: "2025-09-11T12:00:00Z",
-						merged_at: null,
-						closed_at: "2025-10-08T15:00:00Z",
-						updated_at: "2025-10-08T15:00:00Z",
-						additions: 10,
-						deletions: 1,
-						body: "",
-						user: { login: "dev1" },
-					},
-				],
-			});
-			const mockGetPull = mock().mockResolvedValue({
-				data: { additions: 10, deletions: 1 },
-			});
+		/*
+		 * RULE: a pull request's commits count in the week the pull request merged — all of them,
+		 * whenever they were written — and never in a week it was only opened, closed, or updated.
+		 * See docs/adr/0002-credit-commits-to-merge-week.md. These tests guard that rule.
+		 */
+		describe("commit credit follows the pull request's merge week", () => {
 			const commit = (sha: string, date: string) => ({
 				sha,
 				html_url: `https://github.com/org/repo/commit/${sha}`,
@@ -669,45 +652,416 @@ describe("MetricsService REST API Collection", () => {
 					committer: { date },
 				},
 			});
-			const mockListPullCommits = mock().mockResolvedValue({
-				data: [
-					commit("old0001", "2025-09-11T10:00:00Z"),
-					commit("old0002", "2025-09-15T10:00:00Z"),
-					commit("new0001", "2025-10-07T10:00:00Z"),
-				],
-			});
-
-			const service = new MetricsService({
-				rest: {
-					repos: { listCommits: mockListCommits },
-					pulls: {
-						list: mockListPulls,
-						get: mockGetPull,
-						listCommits: mockListPullCommits,
-					},
-				},
-			} as any);
-			const result = await service.collect({
-				organization: { id: 1, login: "org", name: "Organization", nodeId: "ORG1" },
-				members: [
-					{
-						id: 1,
-						nodeId: "DEV1",
-						login: "dev1",
-						displayName: "Developer One",
-						isBot: false,
-						teamSlugs: [],
-					},
-				],
-				repositories: [
-					{ id: 1, name: "repo", isPrivate: false, isArchived: false },
-				],
+			const WEEK = {
 				since: "2025-10-04T00:00:00Z",
 				until: "2025-10-10T23:59:59Z",
+			};
+
+			async function collectWith(
+				pr: Record<string, unknown>,
+				prCommits: ReturnType<typeof commit>[],
+			) {
+				const service = new MetricsService({
+					rest: {
+						repos: { listCommits: mock().mockResolvedValue({ data: [] }) },
+						pulls: {
+							list: mock().mockResolvedValue({
+								data: [
+									{
+										html_url: "https://github.com/org/repo/pull/1",
+										additions: 10,
+										deletions: 1,
+										body: "",
+										user: { login: "dev1" },
+										...pr,
+									},
+								],
+							}),
+							get: mock().mockResolvedValue({
+								data: { additions: 10, deletions: 1 },
+							}),
+							listCommits: mock().mockResolvedValue({ data: prCommits }),
+						},
+					},
+				} as any);
+				const result = await service.collect({
+					organization: {
+						id: 1,
+						login: "org",
+						name: "Organization",
+						nodeId: "ORG1",
+					},
+					members: [
+						{
+							id: 1,
+							nodeId: "DEV1",
+							login: "dev1",
+							displayName: "Developer One",
+							isBot: false,
+							teamSlugs: [],
+						},
+					],
+					repositories: [
+						{ id: 1, name: "repo", isPrivate: false, isArchived: false },
+					],
+					...WEEK,
+				});
+				return result.members[0];
+			}
+
+			it("credits every commit of a PR merged this week, even commits written weeks earlier", async () => {
+				const member = await collectWith(
+					{
+						number: 1,
+						title: "Merged this week",
+						state: "closed",
+						created_at: "2025-09-11T12:00:00Z",
+						merged_at: "2025-10-08T15:00:00Z",
+						closed_at: "2025-10-08T15:00:00Z",
+						updated_at: "2025-10-08T15:00:00Z",
+					},
+					[
+						commit("old0001", "2025-09-11T10:00:00Z"),
+						commit("old0002", "2025-09-15T10:00:00Z"),
+						commit("new0001", "2025-10-07T10:00:00Z"),
+					],
+				);
+				expect(member.metrics.commitsCount).toBe(3);
+				expect(member.rawCommits?.map((c) => c.oid).sort()).toEqual([
+					"new0001",
+					"old0001",
+					"old0002",
+				]);
 			});
 
-			expect(result.members[0].metrics.commitsCount).toBe(1);
-			expect(result.members[0].rawCommits?.map((c) => c.oid)).toEqual(["new0001"]);
+			it("credits no commits for a PR closed this week without merging, even commits written this week", async () => {
+				const member = await collectWith(
+					{
+						number: 1,
+						title: "Stale branch closed during cleanup",
+						state: "closed",
+						created_at: "2025-09-11T12:00:00Z",
+						merged_at: null,
+						closed_at: "2025-10-08T15:00:00Z",
+						updated_at: "2025-10-08T15:00:00Z",
+					},
+					[
+						commit("old0001", "2025-09-11T10:00:00Z"),
+						commit("new0001", "2025-10-07T10:00:00Z"),
+					],
+				);
+				expect(member.metrics.commitsCount).toBe(0);
+			});
+
+			it("credits no commits for a PR opened this week that has not merged yet", async () => {
+				const member = await collectWith(
+					{
+						number: 1,
+						title: "Still open",
+						state: "open",
+						created_at: "2025-10-06T12:00:00Z",
+						merged_at: null,
+						closed_at: null,
+						updated_at: "2025-10-09T15:00:00Z",
+					},
+					[commit("new0001", "2025-10-07T10:00:00Z")],
+				);
+				expect(member.metrics.commitsCount).toBe(0);
+			});
+		});
+
+		/*
+		 * The Commits count is uncapped, and a default-branch copy of a merged pull request
+		 * (squash, rebase, or merge commit) never counts again on top of the pull request's
+		 * own commits. See docs/adr/0002-credit-commits-to-merge-week.md.
+		 */
+		describe("commit count is uncapped and counts merged pull request work once", () => {
+			const member = {
+				id: 1,
+				nodeId: "DEV1",
+				login: "dev1",
+				displayName: "Developer One",
+				isBot: false,
+				teamSlugs: [],
+			};
+			const defaultBranchCommit = (sha: string) => ({
+				sha,
+				html_url: `https://github.com/org/repo/commit/${sha}`,
+				author: { login: "dev1" },
+				commit: {
+					message: `commit ${sha}`,
+					author: { date: "2025-10-07T10:00:00Z" },
+					committer: { date: "2025-10-07T10:00:00Z" },
+				},
+			});
+			const branchCommit = (sha: string) => ({
+				sha,
+				html_url: `https://github.com/org/repo/commit/${sha}`,
+				commit: {
+					message: `commit ${sha}`,
+					author: { date: "2025-09-20T10:00:00Z" },
+					committer: { date: "2025-09-20T10:00:00Z" },
+				},
+			});
+
+			function serviceWith(opts: {
+				defaultBranch: ReturnType<typeof defaultBranchCommit>[];
+				pulls?: Record<string, unknown>[];
+				prCommits?: ReturnType<typeof branchCommit>[];
+				/** Commits per PR number and REST page (1-based); overrides `prCommits`. */
+				prCommitsFor?: (
+					pullNumber: number,
+					page: number,
+				) => ReturnType<typeof branchCommit>[];
+				/** Successive pages of `pulls.list`; overrides `pulls`. */
+				pullPages?: Record<string, unknown>[][];
+				mergedCopies?: Set<string>;
+			}) {
+				const pages = [];
+				for (let i = 0; i < opts.defaultBranch.length; i += 100)
+					pages.push(opts.defaultBranch.slice(i, i + 100));
+				let page = 0;
+				const graphql = mock(async (query: string) => {
+					const repository: Record<string, unknown> = {};
+					for (const match of query.matchAll(
+						/(c\d+): object\(oid: "([0-9a-f]+)"\)/g,
+					)) {
+						const merged = opts.mergedCopies?.has(match[2]) ?? false;
+						repository[match[1]] = {
+							associatedPullRequests: {
+								nodes: merged ? [{ merged: true, baseRefName: "dev" }] : [],
+							},
+						};
+					}
+					return { repository };
+				});
+				const service = new MetricsService({
+					graphql,
+					rest: {
+						repos: {
+							listCommits: mock(async () => ({ data: pages[page++] ?? [] })),
+						},
+						pulls: {
+							list: opts.pullPages
+								? mock(async ({ page }: { page: number }) => ({
+										data: opts.pullPages?.[page - 1] ?? [],
+									}))
+								: mock().mockResolvedValue({ data: opts.pulls ?? [] }),
+							get: mock().mockResolvedValue({
+								data: { additions: 1, deletions: 0 },
+							}),
+							listCommits: mock(
+								async ({
+									pull_number,
+									page,
+								}: {
+									pull_number: number;
+									page?: number;
+								}) => ({
+									data: opts.prCommitsFor
+										? opts.prCommitsFor(pull_number, page ?? 1)
+										: (page ?? 1) === 1
+											? (opts.prCommits ?? [])
+											: [],
+								}),
+							),
+						},
+					},
+				} as any);
+				return { service, graphql };
+			}
+
+			const member2 = {
+				...member,
+				id: 2,
+				nodeId: "DEV2",
+				login: "dev2",
+				displayName: "Developer Two",
+			};
+			const mergedPull = (
+				number: number,
+				login: string,
+				baseRef: string,
+			): Record<string, unknown> => ({
+				number,
+				title: `PR ${number}`,
+				html_url: `https://github.com/org/repo/pull/${number}`,
+				state: "closed",
+				created_at: "2025-09-20T12:00:00Z",
+				merged_at: "2025-10-07T12:00:00Z",
+				closed_at: "2025-10-07T12:00:00Z",
+				updated_at: "2025-10-07T12:00:00Z",
+				additions: 1,
+				deletions: 0,
+				body: "",
+				user: { login },
+				base: { ref: baseRef },
+			});
+
+			const collect = (service: MetricsService) =>
+				service.collect({
+					organization: { id: 1, login: "org", name: "Org", nodeId: "ORG1" },
+					members: [member, member2],
+					repositories: [
+						{
+							id: 1,
+							name: "repo",
+							isPrivate: false,
+							isArchived: false,
+							defaultBranch: "dev",
+						},
+					],
+					since: "2025-10-04T00:00:00Z",
+					until: "2025-10-10T23:59:59Z",
+				});
+
+			it("counts every direct push, far past the 50-commit sample cap", async () => {
+				const shas = Array.from({ length: 120 }, (_, i) =>
+					`d${String(i).padStart(6, "0")}`.replace(/[^0-9a-f]/g, "a"),
+				);
+				const { service } = serviceWith({
+					defaultBranch: shas.map(defaultBranchCommit),
+				});
+				const result = await collect(service);
+				expect(result.members[0].metrics.commitsCount).toBe(120);
+			});
+
+			it("does not count a squash copy of a PR merged this week on top of the PR's commits", async () => {
+				const { service } = serviceWith({
+					defaultBranch: [
+						defaultBranchCommit("5a0a5a0"),
+						defaultBranchCommit("d1ec7aa"),
+					],
+					mergedCopies: new Set(["5a0a5a0"]),
+					pulls: [
+						{
+							number: 7,
+							title: "Merged with squash",
+							html_url: "https://github.com/org/repo/pull/7",
+							state: "closed",
+							created_at: "2025-09-20T12:00:00Z",
+							merged_at: "2025-10-07T12:00:00Z",
+							closed_at: "2025-10-07T12:00:00Z",
+							updated_at: "2025-10-07T12:00:00Z",
+							additions: 1,
+							deletions: 0,
+							body: "",
+							user: { login: "dev1" },
+						},
+					],
+					prCommits: [
+						branchCommit("b0000a1"),
+						branchCommit("b0000a2"),
+						branchCommit("b0000a3"),
+					],
+				});
+				const result = await collect(service);
+				// 3 PR commits + 1 direct push; the squash copy 5a0a5a0 is not counted.
+				expect(result.members[0].metrics.commitsCount).toBe(4);
+				expect(result.warnings.join("\n")).not.toContain("counted twice");
+			});
+
+			it("warns instead of dropping commits silently when GitHub GraphQL is unavailable", async () => {
+				const service = new MetricsService({
+					rest: {
+						repos: {
+							listCommits: mock()
+								.mockResolvedValueOnce({
+									data: [defaultBranchCommit("d1ec7aa")],
+								})
+								.mockResolvedValue({ data: [] }),
+						},
+						pulls: { list: mock().mockResolvedValue({ data: [] }) },
+					},
+				} as any);
+				const result = await collect(service);
+				expect(result.members[0].metrics.commitsCount).toBe(1);
+				expect(result.warnings.join("\n")).toContain("may be counted twice");
+			});
+
+			it("credits no commits for a PR merged into a branch other than the default branch", async () => {
+				// A stacked PR merged into a feature branch, and a promotion PR merged into a release
+				// branch, both carry commits that count when they reach the default branch. Counting
+				// them here too would count the same commits twice, often for the wrong person.
+				const { service } = serviceWith({
+					defaultBranch: [],
+					pulls: [
+						mergedPull(11, "dev1", "feat/stacked-base"),
+						mergedPull(12, "dev2", "main"),
+					],
+					prCommitsFor: (number, page) =>
+						page > 1
+							? []
+							: number === 11
+								? [branchCommit("aaaa001"), branchCommit("aaaa002")]
+								: [branchCommit("bbbb001"), branchCommit("aaaa001")],
+				});
+				const result = await collect(service);
+				expect(result.members[0].metrics.commitsCount).toBe(0);
+				expect(result.members[1].metrics.commitsCount).toBe(0);
+			});
+
+			it("counts a stacked PR's commits once, through the PR that reaches the default branch", async () => {
+				const { service } = serviceWith({
+					defaultBranch: [],
+					pulls: [
+						mergedPull(21, "dev1", "feat/stacked-base"),
+						mergedPull(22, "dev2", "dev"),
+					],
+					prCommitsFor: (number, page) =>
+						page > 1
+							? []
+							: number === 21
+								? [branchCommit("cccc001"), branchCommit("cccc002")]
+								: [
+										branchCommit("cccc001"),
+										branchCommit("cccc002"),
+										branchCommit("dddd001"),
+									],
+				});
+				const result = await collect(service);
+				const total =
+					result.members[0].metrics.commitsCount +
+					result.members[1].metrics.commitsCount;
+				expect(total).toBe(3);
+			});
+
+			it("counts every commit of a PR with more than 100 commits", async () => {
+				const all = Array.from({ length: 130 }, (_, i) =>
+					branchCommit(`e${i.toString(16).padStart(6, "0")}`),
+				);
+				const { service } = serviceWith({
+					defaultBranch: [],
+					pulls: [mergedPull(31, "dev1", "dev")],
+					prCommitsFor: (_number, page) =>
+						all.slice((page - 1) * 100, page * 100),
+				});
+				const result = await collect(service);
+				expect(result.members[0].metrics.commitsCount).toBe(130);
+			});
+
+			it("counts a PR once when GitHub returns it on two pages", async () => {
+				// The PR list is sorted by last update; a PR updated during the run moves and can
+				// appear again on the next page.
+				const pr = mergedPull(41, "dev1", "dev");
+				// 99 PRs closed long ago but touched this week fill page 1, so the run reads page 2.
+				const filler = Array.from({ length: 99 }, (_, i) => ({
+					...mergedPull(1000 + i, "dev2", "dev"),
+					merged_at: null,
+					created_at: "2025-08-01T12:00:00Z",
+					closed_at: "2025-08-02T12:00:00Z",
+					updated_at: "2025-10-09T12:00:00Z",
+				}));
+				const { service } = serviceWith({
+					defaultBranch: [],
+					pullPages: [[...filler, pr], [pr]],
+					prCommitsFor: (_number, page) =>
+						page > 1 ? [] : [branchCommit("f000001"), branchCommit("f000002")],
+				});
+				const result = await collect(service);
+				expect(result.members[0].metrics.prsMergedCount).toBe(1);
+				expect(result.members[0].metrics.commitsCount).toBe(2);
+			});
 		});
 
 		it("tracks LOC totals even when highlights are omitted and records PR detail failures", async () => {

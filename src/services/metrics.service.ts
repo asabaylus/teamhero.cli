@@ -87,7 +87,78 @@ interface CommitAggregate {
 	commits: number;
 	additions: number;
 	deletions: number;
+	/** A capped sample for narrative sections. Never use its length as the count. */
 	highlights: CommitContributionInfo[];
+	/**
+	 * Every commit SHA credited to this person in the window, uncapped. This is the
+	 * Commits count: direct pushes by their date, plus every commit of each pull request
+	 * merged in the window (ADR 0002).
+	 */
+	countedOids?: Set<string>;
+}
+
+const COMMIT_PR_BATCH = 100;
+/** GitHub lists at most 250 commits for one pull request: three pages of 100. */
+const MAX_PR_COMMIT_PAGES = 3;
+
+/**
+ * SHAs, from one page of default-branch commits, that reached the default branch
+ * through a merged pull request: squash commits, rebased copies, and merge commits.
+ * Their pull request already credits its own commits in its merge week (ADR 0002),
+ * so counting the default-branch copy too would count the same work twice.
+ */
+export async function commitsFromMergedPullRequests(
+	graphql:
+		| (<T>(query: string, variables: Record<string, unknown>) => Promise<T>)
+		| undefined,
+	owner: string,
+	repo: string,
+	defaultBranch: string,
+	shas: string[],
+): Promise<Set<string>> {
+	const fromPullRequests = new Set<string>();
+	if (!graphql || shas.length === 0) {
+		throw new Error("GitHub GraphQL is unavailable");
+	}
+	for (let start = 0; start < shas.length; start += COMMIT_PR_BATCH) {
+		const batch = shas.slice(start, start + COMMIT_PR_BATCH);
+		const fields = batch
+			.map((sha, index) =>
+				// SHAs come from GitHub itself; reject anything that is not one.
+				/^[0-9a-f]{7,40}$/i.test(sha)
+					? `c${index}: object(oid: "${sha}") { ... on Commit { associatedPullRequests(first: 10) { nodes { merged baseRefName } } } }`
+					: "",
+			)
+			.filter(Boolean)
+			.join("\n");
+		const data = await graphql<{
+			repository: Record<
+				string,
+				{
+					associatedPullRequests?: {
+						nodes: Array<{ merged: boolean; baseRefName: string }>;
+					};
+				} | null
+			>;
+		}>(
+			`query CommitPullRequests($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { ${fields} } }`,
+			{ owner, name: repo },
+		);
+		batch.forEach((sha, index) => {
+			const nodes =
+				data.repository?.[`c${index}`]?.associatedPullRequests?.nodes ?? [];
+			if (
+				nodes.some(
+					(node) =>
+						node.merged &&
+						(!defaultBranch || node.baseRefName === defaultBranch),
+				)
+			) {
+				fromPullRequests.add(sha);
+			}
+		});
+	}
+	return fromPullRequests;
 }
 
 interface PullRequestAggregate {
@@ -377,7 +448,9 @@ export class MetricsService implements MetricsProvider {
 					(h: CommitContributionInfo) => h.oid,
 				),
 			);
+			aggregate.countedOids ??= new Set<string>();
 			for (const info of details) {
+				aggregate.countedOids.add(info.oid);
 				if (!seen.has(info.oid)) {
 					aggregate.highlights.push(info);
 					seen.add(info.oid);
@@ -534,7 +607,10 @@ export class MetricsService implements MetricsProvider {
 		};
 		const metrics: ContributionMetricSet = {
 			memberLogin: member.login,
-			commitsCount: commitTotals.highlights.length, // Deduplicated across default-branch and PR commits
+			// Uncapped and deduplicated: direct pushes plus the commits of PRs merged in the
+			// window. `highlights` is a capped sample and must never be the count.
+			commitsCount:
+				commitTotals.countedOids?.size ?? commitTotals.highlights.length,
 			prsOpenedCount: prTotals.opened,
 			prsClosedCount: prTotals.closed,
 			prsMergedCount: prTotals.merged,
@@ -950,9 +1026,35 @@ export class MetricsService implements MetricsProvider {
 						this.logger.info(`[commits] ${repoLabel} page ${page}`);
 					}
 
+					// Default-branch copies of pull request work are credited through the
+					// pull request in its merge week, never here (ADR 0002).
+					let viaPullRequest = new Set<string>();
+					try {
+						viaPullRequest = await commitsFromMergedPullRequests(
+							typeof this.octokit.graphql === "function"
+								? (this.octokit.graphql as unknown as <T>(
+										query: string,
+										variables: Record<string, unknown>,
+									) => Promise<T>)
+								: undefined,
+							ownerLogin,
+							repo.name,
+							repo.defaultBranch,
+							response.data.map((commit) => commit.sha),
+						);
+					} catch (error) {
+						const reason =
+							error instanceof Error ? error.message : String(error);
+						const warning = `Could not tell direct pushes from merged pull request commits in ${repoLabel} (${reason}); its commits may be counted twice.`;
+						if (!warnings.includes(warning)) warnings.push(warning);
+					}
+
 					for (const commit of response.data) {
 						const login = commit.author?.login?.toLowerCase();
 						if (!login) {
+							continue;
+						}
+						if (viaPullRequest.has(commit.sha)) {
 							continue;
 						}
 
@@ -963,6 +1065,8 @@ export class MetricsService implements MetricsProvider {
 							highlights: [],
 						};
 						aggregate.commits += 1;
+						aggregate.countedOids ??= new Set<string>();
+						aggregate.countedOids.add(commit.sha);
 						// Note: Line counts (additions/deletions) not tracked - REST API doesn't provide this efficiently
 
 						if (aggregate.highlights.length < MAX_HIGHLIGHTS_PER_MEMBER) {
@@ -1076,6 +1180,9 @@ export class MetricsService implements MetricsProvider {
 			let truncated = false;
 			const repoLabel = `${ownerLogin}/${repo.name}`;
 			let repoMergedCount = 0;
+			// The list is sorted by last update, so a PR updated during the run can move onto
+			// the next page and come back. Each PR is counted once per repository.
+			const seenPullRequests = new Set<number>();
 
 			if (!onProgressUpdate) {
 				this.logger.info(
@@ -1117,7 +1224,9 @@ export class MetricsService implements MetricsProvider {
 					// original order, so aggregation is byte-for-byte identical to the serial
 					// version; only the network I/O overlaps.
 					const prsForDetails: PullRequestForDetails[] = response.data.filter(
-						(pr) => this.prQualifiesForDetails(pr, sinceTime, untilTime),
+						(pr) =>
+							!seenPullRequests.has(pr.number) &&
+							this.prQualifiesForDetails(pr, sinceTime, untilTime),
 					);
 					const lineStatsByPr = new Map<
 						number,
@@ -1156,21 +1265,29 @@ export class MetricsService implements MetricsProvider {
 								localErrors,
 							);
 							try {
-								const commitsResponse =
-									await this.octokit.rest.pulls.listCommits({
-										owner: ownerLogin,
-										repo: repo.name,
-										pull_number: pr.number,
-										per_page: 100,
-									});
-								if (Array.isArray(commitsResponse.data)) {
-									return {
-										pr,
-										stats,
-										localErrors,
-										commits: commitsResponse.data,
-									};
+								// Read every page: a PR with more than 100 commits must count all of
+								// them. GitHub lists at most 250 commits for one pull request.
+								const commits: Awaited<
+									ReturnType<typeof this.octokit.rest.pulls.listCommits>
+								>["data"] = [];
+								for (
+									let commitPage = 1;
+									commitPage <= MAX_PR_COMMIT_PAGES;
+									commitPage += 1
+								) {
+									const commitsResponse =
+										await this.octokit.rest.pulls.listCommits({
+											owner: ownerLogin,
+											repo: repo.name,
+											pull_number: pr.number,
+											per_page: 100,
+											page: commitPage,
+										});
+									if (!Array.isArray(commitsResponse.data)) break;
+									commits.push(...commitsResponse.data);
+									if (commitsResponse.data.length < 100) break;
 								}
+								return { pr, stats, localErrors, commits };
 							} catch (_error) {
 								// Swallow commit detail errors and continue; failure policy is
 								// to surface aggregate failures only.
@@ -1240,6 +1357,11 @@ export class MetricsService implements MetricsProvider {
 
 						sawRecentUpdate = true;
 
+						if (seenPullRequests.has(pr.number)) {
+							continue;
+						}
+						seenPullRequests.add(pr.number);
+
 						const login = pr.user?.login?.toLowerCase();
 						if (!login) {
 							continue;
@@ -1308,21 +1430,25 @@ export class MetricsService implements MetricsProvider {
 						// default branch yet. Folded sequentially in PR order so the result
 						// matches the previous inline-await version exactly.
 						//
-						// A commit belongs to the window it was written in, not the window its
-						// pull request happened to be opened, merged, or closed in. Closing a stale
-						// branch during cleanup must not move weeks-old commits into this week.
-						const prCommits = prCommitsByNumber
-							.get(pr.number)
-							?.filter((c) => {
-								const writtenAt = new Date(
-									c.commit?.author?.date ?? c.commit?.committer?.date ?? "",
-								).getTime();
-								return (
-									!Number.isNaN(writtenAt) &&
-									writtenAt >= sinceTime &&
-									writtenAt <= untilTime
-								);
-							});
+						// RULE (decided by the manager, docs/adr/0002-credit-commits-to-merge-week.md):
+						// a pull request's commits are credited to the week the pull request MERGED,
+						// all of them, whenever they were written. They are never credited by their
+						// author or committer date, and a pull request that was only opened, closed
+						// without merging, or updated in the window contributes no commits. Do not
+						// change this to a "written in" rule; that was tried in 3e45ba7 and reverted.
+						//
+						// Only a pull request merged INTO THE DEFAULT BRANCH credits commits. A
+						// stacked PR merged into a feature branch, or a promotion PR merged into a
+						// release branch, carries commits that are credited when they reach the
+						// default branch; crediting them here too counts them twice.
+						const mergedIntoDefaultBranch =
+							!repo.defaultBranch ||
+							!pr.base?.ref ||
+							pr.base.ref === repo.defaultBranch;
+						const prCommits =
+							mergedInRange && mergedIntoDefaultBranch
+								? prCommitsByNumber.get(pr.number)
+								: undefined;
 						if (prCommits && prCommits.length > 0) {
 							// Count commits from this PR toward the PR commit total
 							aggregate.commits += prCommits.length;
